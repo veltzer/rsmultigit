@@ -4,6 +4,10 @@ use anyhow::{Context, Result};
 
 use crate::config::AppConfig;
 
+fn print_project_header(project: &Path) {
+    println!("[{}]", project.display());
+}
+
 /// Runner for "count" commands.
 /// Calls `test_fn` on each project; if it returns true, the project is printed.
 /// Optionally prints statistics at the end.
@@ -57,7 +61,7 @@ where
         };
 
         if config.verbose && !config.terse {
-            println!("=== {} ===", project.display());
+            print_project_header(project);
         }
 
         std::env::set_current_dir(&abs_path).with_context(|| {
@@ -67,7 +71,7 @@ where
         match action(&abs_path) {
             Ok(did_work) => {
                 if did_work && !config.verbose && !config.terse {
-                    println!("=== {} ===", project.display());
+                    print_project_header(project);
                 }
             }
             Err(e) => {
@@ -118,7 +122,7 @@ where
             Ok(Some(data)) => {
                 let should_print = !config.print_not;
                 if should_print {
-                    println!("=== {} ===", project.display());
+                    print_project_header(project);
                     if !config.no_output {
                         println!("{data}");
                     }
@@ -126,7 +130,7 @@ where
             }
             Ok(None) => {
                 if config.print_not {
-                    println!("=== {} ===", project.display());
+                    print_project_header(project);
                 }
             }
             Err(e) => {
