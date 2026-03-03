@@ -24,7 +24,6 @@ src/
     diff.rs            git diff
     grep.rs            git grep with project-name prefix
     build.rs           Build commands (make, pydmt, rsb, bootstrap)
-    workflow.rs        GitHub Actions workflow check
 ```
 
 ## Runner patterns
@@ -41,7 +40,7 @@ For action commands (`pull`, `clean-hard`, `diff`, `grep`, `branch-*`, `build-*`
 
 ### `print_if_data`
 
-For status commands (`status`, `dirty`, `check-workflow-exists-for-makefile`, `list-projects`). Changes into each project directory, calls a data function. If it returns `Some(text)`, prints the project name and data. If `None`, the project is silently skipped.
+For status commands (`status`, `dirty`, `list-projects`). Changes into each project directory, calls a data function. If it returns `Some(text)`, prints the project name and data. If `None`, the project is silently skipped.
 
 ## Git inspection
 

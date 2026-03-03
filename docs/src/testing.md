@@ -16,7 +16,6 @@ Unit tests are defined as `#[cfg(test)]` modules inside each source file:
 |--------|-------|---------------|
 | `cli` | 11 | Subcommand parsing, global flags, argument validation |
 | `commands::count` | 7 | `is_dirty`, `has_untracked`, `non_synchronized` with temp git repos |
-| `commands::workflow` | 5 | Makefile/workflow detection with temp directories |
 | `discovery` | 6 | Folder, glob, and no-glob discovery modes |
 | `runner` | 11 | All three runner patterns with mock closures |
 | `subprocess_utils` | 6 | `capture_output`, `check_call`, `check_call_ve` |
@@ -37,7 +36,6 @@ tests/
     discovery.rs       Immediate subdirs, nested, glob, folders
     status.rs          Status and dirty output
     version.rs         Version subcommand and --version flag
-    workflow.rs        Workflow check with/without Makefile
 ```
 
 ### Test helpers (`tests/common/mod.rs`)

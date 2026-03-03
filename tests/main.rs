@@ -10,5 +10,3 @@ mod discovery;
 mod status;
 #[path = "tests_mod/version.rs"]
 mod version;
-#[path = "tests_mod/workflow.rs"]
-mod workflow;

@@ -15,7 +15,6 @@ Full documentation: <https://veltzer.github.io/rmg/>
 - **Selective output** — only prints repos where work was done; use `-v` for all
 - **Flexible filtering** — `--print-not` to invert selection, `--terse` for minimal output, `--stats` for counts
 - **Shell completions** — bash, zsh, fish, elvish, powershell
-- **CI workflow checks** — verify GitHub Actions workflows exist for repos with Makefiles
 
 ## Installation
 
@@ -78,7 +77,7 @@ rmg status
 rmg list-projects
 
 # Build all rsb projects
-rmg build-rsb
+rmg build rsb
 
 # Generate shell completions
 rmg complete bash >> ~/.bash_completion
@@ -107,25 +106,24 @@ rmg complete bash >> ~/.bash_completion
 | `clean make` | Run `make clean` |
 | `clean git` | Discard unstaged working-tree changes (`git checkout .`) |
 | `clean cargo` | Run `cargo clean` (skip if no `Cargo.toml`) |
-| `branch-local` | Show local branches |
-| `branch-remote` | Show remote branches |
-| `branch-github` | Show GitHub default branch |
+| `branch local` | Show local branches |
+| `branch remote` | Show remote branches |
+| `branch github` | Show GitHub default branch |
 
 ### Build
 | Command | Description |
 |---------|-------------|
-| `build-make` | Run make across all projects |
-| `build-rsb` | Run rsb build on projects with `rsb.toml` |
-| `build-pydmt` | Run pydmt build across all projects |
-| `build-bootstrap` | Run bootstrap across all projects |
-| `build-venv-make` | Run make inside a virtualenv |
-| `build-venv-pydmt` | Run pydmt inside a virtualenv |
-| `build-pydmt-build-venv` | Run pydmt build_venv |
+| `build make` | Run make across all projects |
+| `build rsb` | Run rsb build on projects with `rsb.toml` |
+| `build pydmt` | Run pydmt build across all projects |
+| `build bootstrap` | Run bootstrap across all projects |
+| `build venv-make` | Run make inside a virtualenv |
+| `build venv-pydmt` | Run pydmt inside a virtualenv |
+| `build pydmt-build-venv` | Run pydmt build_venv |
 
 ### Other
 | Command | Description |
 |---------|-------------|
-| `check-workflow-exists-for-makefile` | Verify GitHub Actions workflow exists for repos with Makefile |
 | `complete <shell>` | Generate shell completion scripts |
 | `version` | Print version information |
 

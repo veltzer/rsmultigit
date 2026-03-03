@@ -82,18 +82,16 @@ pub enum Commands {
     Status,
     /// Show dirty repositories
     Dirty,
-    /// Check if workflow exists for repos with Makefile
-    CheckWorkflowExistsForMakefile,
     /// List discovered projects
     ListProjects,
 
     // ── do_for_all_projects ──
-    /// Show local branches
-    BranchLocal,
-    /// Show remote branches
-    BranchRemote,
-    /// Show GitHub default branch
-    BranchGithub,
+    /// Branch operations
+    Branch {
+        /// What branch info to show
+        #[arg(value_enum)]
+        what: BranchWhat,
+    },
     /// Pull all repositories
     Pull {
         /// Pass --quiet to git pull
@@ -118,20 +116,12 @@ pub enum Commands {
     },
 
     // ── build commands ──
-    /// Run bootstrap across all projects
-    BuildBootstrap,
-    /// Run pydmt build across all projects
-    BuildPydmt,
-    /// Run make across all projects
-    BuildMake,
-    /// Run make inside a virtualenv across all projects
-    BuildVenvMake,
-    /// Run pydmt inside a virtualenv across all projects
-    BuildVenvPydmt,
-    /// Run pydmt build_venv across all projects
-    BuildPydmtBuildVenv,
-    /// Run rsb build on projects that have an rsb.toml file
-    BuildRsb,
+    /// Build projects
+    Build {
+        /// What build system to use
+        #[arg(value_enum)]
+        what: BuildWhat,
+    },
 
     /// Generate shell completion scripts
     Complete {
@@ -168,6 +158,34 @@ pub enum CountWhat {
     Synchronized,
 }
 
+#[derive(Clone, ValueEnum)]
+pub enum BranchWhat {
+    /// Show local branches
+    Local,
+    /// Show remote branches
+    Remote,
+    /// Show GitHub default branch
+    Github,
+}
+
+#[derive(Clone, ValueEnum)]
+pub enum BuildWhat {
+    /// Run bootstrap across all projects
+    Bootstrap,
+    /// Run pydmt build across all projects
+    Pydmt,
+    /// Run make across all projects
+    Make,
+    /// Run make inside a virtualenv across all projects
+    VenvMake,
+    /// Run pydmt inside a virtualenv across all projects
+    VenvPydmt,
+    /// Run pydmt build_venv across all projects
+    PydmtBuildVenv,
+    /// Run rsb build on projects that have an rsb.toml file
+    Rsb,
+}
+
 /// Generate shell completions and print to stdout.
 pub fn print_completions(shell: Shell) {
     let mut cmd = Cli::command();
@@ -193,20 +211,9 @@ mod tests {
         let subcommands = [
             "status",
             "dirty",
-            "check-workflow-exists-for-makefile",
             "list-projects",
-            "branch-local",
-            "branch-remote",
-            "branch-github",
             "pull",
             "diff",
-            "build-bootstrap",
-            "build-pydmt",
-            "build-make",
-            "build-venv-make",
-            "build-venv-pydmt",
-            "build-pydmt-build-venv",
-            "build-rsb",
             "version",
         ];
         for sub in subcommands {
@@ -226,6 +233,28 @@ mod tests {
         for what in count_whats {
             let result = Cli::try_parse_from(["rmg", "count", what]);
             assert!(result.is_ok(), "count {what} should parse");
+        }
+
+        // branch requires a what argument
+        let branch_whats = ["local", "remote", "github"];
+        for what in branch_whats {
+            let result = Cli::try_parse_from(["rmg", "branch", what]);
+            assert!(result.is_ok(), "branch {what} should parse");
+        }
+
+        // build requires a what argument
+        let build_whats = [
+            "bootstrap",
+            "pydmt",
+            "make",
+            "venv-make",
+            "venv-pydmt",
+            "pydmt-build-venv",
+            "rsb",
+        ];
+        for what in build_whats {
+            let result = Cli::try_parse_from(["rmg", "build", what]);
+            assert!(result.is_ok(), "build {what} should parse");
         }
 
         // complete requires an argument

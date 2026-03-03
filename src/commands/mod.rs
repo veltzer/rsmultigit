@@ -6,4 +6,3 @@ pub mod diff;
 pub mod grep;
 pub mod pull;
 pub mod status;
-pub mod workflow;

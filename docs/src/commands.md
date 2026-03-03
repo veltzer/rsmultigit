@@ -81,14 +81,6 @@ Show `git diff --stat` output for repositories with modifications.
 rmg dirty
 ```
 
-### `rmg check-workflow-exists-for-makefile`
-
-Report repos that have a `Makefile` but no GitHub Actions workflow YAML in `.github/workflows/`.
-
-```bash
-rmg check-workflow-exists-for-makefile
-```
-
 ### `rmg list-projects`
 
 List all discovered projects.

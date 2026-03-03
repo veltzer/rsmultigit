@@ -10,7 +10,7 @@ use std::path::Path;
 use anyhow::Result;
 use clap::Parser;
 
-use cli::{Cli, CleanWhat, Commands, CountWhat};
+use cli::{BranchWhat, BuildWhat, Cli, CleanWhat, Commands, CountWhat};
 use config::AppConfig;
 
 fn main() -> Result<()> {
@@ -57,13 +57,6 @@ fn main() -> Result<()> {
         Commands::Dirty => {
             runner::print_if_data(&config, &projects, commands::status::do_dirty)?;
         }
-        Commands::CheckWorkflowExistsForMakefile => {
-            runner::print_if_data(
-                &config,
-                &projects,
-                commands::workflow::check_workflow_exists_for_makefile,
-            )?;
-        }
         Commands::ListProjects => {
             runner::print_if_data(&config, &projects, |project: &Path| {
                 Ok(Some(project.display().to_string()))
@@ -71,14 +64,13 @@ fn main() -> Result<()> {
         }
 
         // ── do_for_all_projects ──
-        Commands::BranchLocal => {
-            runner::do_for_all_projects(&config, &projects, commands::branch::branch_local)?;
-        }
-        Commands::BranchRemote => {
-            runner::do_for_all_projects(&config, &projects, commands::branch::branch_remote)?;
-        }
-        Commands::BranchGithub => {
-            runner::do_for_all_projects(&config, &projects, commands::branch::branch_github)?;
+        Commands::Branch { what } => {
+            let branch_fn: fn(&Path) -> anyhow::Result<bool> = match what {
+                BranchWhat::Local => commands::branch::branch_local,
+                BranchWhat::Remote => commands::branch::branch_remote,
+                BranchWhat::Github => commands::branch::branch_github,
+            };
+            runner::do_for_all_projects(&config, &projects, branch_fn)?;
         }
         Commands::Pull { quiet } => {
             let quiet = *quiet;
@@ -108,30 +100,17 @@ fn main() -> Result<()> {
         }
 
         // ── build commands ──
-        Commands::BuildBootstrap => {
-            runner::do_for_all_projects(&config, &projects, commands::build::build_bootstrap)?;
-        }
-        Commands::BuildPydmt => {
-            runner::do_for_all_projects(&config, &projects, commands::build::build_pydmt)?;
-        }
-        Commands::BuildMake => {
-            runner::do_for_all_projects(&config, &projects, commands::build::build_make)?;
-        }
-        Commands::BuildVenvMake => {
-            runner::do_for_all_projects(&config, &projects, commands::build::build_venv_make)?;
-        }
-        Commands::BuildVenvPydmt => {
-            runner::do_for_all_projects(&config, &projects, commands::build::build_venv_pydmt)?;
-        }
-        Commands::BuildPydmtBuildVenv => {
-            runner::do_for_all_projects(
-                &config,
-                &projects,
-                commands::build::build_pydmt_build_venv,
-            )?;
-        }
-        Commands::BuildRsb => {
-            runner::do_for_all_projects(&config, &projects, commands::build::build_rsb)?;
+        Commands::Build { what } => {
+            let build_fn: fn(&Path) -> anyhow::Result<bool> = match what {
+                BuildWhat::Bootstrap => commands::build::build_bootstrap,
+                BuildWhat::Pydmt => commands::build::build_pydmt,
+                BuildWhat::Make => commands::build::build_make,
+                BuildWhat::VenvMake => commands::build::build_venv_make,
+                BuildWhat::VenvPydmt => commands::build::build_venv_pydmt,
+                BuildWhat::PydmtBuildVenv => commands::build::build_pydmt_build_venv,
+                BuildWhat::Rsb => commands::build::build_rsb,
+            };
+            runner::do_for_all_projects(&config, &projects, build_fn)?;
         }
 
         Commands::Complete { .. } => unreachable!("handled above"),
