@@ -32,9 +32,7 @@ where
         }
     }
 
-    if config.stats {
-        println!("{count}/{total}");
-    }
+    println!("{count}/{total}");
 
     Ok(())
 }
