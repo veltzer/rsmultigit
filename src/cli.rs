@@ -104,6 +104,14 @@ pub enum Commands {
         #[arg(value_enum)]
         what: CleanWhat,
     },
+    /// Fetch from origin for all repositories
+    Fetch,
+    /// Stash operations
+    Stash {
+        /// What stash operation to perform
+        #[arg(value_enum)]
+        what: StashWhat,
+    },
     /// Show diff for all repositories
     Diff,
     /// Grep across all repositories
@@ -169,6 +177,14 @@ pub enum BranchWhat {
 }
 
 #[derive(Clone, ValueEnum)]
+pub enum StashWhat {
+    /// Stash working-tree changes (git stash push)
+    Push,
+    /// Pop the most recent stash (git stash pop)
+    Pop,
+}
+
+#[derive(Clone, ValueEnum)]
 pub enum BuildWhat {
     /// Run bootstrap across all projects
     Bootstrap,
@@ -213,6 +229,7 @@ mod tests {
             "dirty",
             "list-projects",
             "pull",
+            "fetch",
             "diff",
             "version",
         ];
@@ -240,6 +257,13 @@ mod tests {
         for what in branch_whats {
             let result = Cli::try_parse_from(["rmg", "branch", what]);
             assert!(result.is_ok(), "branch {what} should parse");
+        }
+
+        // stash requires a what argument
+        let stash_whats = ["push", "pop"];
+        for what in stash_whats {
+            let result = Cli::try_parse_from(["rmg", "stash", what]);
+            assert!(result.is_ok(), "stash {what} should parse");
         }
 
         // build requires a what argument

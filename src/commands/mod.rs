@@ -3,6 +3,8 @@ pub mod build;
 pub mod clean;
 pub mod count;
 pub mod diff;
+pub mod fetch;
 pub mod grep;
 pub mod pull;
+pub mod stash;
 pub mod status;

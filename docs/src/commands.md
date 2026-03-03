@@ -126,6 +126,30 @@ rmg pull
 rmg pull --quiet
 ```
 
+### `rmg fetch`
+
+Fetch from origin without merging.
+
+```bash
+rmg fetch
+```
+
+### `rmg stash push`
+
+Stash working-tree changes in each repo.
+
+```bash
+rmg stash push
+```
+
+### `rmg stash pop`
+
+Pop the most recent stash in each repo.
+
+```bash
+rmg stash pop
+```
+
 ### `rmg clean-hard`
 
 Hard-clean each repository with `git clean -ffxd`. **Warning:** this removes all untracked and ignored files.

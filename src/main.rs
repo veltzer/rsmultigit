@@ -10,7 +10,7 @@ use std::path::Path;
 use anyhow::Result;
 use clap::Parser;
 
-use cli::{BranchWhat, BuildWhat, Cli, CleanWhat, Commands, CountWhat};
+use cli::{BranchWhat, BuildWhat, Cli, CleanWhat, Commands, CountWhat, StashWhat};
 use config::AppConfig;
 
 fn main() -> Result<()> {
@@ -87,6 +87,16 @@ fn main() -> Result<()> {
                 CleanWhat::Cargo => commands::clean::clean_cargo,
             };
             runner::do_for_all_projects(&config, &projects, clean_fn)?;
+        }
+        Commands::Fetch => {
+            runner::do_for_all_projects(&config, &projects, commands::fetch::do_fetch)?;
+        }
+        Commands::Stash { what } => {
+            let stash_fn: fn(&Path) -> anyhow::Result<bool> = match what {
+                StashWhat::Push => commands::stash::stash_push,
+                StashWhat::Pop => commands::stash::stash_pop,
+            };
+            runner::do_for_all_projects(&config, &projects, stash_fn)?;
         }
         Commands::Diff => {
             runner::do_for_all_projects(&config, &projects, commands::diff::do_diff)?;

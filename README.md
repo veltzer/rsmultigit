@@ -99,6 +99,9 @@ rmg complete bash >> ~/.bash_completion
 | Command | Description |
 |---------|-------------|
 | `pull` | Pull all repositories |
+| `fetch` | Fetch from origin for all repositories |
+| `stash push` | Stash working-tree changes |
+| `stash pop` | Pop the most recent stash |
 | `diff` | Show diff for all repositories |
 | `grep <regexp>` | Grep across all repositories |
 | `clean hard` | Hard-clean all repositories (`git clean -ffxd`) |
