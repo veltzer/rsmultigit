@@ -21,6 +21,10 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub no_output: bool,
 
+    /// Verbose output (print all projects, even when no action is taken)
+    #[arg(short, long, default_value_t = false)]
+    pub verbose: bool,
+
     /// Print repos that do NOT match (invert selection)
     #[arg(long, default_value_t = false)]
     pub print_not: bool,
@@ -241,13 +245,14 @@ mod tests {
     #[test]
     fn parse_global_flags() {
         let cli = parse(&[
-            "rmg", "--terse", "--stats", "--no-output", "--print-not",
+            "rmg", "--terse", "--stats", "--no-output", "--verbose", "--print-not",
             "--no-sort", "--no-stop", "--no-print-no-projects",
             "count-dirty",
         ]);
         assert!(cli.terse);
         assert!(cli.stats);
         assert!(cli.no_output);
+        assert!(cli.verbose);
         assert!(cli.print_not);
         assert!(cli.no_sort);
         assert!(cli.no_stop);

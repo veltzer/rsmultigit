@@ -6,6 +6,7 @@ pub struct AppConfig {
     pub terse: bool,
     pub stats: bool,
     pub no_output: bool,
+    pub verbose: bool,
     pub print_not: bool,
 
     // Debug
@@ -27,6 +28,7 @@ impl Default for AppConfig {
             terse: false,
             stats: false,
             no_output: false,
+            verbose: false,
             print_not: false,
             git_verbose: false,
             git_quiet: false,
@@ -46,6 +48,7 @@ impl AppConfig {
             terse: cli.terse,
             stats: cli.stats,
             no_output: cli.no_output,
+            verbose: cli.verbose,
             print_not: cli.print_not,
             git_verbose: cli.git_verbose,
             git_quiet: cli.git_quiet,

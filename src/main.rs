@@ -83,7 +83,7 @@ fn main() -> Result<()> {
         }
         Commands::Pull { quiet } => {
             let quiet = *quiet;
-            runner::do_for_all_projects(&config, &projects, move |project: &Path| {
+            runner::do_for_all_projects(&config, &projects, move |project: &Path| -> anyhow::Result<bool> {
                 commands::pull::do_pull(project, quiet)
             })?;
         }
@@ -96,7 +96,7 @@ fn main() -> Result<()> {
         Commands::Grep { regexp, files } => {
             let regexp = regexp.clone();
             let files = *files;
-            runner::do_for_all_projects(&config, &projects, move |project: &Path| {
+            runner::do_for_all_projects(&config, &projects, move |project: &Path| -> anyhow::Result<bool> {
                 commands::grep::do_grep(project, &regexp, files)
             })?;
         }

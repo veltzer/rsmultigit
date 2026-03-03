@@ -37,13 +37,15 @@ where
 
 /// Runner for "do for all projects" commands.
 /// Changes into each project directory, runs an action, and handles errors.
+/// The action returns `Result<bool>` — `true` if it did something, `false` if it skipped.
+/// The project header is only printed when the action did something, or when `--verbose` is set.
 pub fn do_for_all_projects<F>(
     config: &AppConfig,
     projects: &[PathBuf],
     action: F,
 ) -> Result<()>
 where
-    F: Fn(&Path) -> Result<()>,
+    F: Fn(&Path) -> Result<bool>,
 {
     let original_dir = std::env::current_dir().context("failed to get current directory")?;
 
@@ -54,7 +56,7 @@ where
             original_dir.join(project)
         };
 
-        if !config.terse {
+        if config.verbose && !config.terse {
             println!("=== {} ===", project.display());
         }
 
@@ -62,15 +64,21 @@ where
             format!("failed to cd into {}", abs_path.display())
         })?;
 
-        let result = action(&abs_path);
-        if let Err(e) = result {
-            if config.no_stop {
-                eprintln!("error in {}: {e:#}", project.display());
-            } else {
-                std::env::set_current_dir(&original_dir).ok();
-                return Err(e).with_context(|| {
-                    format!("error in project {}", project.display())
-                });
+        match action(&abs_path) {
+            Ok(did_work) => {
+                if did_work && !config.verbose && !config.terse {
+                    println!("=== {} ===", project.display());
+                }
+            }
+            Err(e) => {
+                if config.no_stop {
+                    eprintln!("error in {}: {e:#}", project.display());
+                } else {
+                    std::env::set_current_dir(&original_dir).ok();
+                    return Err(e).with_context(|| {
+                        format!("error in project {}", project.display())
+                    });
+                }
             }
         }
     }
@@ -220,7 +228,7 @@ mod tests {
         let counter = AtomicU32::new(0);
         let result = do_for_all_projects(&config, &projects, |_| {
             counter.fetch_add(1, Ordering::SeqCst);
-            Ok(())
+            Ok(true)
         });
         assert!(result.is_ok());
         assert_eq!(counter.load(Ordering::SeqCst), 3);
@@ -269,7 +277,7 @@ mod tests {
         let projects = make_dirs(tmp.path(), &["a"]);
         let config = default_config();
 
-        do_for_all_projects(&config, &projects, |_| Ok(())).unwrap();
+        do_for_all_projects(&config, &projects, |_| Ok(true)).unwrap();
         assert_eq!(std::env::current_dir().unwrap(), tmp.path());
     }
 

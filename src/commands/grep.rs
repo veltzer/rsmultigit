@@ -4,7 +4,7 @@ use std::process::Command;
 use anyhow::Result;
 
 /// Grep across the repository. Prefix output lines with the project name.
-pub fn do_grep(project: &Path, regexp: &str, files_only: bool) -> Result<()> {
+pub fn do_grep(project: &Path, regexp: &str, files_only: bool) -> Result<bool> {
     let mut args = vec!["grep", "-n"];
     if files_only {
         args.push("-l");
@@ -13,6 +13,10 @@ pub fn do_grep(project: &Path, regexp: &str, files_only: bool) -> Result<()> {
 
     let output = Command::new("git").args(&args).output()?;
     let stdout = String::from_utf8_lossy(&output.stdout);
+
+    if stdout.is_empty() {
+        return Ok(false);
+    }
 
     let project_name = project
         .file_name()
@@ -23,5 +27,5 @@ pub fn do_grep(project: &Path, regexp: &str, files_only: bool) -> Result<()> {
         println!("{project_name}: {line}");
     }
 
-    Ok(())
+    Ok(true)
 }
