@@ -1,0 +1,73 @@
+name: Release latest
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Run tests
+        run: cargo test --release
+
+      - name: Rename binary with target triple
+        run: cp ./target/release/rmg ./target/release/rmg-${{ matrix.target }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rmg-${{ matrix.target }}
+          path: ./target/release/rmg-${{ matrix.target }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Delete old latest release
+        run: gh release delete latest --yes || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete old latest tag
+        run: git push origin :refs/tags/latest || true
+
+      - name: Create latest release
+        run: |
+          gh release create latest \
+            artifacts/rmg-x86_64-unknown-linux-gnu \
+            artifacts/rmg-aarch64-unknown-linux-gnu \
+            --target master \
+            --title "Latest build" \
+            --notes "Rolling release built from master ($(git rev-parse --short HEAD))" \
+            --prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
