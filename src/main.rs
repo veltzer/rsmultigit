@@ -16,7 +16,11 @@ use config::AppConfig;
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Handle version before project discovery
+    // Handle commands that don't need project discovery
+    if let Commands::Complete { shell } = &cli.command {
+        cli::print_completions(*shell);
+        return Ok(());
+    }
     if matches!(&cli.command, Commands::Version) {
         println!("rmg {} by {}", env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_AUTHORS"));
         println!("RMG_GIT_DESCRIBE: {}", env!("RMG_GIT_DESCRIBE"));
@@ -124,6 +128,7 @@ fn main() -> Result<()> {
             runner::do_for_all_projects(&config, &projects, commands::build::build_rsb)?;
         }
 
+        Commands::Complete { .. } => unreachable!("handled above"),
         Commands::Version => unreachable!("handled above"),
     }
 

@@ -1,4 +1,7 @@
-use clap::{Parser, Subcommand};
+use std::io;
+
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 
 #[derive(Parser)]
 #[command(name = "rmg")]
@@ -122,8 +125,21 @@ pub enum Commands {
     /// Run rsb build on projects that have an rsb.toml file
     BuildRsb,
 
+    /// Generate shell completion scripts
+    Complete {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+
     /// Print version information
     Version,
+}
+
+/// Generate shell completions and print to stdout.
+pub fn print_completions(shell: Shell) {
+    let mut cmd = Cli::command();
+    generate(shell, &mut cmd, "rmg", &mut io::stdout());
 }
 
 #[cfg(test)]
@@ -168,6 +184,24 @@ mod tests {
         for sub in subcommands {
             let result = Cli::try_parse_from(["rmg", sub]);
             assert!(result.is_ok(), "subcommand {sub} should parse");
+        }
+
+        // complete requires an argument
+        let complete_shells = ["bash", "zsh", "fish", "elvish", "powershell"];
+        for shell in complete_shells {
+            let result = Cli::try_parse_from(["rmg", "complete", shell]);
+            assert!(result.is_ok(), "complete {shell} should parse");
+        }
+    }
+
+    #[test]
+    fn parse_complete_bash() {
+        let cli = parse(&["rmg", "complete", "bash"]);
+        match &cli.command {
+            Commands::Complete { shell } => {
+                assert!(matches!(shell, Shell::Bash));
+            }
+            _ => panic!("expected Complete"),
         }
     }
 
