@@ -10,57 +10,57 @@ use clap_complete::{generate, Shell};
 pub struct Cli {
     // Output control
     /// Terse output
-    #[arg(long, default_value_t = false)]
+    #[arg(long, global = true, default_value_t = false)]
     pub terse: bool,
 
     /// Show statistics
-    #[arg(long, default_value_t = false)]
+    #[arg(long, global = true, default_value_t = false)]
     pub stats: bool,
 
     /// Suppress command output
-    #[arg(long, default_value_t = false)]
+    #[arg(long, global = true, default_value_t = false)]
     pub no_output: bool,
 
     /// Verbose output (print all projects, even when no action is taken)
-    #[arg(short, long, default_value_t = false)]
+    #[arg(short, long, global = true, default_value_t = false)]
     pub verbose: bool,
 
     /// Print repos that do NOT match (invert selection)
-    #[arg(long, default_value_t = false)]
+    #[arg(long, global = true, default_value_t = false)]
     pub print_not: bool,
 
     // Debug
     /// Pass --verbose to git commands
-    #[arg(long, default_value_t = false)]
+    #[arg(long, global = true, default_value_t = false)]
     pub git_verbose: bool,
 
     /// Pass --quiet to git commands
-    #[arg(long, default_value_t = false)]
+    #[arg(long, global = true, default_value_t = false)]
     pub git_quiet: bool,
 
     // Main
     /// Do not sort project list
-    #[arg(long, default_value_t = false)]
+    #[arg(long, global = true, default_value_t = false)]
     pub no_sort: bool,
 
     /// Glob pattern for discovering projects (default: */*)
-    #[arg(long, default_value = "*/*")]
+    #[arg(long, global = true, default_value = "*/*")]
     pub glob: String,
 
     /// Disable glob-based discovery
-    #[arg(long, default_value_t = false)]
+    #[arg(long, global = true, default_value_t = false)]
     pub no_glob: bool,
 
     /// Explicit list of folders to operate on
-    #[arg(long, value_delimiter = ',')]
+    #[arg(long, global = true, value_delimiter = ',')]
     pub folders: Vec<String>,
 
     /// Do not stop on errors
-    #[arg(long, default_value_t = false)]
+    #[arg(long, global = true, default_value_t = false)]
     pub no_stop: bool,
 
     /// Do not print 'no projects found' message
-    #[arg(long, default_value_t = false)]
+    #[arg(long, global = true, default_value_t = false)]
     pub no_print_no_projects: bool,
 
     #[command(subcommand)]
