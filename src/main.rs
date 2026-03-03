@@ -120,6 +120,9 @@ fn main() -> Result<()> {
                 commands::build::build_pydmt_build_venv,
             )?;
         }
+        Commands::BuildRsb => {
+            runner::do_for_all_projects(&config, &projects, commands::build::build_rsb)?;
+        }
 
         Commands::Version => unreachable!("handled above"),
     }

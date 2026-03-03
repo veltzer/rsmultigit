@@ -119,6 +119,8 @@ pub enum Commands {
     BuildVenvPydmt,
     /// Run pydmt build_venv across all projects
     BuildPydmtBuildVenv,
+    /// Run rsb build on projects that have an rsb.toml file
+    BuildRsb,
 
     /// Print version information
     Version,
@@ -160,6 +162,7 @@ mod tests {
             "build-venv-make",
             "build-venv-pydmt",
             "build-pydmt-build-venv",
+            "build-rsb",
             "version",
         ];
         for sub in subcommands {

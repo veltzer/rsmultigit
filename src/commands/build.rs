@@ -56,3 +56,14 @@ pub fn build_pydmt_build_venv(_project: &Path) -> Result<()> {
     }
     check_call("pydmt", &["build_venv"])
 }
+
+/// Run rsb build, but only if the project has an rsb.toml file.
+pub fn build_rsb(_project: &Path) -> Result<()> {
+    if is_build_disabled() {
+        return Ok(());
+    }
+    if !Path::new("rsb.toml").exists() {
+        return Ok(());
+    }
+    check_call("rsb", &["build"])
+}
