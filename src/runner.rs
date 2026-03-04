@@ -58,20 +58,16 @@ where
             original_dir.join(project)
         };
 
-        if config.verbose && !config.terse {
-            print_project_header(project);
-        }
-
         std::env::set_current_dir(&abs_path).with_context(|| {
             format!("failed to cd into {}", abs_path.display())
         })?;
 
+        if !config.terse {
+            print_project_header(project);
+        }
+
         match action(&abs_path) {
-            Ok(did_work) => {
-                if did_work && !config.verbose && !config.terse {
-                    print_project_header(project);
-                }
-            }
+            Ok(_did_work) => {}
             Err(e) => {
                 if config.no_stop {
                     eprintln!("error in {}: {e:#}", project.display());
