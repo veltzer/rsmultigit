@@ -96,6 +96,9 @@ rmg complete bash >> ~/.bash_completion
 | `list-projects` | List discovered projects |
 | `age` | Show the age of the last commit per repo |
 | `authors` | Show unique commit authors per repo |
+| `config <key>` | Show a git config value across all repos |
+| `size` | Show the size of the `.git` directory per repo |
+| `last-tag` | Show the most recent tag per repo |
 
 ### Operations
 | Command | Description |
@@ -115,6 +118,7 @@ rmg complete bash >> ~/.bash_completion
 | `checkout <branch>` | Checkout a branch across all repositories |
 | `commit -m <msg>` | Commit all changes with a shared message |
 | `submodule-update` | Update submodules recursively |
+| `blame <file>` | Run git blame on a file (skips repos without it) |
 | `grep <regexp>` | Grep across all repositories |
 | `clean hard` | Hard-clean all repositories (`git clean -ffxd`) |
 | `clean soft` | Remove untracked files only (`git clean -fd`) |

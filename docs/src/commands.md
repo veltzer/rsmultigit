@@ -105,6 +105,31 @@ Show unique commit authors for each repo, sorted by number of commits.
 rmg authors
 ```
 
+### `rmg config <KEY>`
+
+Show a git config value across all repos. Repos where the key is not set are skipped.
+
+```bash
+rmg config user.email
+rmg config remote.origin.url
+```
+
+### `rmg size`
+
+Show the size of the `.git` directory for each repo. Useful for finding bloated repos.
+
+```bash
+rmg size
+```
+
+### `rmg last-tag`
+
+Show the most recent tag for each repo. Repos without tags are skipped.
+
+```bash
+rmg last-tag
+```
+
 ## Action Commands
 
 These commands run an action in each project directory.
@@ -248,6 +273,15 @@ Update submodules recursively (`git submodule update --init --recursive`).
 
 ```bash
 rmg submodule-update
+```
+
+### `rmg blame <FILE>`
+
+Run `git blame` on a specific file across all repos. Repos where the file does not exist are skipped.
+
+```bash
+rmg blame README.md
+rmg blame Makefile
 ```
 
 ### `rmg clean-hard`

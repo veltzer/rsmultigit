@@ -88,6 +88,15 @@ pub enum Commands {
     Age,
     /// Show unique commit authors per repo
     Authors,
+    /// Show a git config value across all repos
+    Config {
+        /// Git config key to show
+        key: String,
+    },
+    /// Show the size of the .git directory per repo
+    Size,
+    /// Show the most recent tag per repo
+    LastTag,
 
     // ── do_for_all_projects ──
     /// Branch operations
@@ -153,6 +162,11 @@ pub enum Commands {
     },
     /// Update submodules recursively
     SubmoduleUpdate,
+    /// Run git blame on a file across all repositories
+    Blame {
+        /// File path to blame
+        file: String,
+    },
     /// Grep across all repositories
     Grep {
         /// Regular expression to search for
@@ -279,6 +293,8 @@ mod tests {
             "list-projects",
             "age",
             "authors",
+            "size",
+            "last-tag",
             "pull",
             "push",
             "fetch",
@@ -336,6 +352,14 @@ mod tests {
         // commit requires -m
         let result = Cli::try_parse_from(["rmg", "commit", "-m", "test"]);
         assert!(result.is_ok(), "commit -m test should parse");
+
+        // config requires a key
+        let result = Cli::try_parse_from(["rmg", "config", "user.email"]);
+        assert!(result.is_ok(), "config user.email should parse");
+
+        // blame requires a file
+        let result = Cli::try_parse_from(["rmg", "blame", "README.md"]);
+        assert!(result.is_ok(), "blame README.md should parse");
 
         // stash requires a what argument
         let stash_whats = ["push", "pop"];

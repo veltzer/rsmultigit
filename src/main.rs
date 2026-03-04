@@ -68,6 +68,18 @@ fn main() -> Result<()> {
         Commands::Authors => {
             runner::print_if_data(&config, &projects, commands::authors::do_authors)?;
         }
+        Commands::Config { key } => {
+            let key = key.clone();
+            runner::print_if_data(&config, &projects, move |project: &Path| {
+                commands::config::do_config(project, &key)
+            })?;
+        }
+        Commands::Size => {
+            runner::print_if_data(&config, &projects, commands::size::do_size)?;
+        }
+        Commands::LastTag => {
+            runner::print_if_data(&config, &projects, commands::last_tag::do_last_tag)?;
+        }
 
         // ── do_for_all_projects ──
         Commands::Branch { what } => {
@@ -150,6 +162,12 @@ fn main() -> Result<()> {
         }
         Commands::SubmoduleUpdate => {
             runner::do_for_all_projects(&config, &projects, commands::submodule::submodule_update)?;
+        }
+        Commands::Blame { file } => {
+            let file = file.clone();
+            runner::do_for_all_projects(&config, &projects, move |project: &Path| -> anyhow::Result<bool> {
+                commands::blame::do_blame(project, &file)
+            })?;
         }
         Commands::Grep { regexp, files } => {
             let regexp = regexp.clone();
