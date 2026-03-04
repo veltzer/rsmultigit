@@ -7,6 +7,19 @@ use clap_complete::{generate, Shell};
 #[command(name = "rmg")]
 #[command(version = concat!(env!("CARGO_PKG_VERSION"), " by ", env!("CARGO_PKG_AUTHORS")))]
 #[command(about = "Manage multiple git repositories at once")]
+#[command(help_template = "\
+{about}
+
+Usage: {usage}
+
+Commands:
+{subcommands}
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+Use `rmg <command> --help` for more options.")]
 pub struct Cli {
     // Output control
     /// Terse output
