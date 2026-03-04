@@ -234,6 +234,22 @@ List remote tags for each repo.
 rmg tag remote
 ```
 
+### `rmg tag has-local`
+
+Show repos that have local tags (prints only the project header).
+
+```bash
+rmg tag has-local
+```
+
+### `rmg tag has-remote`
+
+Show repos that have remote tags (prints only the project header).
+
+```bash
+rmg tag has-remote
+```
+
 ### `rmg remote`
 
 Show remote URLs for each repo.

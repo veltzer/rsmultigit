@@ -141,6 +141,8 @@ fn main() -> Result<()> {
             let tag_fn: fn(&Path) -> anyhow::Result<bool> = match what {
                 TagWhat::Local => commands::tag::tag_local,
                 TagWhat::Remote => commands::tag::tag_remote,
+                TagWhat::HasLocal => commands::tag::tag_has_local,
+                TagWhat::HasRemote => commands::tag::tag_has_remote,
             };
             runner::do_for_all_projects(&config, &projects, tag_fn)?;
         }

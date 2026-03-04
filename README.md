@@ -113,6 +113,8 @@ rmg complete bash >> ~/.bash_completion
 | `log` | Show recent commits (default 10) |
 | `tag local` | List local tags |
 | `tag remote` | List remote tags |
+| `tag has-local` | Show repos that have local tags |
+| `tag has-remote` | Show repos that have remote tags |
 | `remote` | Show remote URLs |
 | `prune` | Prune stale remote-tracking branches |
 | `gc` | Run git garbage collection |

@@ -260,6 +260,10 @@ pub enum TagWhat {
     Local,
     /// Show remote tags
     Remote,
+    /// Show repos that have local tags
+    HasLocal,
+    /// Show repos that have remote tags
+    HasRemote,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -357,7 +361,7 @@ mod tests {
         }
 
         // tag requires a what argument
-        let tag_whats = ["local", "remote"];
+        let tag_whats = ["local", "remote", "has-local", "has-remote"];
         for what in tag_whats {
             let result = Cli::try_parse_from(["rmg", "tag", what]);
             assert!(result.is_ok(), "tag {what} should parse");
