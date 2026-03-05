@@ -36,4 +36,4 @@ RMG does not use a configuration file. All behavior is controlled via CLI flags 
 
 ## Build command skipping
 
-Build commands (`build-*`) automatically skip projects that contain a `.disable` file in their root directory. The `build-rsb` command additionally skips projects that do not have an `rsb.toml` file.
+Build commands (`build-*`) automatically skip projects that contain a `.disable` file in their root directory. The `build-rsbuild` command additionally skips projects that do not have an `rsbuild.toml` file.

@@ -63,14 +63,14 @@ pub fn build_pydmt_build_venv(_project: &Path) -> Result<bool> {
     Ok(true)
 }
 
-/// Run rsb build, but only if the project has an rsb.toml file.
-pub fn build_rsb(_project: &Path) -> Result<bool> {
+/// Run rsbuild build, but only if the project has an rsbuild.toml file.
+pub fn build_rsbuild(_project: &Path) -> Result<bool> {
     if is_build_disabled() {
         return Ok(false);
     }
-    if !Path::new("rsb.toml").exists() {
+    if !Path::new("rsbuild.toml").exists() {
         return Ok(false);
     }
-    check_call("rsb", &["--quiet", "build"])?;
+    check_call("rsbuild", &["--quiet", "build"])?;
     Ok(true)
 }

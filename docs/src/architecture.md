@@ -23,7 +23,7 @@ src/
     clean.rs           git clean -ffxd
     diff.rs            git diff
     grep.rs            git grep with project-name prefix
-    build.rs           Build commands (make, pydmt, rsb, bootstrap)
+    build.rs           Build commands (make, pydmt, rsbuild, bootstrap)
 ```
 
 ## Runner patterns

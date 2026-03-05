@@ -290,8 +290,8 @@ pub enum BuildWhat {
     VenvPydmt,
     /// Run pydmt build_venv across all projects
     PydmtBuildVenv,
-    /// Run rsb build on projects that have an rsb.toml file
-    Rsb,
+    /// Run rsbuild build on projects that have an rsbuild.toml file
+    Rsbuild,
 }
 
 /// Generate shell completions and print to stdout.
@@ -411,7 +411,7 @@ mod tests {
             "venv-make",
             "venv-pydmt",
             "pydmt-build-venv",
-            "rsb",
+            "rsbuild",
         ];
         for what in build_whats {
             let result = Cli::try_parse_from(["rmg", "build", what]);

@@ -361,12 +361,12 @@ Run `pydmt build` inside the project's virtualenv.
 
 Run `pydmt build_venv` in each project.
 
-### `rmg build-rsb`
+### `rmg build-rsbuild`
 
-Run `rsb build` on projects that have an `rsb.toml` file. Projects without `rsb.toml` are skipped.
+Run `rsbuild build` on projects that have an `rsbuild.toml` file. Projects without `rsbuild.toml` are skipped.
 
 ```bash
-rmg build-rsb
+rmg build-rsbuild
 ```
 
 ## Utility Commands

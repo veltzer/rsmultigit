@@ -65,10 +65,10 @@ Run make across all repos:
 rmg build-make
 ```
 
-Run rsb build on projects that have an `rsb.toml`:
+Run rsbuild build on projects that have an `rsbuild.toml`:
 
 ```bash
-rmg build-rsb
+rmg build-rsbuild
 ```
 
 ## Filtering projects

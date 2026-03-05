@@ -202,7 +202,7 @@ fn main() -> Result<()> {
                 BuildWhat::VenvMake => commands::build::build_venv_make,
                 BuildWhat::VenvPydmt => commands::build::build_venv_pydmt,
                 BuildWhat::PydmtBuildVenv => commands::build::build_pydmt_build_venv,
-                BuildWhat::Rsb => commands::build::build_rsb,
+                BuildWhat::Rsbuild => commands::build::build_rsbuild,
             };
             runner::do_for_all_projects(&config, &projects, build_fn)?;
         }

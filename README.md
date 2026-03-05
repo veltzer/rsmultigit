@@ -11,7 +11,7 @@ Full documentation: <https://veltzer.github.io/rmg/>
 - **Batch operations** — pull, diff, grep, clean, and build across all repos at once
 - **Smart discovery** — finds git repos via glob patterns, explicit folder lists, or automatic fallback
 - **Dirty/untracked detection** — uses libgit2 for fast native repo inspection
-- **Build system support** — make, pydmt, rsb, bootstrap, virtualenv workflows
+- **Build system support** — make, pydmt, rsbuild, bootstrap, virtualenv workflows
 - **Selective output** — only prints repos where work was done; use `-v` for all
 - **Flexible filtering** — `--print-not` to invert selection, `--terse` for minimal output, `--stats` for counts
 - **Shell completions** — bash, zsh, fish, elvish, powershell
@@ -76,8 +76,8 @@ rmg status
 # List discovered projects
 rmg list-projects
 
-# Build all rsb projects
-rmg build rsb
+# Build all rsbuild projects
+rmg build rsbuild
 
 # Generate shell completions
 rmg complete bash >> ~/.bash_completion
@@ -136,7 +136,7 @@ rmg complete bash >> ~/.bash_completion
 | Command | Description |
 |---------|-------------|
 | `build make` | Run make across all projects |
-| `build rsb` | Run rsb build on projects with `rsb.toml` |
+| `build rsbuild` | Run rsbuild build on projects with `rsbuild.toml` |
 | `build pydmt` | Run pydmt build across all projects |
 | `build bootstrap` | Run bootstrap across all projects |
 | `build venv-make` | Run make inside a virtualenv |
