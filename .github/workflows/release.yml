@@ -34,13 +34,13 @@ jobs:
         run: cargo nextest run --release
 
       - name: Rename binary with target triple
-        run: cp ./target/release/rmg ./target/release/rmg-${{ matrix.target }}
+        run: cp ./target/release/rsmultigit ./target/release/rsmultigit-${{ matrix.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rmg-${{ matrix.target }}
-          path: ./target/release/rmg-${{ matrix.target }}
+          name: rsmultigit-${{ matrix.target }}
+          path: ./target/release/rsmultigit-${{ matrix.target }}
 
   release:
     needs: build
@@ -66,8 +66,8 @@ jobs:
       - name: Create latest release
         run: |
           gh release create latest \
-            artifacts/rmg-x86_64-unknown-linux-gnu \
-            artifacts/rmg-aarch64-unknown-linux-gnu \
+            artifacts/rsmultigit-x86_64-unknown-linux-gnu \
+            artifacts/rsmultigit-aarch64-unknown-linux-gnu \
             --target master \
             --title "Latest build" \
             --notes "Rolling release built from master ($(git rev-parse --short HEAD))" \

@@ -1,4 +1,4 @@
-# rmg - Rust Multi Git
+# RSMultiGit - Rust Multi Git
 
 A fast CLI tool for managing multiple git repositories at once. Run status checks, builds, pulls, greps, and more across all your repos in a single command.
 
@@ -24,26 +24,26 @@ Pre-built binaries are available for x86_64 and aarch64 (arm64).
 
 ```bash
 # x86_64
-gh release download latest --repo veltzer/rmg --pattern 'rmg-x86_64-unknown-linux-gnu' --output rmg --clobber
+gh release download latest --repo veltzer/rmg --pattern 'rsmultigit-x86_64-unknown-linux-gnu' --output rsmultigit --clobber
 
 # aarch64 / arm64
-gh release download latest --repo veltzer/rmg --pattern 'rmg-aarch64-unknown-linux-gnu' --output rmg --clobber
+gh release download latest --repo veltzer/rmg --pattern 'rsmultigit-aarch64-unknown-linux-gnu' --output rsmultigit --clobber
 
-chmod +x rmg
-sudo mv rmg /usr/local/bin/
+chmod +x rsmultigit
+sudo mv rsmultigit /usr/local/bin/
 ```
 
 Or without the GitHub CLI:
 
 ```bash
 # x86_64
-curl -Lo rmg https://github.com/veltzer/rmg/releases/download/latest/rmg-x86_64-unknown-linux-gnu
+curl -Lo rsmultigit https://github.com/veltzer/rmg/releases/download/latest/rsmultigit-x86_64-unknown-linux-gnu
 
 # aarch64 / arm64
-curl -Lo rmg https://github.com/veltzer/rmg/releases/download/latest/rmg-aarch64-unknown-linux-gnu
+curl -Lo rsmultigit https://github.com/veltzer/rmg/releases/download/latest/rsmultigit-aarch64-unknown-linux-gnu
 
-chmod +x rmg
-sudo mv rmg /usr/local/bin/
+chmod +x rsmultigit
+sudo mv rsmultigit /usr/local/bin/
 ```
 
 ### Build from source
@@ -59,28 +59,28 @@ cargo build --release
 cd ~/git/myorg
 
 # See which repos are dirty
-rmg dirty
+rsmultigit dirty
 
 # Pull all repos
-rmg pull
+rsmultigit pull
 
 # Count dirty repos with stats
-rmg --stats count dirty
+rsmultigit --stats count dirty
 
 # Grep across all repos
-rmg grep "TODO"
+rsmultigit grep "TODO"
 
 # Show status of all repos
-rmg status
+rsmultigit status
 
 # List discovered projects
-rmg list-projects
+rsmultigit list-projects
 
 # Build all rsbuild projects
-rmg build rsbuild
+rsmultigit build rsbuild
 
 # Generate shell completions
-rmg complete bash >> ~/.bash_completion
+rsmultigit complete bash >> ~/.bash_completion
 ```
 
 ## Commands
@@ -166,7 +166,7 @@ rmg complete bash >> ~/.bash_completion
 
 ## Project Discovery
 
-By default, rmg looks for git repositories matching the `*/*` glob pattern (two levels deep, e.g. `org/repo`). If no repos are found with `*/*`, it automatically falls back to `*` (immediate subdirectories).
+By default, rsmultigit looks for git repositories matching the `*/*` glob pattern (two levels deep, e.g. `org/repo`). If no repos are found with `*/*`, it automatically falls back to `*` (immediate subdirectories).
 
 You can override this with:
 - `--glob "myorg/*"` — custom glob pattern

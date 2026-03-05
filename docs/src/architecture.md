@@ -2,7 +2,7 @@
 
 ## Overview
 
-RMG follows a simple pipeline: **discover projects** → **run command** → **collect results**.
+RSMultiGit follows a simple pipeline: **discover projects** → **run command** → **collect results**.
 
 ## Module structure
 
@@ -54,4 +54,4 @@ All functions return `anyhow::Result`. The `--no-stop` flag controls whether err
 
 ## Build script
 
-The `build.rs` script embeds git metadata (commit SHA, branch, dirty status, describe) and the Rust compiler version at compile time. These are accessible via `env!()` macros and displayed by `rmg version`.
+The `build.rs` script embeds git metadata (commit SHA, branch, dirty status, describe) and the Rust compiler version at compile time. These are accessible via `env!()` macros and displayed by `rsmultigit version`.

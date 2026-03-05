@@ -558,7 +558,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rmg"
+name = "rsmultigit"
 version = "0.1.0"
 dependencies = [
  "anyhow",

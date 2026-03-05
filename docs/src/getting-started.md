@@ -2,45 +2,45 @@
 
 ## Basic usage
 
-Navigate to a directory that contains git repositories as subdirectories, then run any rmg command:
+Navigate to a directory that contains git repositories as subdirectories, then run any rsmultigit command:
 
 ```bash
 cd ~/git/myorg
-rmg list-projects
+rsmultigit list-projects
 ```
 
-RMG will automatically discover git repos by looking for directories containing a `.git` folder. It searches both immediate subdirectories (`*`) and two levels deep (`*/*`).
+RSMultiGit will automatically discover git repos by looking for directories containing a `.git` folder. It searches both immediate subdirectories (`*`) and two levels deep (`*/*`).
 
 ## Checking repository status
 
 See which repos have uncommitted changes:
 
 ```bash
-rmg status
+rsmultigit status
 ```
 
 Count dirty repos with statistics:
 
 ```bash
-rmg --stats count-dirty
+rsmultigit --stats count-dirty
 ```
 
 Find repos with untracked files:
 
 ```bash
-rmg --stats untracked
+rsmultigit --stats untracked
 ```
 
 ## Pulling all repos
 
 ```bash
-rmg pull
+rsmultigit pull
 ```
 
 Or quietly:
 
 ```bash
-rmg pull --quiet
+rsmultigit pull --quiet
 ```
 
 ## Searching across repos
@@ -48,13 +48,13 @@ rmg pull --quiet
 Grep for a pattern across all repositories:
 
 ```bash
-rmg grep "TODO"
+rsmultigit grep "TODO"
 ```
 
 Show only filenames:
 
 ```bash
-rmg grep --files "TODO"
+rsmultigit grep --files "TODO"
 ```
 
 ## Building all projects
@@ -62,13 +62,13 @@ rmg grep --files "TODO"
 Run make across all repos:
 
 ```bash
-rmg build-make
+rsmultigit build-make
 ```
 
 Run rsbuild build on projects that have an `rsbuild.toml`:
 
 ```bash
-rmg build-rsbuild
+rsmultigit build-rsbuild
 ```
 
 ## Filtering projects
@@ -76,19 +76,19 @@ rmg build-rsbuild
 Only operate on specific folders:
 
 ```bash
-rmg --folders projectA,projectB status
+rsmultigit --folders projectA,projectB status
 ```
 
 Use a custom glob pattern:
 
 ```bash
-rmg --glob "python-*" status
+rsmultigit --glob "python-*" status
 ```
 
 ## Error handling
 
-By default, rmg stops on the first error. To continue through all projects:
+By default, rsmultigit stops on the first error. To continue through all projects:
 
 ```bash
-rmg --no-stop pull
+rsmultigit --no-stop pull
 ```

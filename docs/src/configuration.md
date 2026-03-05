@@ -1,6 +1,6 @@
 # Configuration
 
-RMG does not use a configuration file. All behavior is controlled via CLI flags passed before the subcommand.
+RSMultiGit does not use a configuration file. All behavior is controlled via CLI flags passed before the subcommand.
 
 ## Output control
 

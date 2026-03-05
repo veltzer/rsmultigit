@@ -29,11 +29,11 @@ fn main() {
         })
         .unwrap_or_else(|| "unknown".to_owned());
 
-    println!("cargo:rustc-env=RMG_GIT_SHA={sha}");
-    println!("cargo:rustc-env=RMG_GIT_BRANCH={branch}");
-    println!("cargo:rustc-env=RMG_GIT_DESCRIBE={describe}");
-    println!("cargo:rustc-env=RMG_GIT_DIRTY={dirty_flag}");
-    println!("cargo:rustc-env=RMG_RUSTC_SEMVER={rustc_ver}");
+    println!("cargo:rustc-env=RSMULTIGIT_GIT_SHA={sha}");
+    println!("cargo:rustc-env=RSMULTIGIT_GIT_BRANCH={branch}");
+    println!("cargo:rustc-env=RSMULTIGIT_GIT_DESCRIBE={describe}");
+    println!("cargo:rustc-env=RSMULTIGIT_GIT_DIRTY={dirty_flag}");
+    println!("cargo:rustc-env=RSMULTIGIT_RUSTC_SEMVER={rustc_ver}");
 
     let manifest = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").unwrap())
         .join("Cargo.toml");
@@ -47,7 +47,7 @@ fn main() {
                 .map(|v| v.trim().trim_matches('"').to_owned())
         })
         .unwrap_or_else(|| "unknown".to_owned());
-    println!("cargo:rustc-env=RMG_RUST_EDITION={edition}");
+    println!("cargo:rustc-env=RSMULTIGIT_RUST_EDITION={edition}");
     println!("cargo:rerun-if-changed=Cargo.toml");
 
     // Only re-run when the git HEAD or branch ref changes.

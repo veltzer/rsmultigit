@@ -5,14 +5,14 @@ use std::path::Path;
 use std::process::{Command, Output};
 use tempfile::TempDir;
 
-/// Run the rmg binary with the given arguments, using `dir` as the working directory.
+/// Run the rsmultigit binary with the given arguments, using `dir` as the working directory.
 pub fn run_rmg(dir: &Path, args: &[&str]) -> Output {
-    let rmg_path = env!("CARGO_BIN_EXE_rmg");
+    let rmg_path = env!("CARGO_BIN_EXE_rsmultigit");
     Command::new(rmg_path)
         .current_dir(dir)
         .args(args)
         .output()
-        .expect("Failed to execute rmg")
+        .expect("Failed to execute rsmultigit")
 }
 
 /// Get stdout from an Output as a trimmed String.

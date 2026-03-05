@@ -1,6 +1,6 @@
 # Testing
 
-RMG has both unit tests and integration tests.
+RSMultiGit has both unit tests and integration tests.
 
 ## Running tests
 
@@ -24,7 +24,7 @@ Tests that change the working directory use `serial_test::serial` to avoid confl
 
 ## Integration tests
 
-Integration tests are in `tests/` and run the compiled `rmg` binary as a subprocess against temporary git repositories:
+Integration tests are in `tests/` and run the compiled `rsmultigit` binary as a subprocess against temporary git repositories:
 
 ```
 tests/
@@ -42,7 +42,7 @@ tests/
 
 | Function | Description |
 |----------|-------------|
-| `run_rmg(dir, args)` | Run the rmg binary with given args in a directory |
+| `run_rmg(dir, args)` | Run the rsmultigit binary with given args in a directory |
 | `stdout_str(output)` | Extract trimmed stdout from command output |
 | `stderr_str(output)` | Extract trimmed stderr from command output |
 | `setup_git_repos(names)` | Create a temp dir with initialized git repos |

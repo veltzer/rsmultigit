@@ -2,7 +2,7 @@
 authors = ["veltzer"]
 language = "en"
 src = "src"
-title = "RMG - Rust Multi-Git"
+title = "RSMultiGit - Rust Multi-Git"
 
 [build]
 build-dir = "book"

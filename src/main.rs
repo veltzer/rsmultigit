@@ -22,13 +22,13 @@ fn main() -> Result<()> {
         return Ok(());
     }
     if matches!(&cli.command, Commands::Version) {
-        println!("rmg {} by {}", env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_AUTHORS"));
-        println!("RMG_GIT_DESCRIBE: {}", env!("RMG_GIT_DESCRIBE"));
-        println!("RMG_GIT_SHA: {}", env!("RMG_GIT_SHA"));
-        println!("RMG_GIT_BRANCH: {}", env!("RMG_GIT_BRANCH"));
-        println!("RMG_GIT_DIRTY: {}", env!("RMG_GIT_DIRTY"));
-        println!("RMG_RUSTC_SEMVER: {}", env!("RMG_RUSTC_SEMVER"));
-        println!("RMG_RUST_EDITION: {}", env!("RMG_RUST_EDITION"));
+        println!("RSMultiGit {} by {}", env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_AUTHORS"));
+        println!("RSMULTIGIT_GIT_DESCRIBE: {}", env!("RSMULTIGIT_GIT_DESCRIBE"));
+        println!("RSMULTIGIT_GIT_SHA: {}", env!("RSMULTIGIT_GIT_SHA"));
+        println!("RSMULTIGIT_GIT_BRANCH: {}", env!("RSMULTIGIT_GIT_BRANCH"));
+        println!("RSMULTIGIT_GIT_DIRTY: {}", env!("RSMULTIGIT_GIT_DIRTY"));
+        println!("RSMULTIGIT_RUSTC_SEMVER: {}", env!("RSMULTIGIT_RUSTC_SEMVER"));
+        println!("RSMULTIGIT_RUST_EDITION: {}", env!("RSMULTIGIT_RUST_EDITION"));
         return Ok(());
     }
 

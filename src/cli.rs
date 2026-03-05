@@ -4,7 +4,7 @@ use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{generate, Shell};
 
 #[derive(Parser)]
-#[command(name = "rmg")]
+#[command(name = "rsmultigit")]
 #[command(version = concat!(env!("CARGO_PKG_VERSION"), " by ", env!("CARGO_PKG_AUTHORS")))]
 #[command(about = "Manage multiple git repositories at once")]
 #[command(help_template = "\
@@ -19,7 +19,7 @@ Options:
   -h, --help     Print help
   -V, --version  Print version
 
-Use `rmg <command> --help` for more options.")]
+Use `rsmultigit <command> --help` for more options.")]
 pub struct Cli {
     // Output control
     /// Terse output
@@ -297,7 +297,7 @@ pub enum BuildWhat {
 /// Generate shell completions and print to stdout.
 pub fn print_completions(shell: Shell) {
     let mut cmd = Cli::command();
-    generate(shell, &mut cmd, "rmg", &mut io::stdout());
+    generate(shell, &mut cmd, "rsmultigit", &mut io::stdout());
 }
 
 #[cfg(test)]
@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn parse_count_dirty() {
-        let cli = parse(&["rmg", "count", "dirty"]);
+        let cli = parse(&["rsmultigit", "count", "dirty"]);
         assert!(matches!(cli.command, Commands::Count { what: CountWhat::Dirty }));
     }
 
@@ -335,71 +335,71 @@ mod tests {
             "version",
         ];
         for sub in subcommands {
-            let result = Cli::try_parse_from(["rmg", sub]);
+            let result = Cli::try_parse_from(["rsmultigit", sub]);
             assert!(result.is_ok(), "subcommand {sub} should parse");
         }
 
         // clean requires a what argument
         let clean_whats = ["hard", "soft", "make", "git", "cargo"];
         for what in clean_whats {
-            let result = Cli::try_parse_from(["rmg", "clean", what]);
+            let result = Cli::try_parse_from(["rsmultigit", "clean", what]);
             assert!(result.is_ok(), "clean {what} should parse");
         }
 
         // count requires a what argument
         let count_whats = ["dirty", "untracked", "synchronized"];
         for what in count_whats {
-            let result = Cli::try_parse_from(["rmg", "count", what]);
+            let result = Cli::try_parse_from(["rsmultigit", "count", what]);
             assert!(result.is_ok(), "count {what} should parse");
         }
 
         // branch requires a what argument
         let branch_whats = ["local", "remote", "github"];
         for what in branch_whats {
-            let result = Cli::try_parse_from(["rmg", "branch", what]);
+            let result = Cli::try_parse_from(["rsmultigit", "branch", what]);
             assert!(result.is_ok(), "branch {what} should parse");
         }
 
         // tag requires a what argument
         let tag_whats = ["local", "remote", "has-local", "has-remote"];
         for what in tag_whats {
-            let result = Cli::try_parse_from(["rmg", "tag", what]);
+            let result = Cli::try_parse_from(["rsmultigit", "tag", what]);
             assert!(result.is_ok(), "tag {what} should parse");
         }
 
         // reset requires a what argument
         let reset_whats = ["hard", "soft", "mixed"];
         for what in reset_whats {
-            let result = Cli::try_parse_from(["rmg", "reset", what]);
+            let result = Cli::try_parse_from(["rsmultigit", "reset", what]);
             assert!(result.is_ok(), "reset {what} should parse");
         }
 
         // log accepts optional --count
-        let result = Cli::try_parse_from(["rmg", "log"]);
+        let result = Cli::try_parse_from(["rsmultigit", "log"]);
         assert!(result.is_ok(), "log should parse without args");
-        let result = Cli::try_parse_from(["rmg", "log", "--count", "5"]);
+        let result = Cli::try_parse_from(["rsmultigit", "log", "--count", "5"]);
         assert!(result.is_ok(), "log --count 5 should parse");
 
         // checkout requires a branch
-        let result = Cli::try_parse_from(["rmg", "checkout", "main"]);
+        let result = Cli::try_parse_from(["rsmultigit", "checkout", "main"]);
         assert!(result.is_ok(), "checkout main should parse");
 
         // commit requires -m
-        let result = Cli::try_parse_from(["rmg", "commit", "-m", "test"]);
+        let result = Cli::try_parse_from(["rsmultigit", "commit", "-m", "test"]);
         assert!(result.is_ok(), "commit -m test should parse");
 
         // config requires a key
-        let result = Cli::try_parse_from(["rmg", "config", "user.email"]);
+        let result = Cli::try_parse_from(["rsmultigit", "config", "user.email"]);
         assert!(result.is_ok(), "config user.email should parse");
 
         // blame requires a file
-        let result = Cli::try_parse_from(["rmg", "blame", "README.md"]);
+        let result = Cli::try_parse_from(["rsmultigit", "blame", "README.md"]);
         assert!(result.is_ok(), "blame README.md should parse");
 
         // stash requires a what argument
         let stash_whats = ["push", "pop"];
         for what in stash_whats {
-            let result = Cli::try_parse_from(["rmg", "stash", what]);
+            let result = Cli::try_parse_from(["rsmultigit", "stash", what]);
             assert!(result.is_ok(), "stash {what} should parse");
         }
 
@@ -414,21 +414,21 @@ mod tests {
             "rsbuild",
         ];
         for what in build_whats {
-            let result = Cli::try_parse_from(["rmg", "build", what]);
+            let result = Cli::try_parse_from(["rsmultigit", "build", what]);
             assert!(result.is_ok(), "build {what} should parse");
         }
 
         // complete requires an argument
         let complete_shells = ["bash", "zsh", "fish", "elvish", "powershell"];
         for shell in complete_shells {
-            let result = Cli::try_parse_from(["rmg", "complete", shell]);
+            let result = Cli::try_parse_from(["rsmultigit", "complete", shell]);
             assert!(result.is_ok(), "complete {shell} should parse");
         }
     }
 
     #[test]
     fn parse_complete_bash() {
-        let cli = parse(&["rmg", "complete", "bash"]);
+        let cli = parse(&["rsmultigit", "complete", "bash"]);
         match &cli.command {
             Commands::Complete { shell } => {
                 assert!(matches!(shell, Shell::Bash));
@@ -439,7 +439,7 @@ mod tests {
 
     #[test]
     fn parse_grep_with_regexp() {
-        let cli = parse(&["rmg", "grep", "TODO"]);
+        let cli = parse(&["rsmultigit", "grep", "TODO"]);
         match &cli.command {
             Commands::Grep { regexp, files } => {
                 assert_eq!(regexp, "TODO");
@@ -451,7 +451,7 @@ mod tests {
 
     #[test]
     fn parse_grep_with_files_flag() {
-        let cli = parse(&["rmg", "grep", "--files", "TODO"]);
+        let cli = parse(&["rsmultigit", "grep", "--files", "TODO"]);
         match &cli.command {
             Commands::Grep { regexp, files } => {
                 assert_eq!(regexp, "TODO");
@@ -463,7 +463,7 @@ mod tests {
 
     #[test]
     fn parse_pull_quiet() {
-        let cli = parse(&["rmg", "pull", "--quiet"]);
+        let cli = parse(&["rsmultigit", "pull", "--quiet"]);
         match &cli.command {
             Commands::Pull { quiet } => assert!(quiet),
             _ => panic!("expected Pull"),
@@ -473,7 +473,7 @@ mod tests {
     #[test]
     fn parse_global_flags() {
         let cli = parse(&[
-            "rmg", "--terse", "--stats", "--no-output", "--verbose", "--print-not",
+            "rsmultigit", "--terse", "--stats", "--no-output", "--verbose", "--print-not",
             "--no-sort", "--no-stop", "--no-print-no-projects",
             "count", "dirty",
         ]);
@@ -489,25 +489,25 @@ mod tests {
 
     #[test]
     fn parse_glob_pattern() {
-        let cli = parse(&["rmg", "--glob", "myorg/*", "list-projects"]);
+        let cli = parse(&["rsmultigit", "--glob", "myorg/*", "list-projects"]);
         assert_eq!(cli.glob, "myorg/*");
     }
 
     #[test]
     fn parse_folders() {
-        let cli = parse(&["rmg", "--folders", "a,b,c", "list-projects"]);
+        let cli = parse(&["rsmultigit", "--folders", "a,b,c", "list-projects"]);
         assert_eq!(cli.folders, vec!["a", "b", "c"]);
     }
 
     #[test]
     fn default_glob_is_star_star() {
-        let cli = parse(&["rmg", "list-projects"]);
+        let cli = parse(&["rsmultigit", "list-projects"]);
         assert_eq!(cli.glob, "*/*");
     }
 
     #[test]
     fn unknown_subcommand_fails() {
-        let result = Cli::try_parse_from(["rmg", "nonexistent"]);
+        let result = Cli::try_parse_from(["rsmultigit", "nonexistent"]);
         assert!(result.is_err());
     }
 }

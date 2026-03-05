@@ -1,6 +1,6 @@
-# RMG - Rust Multi-Git
+# RSMultiGit - Rust Multi-Git
 
-A fast CLI tool for managing multiple git repositories at once, written in Rust. RMG is a rewrite of [pymultigit](https://github.com/veltzer/pymultigit) with native performance.
+A fast CLI tool for managing multiple git repositories at once, written in Rust. RSMultiGit is a rewrite of [pymultigit](https://github.com/veltzer/pymultigit) with native performance.
 
 ## Features
 
@@ -13,4 +13,4 @@ A fast CLI tool for managing multiple git repositories at once, written in Rust.
 
 ## Philosophy
 
-RMG follows the Unix philosophy: do one thing well. It discovers git repositories in the current directory tree and runs a single operation across all of them. No configuration files needed — everything is controlled via CLI flags.
+RSMultiGit follows the Unix philosophy: do one thing well. It discovers git repositories in the current directory tree and runs a single operation across all of them. No configuration files needed — everything is controlled via CLI flags.

@@ -1,46 +1,46 @@
 # Project Discovery
 
-RMG discovers git repositories by searching for directories that contain a `.git` subdirectory.
+RSMultiGit discovers git repositories by searching for directories that contain a `.git` subdirectory.
 
 ## Discovery modes
 
-There are three ways RMG finds projects, checked in this order:
+There are three ways RSMultiGit finds projects, checked in this order:
 
 ### 1. Explicit folders (`--folders`)
 
 When `--folders` is provided, only those directories are considered. Non-git directories are silently skipped.
 
 ```bash
-rmg --folders /path/to/repoA,/path/to/repoB status
+rsmultigit --folders /path/to/repoA,/path/to/repoB status
 ```
 
 ### 2. No-glob mode (`--no-glob`)
 
-When `--no-glob` is set, RMG scans immediate subdirectories of the current directory:
+When `--no-glob` is set, RSMultiGit scans immediate subdirectories of the current directory:
 
 ```bash
-rmg --no-glob list-projects
+rsmultigit --no-glob list-projects
 ```
 
 ### 3. Glob-based discovery (default)
 
-By default, RMG uses the glob pattern `*/*` to find projects two levels deep (e.g., `org/repo`). If no projects are found with `*/*`, it automatically falls back to `*` to handle the common case where immediate subdirectories are git repos.
+By default, RSMultiGit uses the glob pattern `*/*` to find projects two levels deep (e.g., `org/repo`). If no projects are found with `*/*`, it automatically falls back to `*` to handle the common case where immediate subdirectories are git repos.
 
 ```bash
 # Works from ~/git/veltzer (repos are at */*)
 cd ~/git
-rmg list-projects
+rsmultigit list-projects
 
 # Also works from ~/git/veltzer (repos are at *)
 cd ~/git/veltzer
-rmg list-projects
+rsmultigit list-projects
 ```
 
 A custom glob can be provided:
 
 ```bash
-rmg --glob "python-*" list-projects
-rmg --glob "org/team-*" list-projects
+rsmultigit --glob "python-*" list-projects
+rsmultigit --glob "org/team-*" list-projects
 ```
 
 ## Sorting
