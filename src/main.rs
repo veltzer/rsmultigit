@@ -137,14 +137,23 @@ fn main() -> Result<()> {
                 commands::log::do_log(project, count)
             })?;
         }
-        Commands::Tag { what } => {
-            let tag_fn: fn(&Path) -> anyhow::Result<bool> = match what {
-                TagWhat::Local => commands::tag::tag_local,
-                TagWhat::Remote => commands::tag::tag_remote,
-                TagWhat::HasLocal => commands::tag::tag_has_local,
-                TagWhat::HasRemote => commands::tag::tag_has_remote,
-            };
-            runner::do_for_all_projects(&config, &projects, tag_fn)?;
+        Commands::Tag { what } => match what {
+            TagWhat::Local | TagWhat::Remote => {
+                let tag_fn: fn(&Path) -> anyhow::Result<bool> = match what {
+                    TagWhat::Local => commands::tag::tag_local,
+                    TagWhat::Remote => commands::tag::tag_remote,
+                    _ => unreachable!(),
+                };
+                runner::do_for_all_projects(&config, &projects, tag_fn)?;
+            }
+            TagWhat::HasLocal | TagWhat::HasRemote => {
+                let test_fn: fn(&Path) -> anyhow::Result<bool> = match what {
+                    TagWhat::HasLocal => commands::tag::tag_has_local,
+                    TagWhat::HasRemote => commands::tag::tag_has_remote,
+                    _ => unreachable!(),
+                };
+                runner::do_count(&config, &projects, test_fn)?;
+            }
         }
         Commands::Remote => {
             runner::do_for_all_projects(&config, &projects, commands::remote::do_remote)?;
