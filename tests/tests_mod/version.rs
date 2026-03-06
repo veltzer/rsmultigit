@@ -7,10 +7,10 @@ fn version_subcommand_prints_info() {
     let output = run_rsmultigit(tmp.path(), &["version"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("RSMultiGit"), "version output should contain 'RSMultiGit'");
-    assert!(stdout.contains("RSMULTIGIT_GIT_SHA:"), "version output should contain git sha");
-    assert!(stdout.contains("RSMULTIGIT_GIT_BRANCH:"), "version output should contain git branch");
-    assert!(stdout.contains("RSMULTIGIT_RUSTC_SEMVER:"), "version output should contain rustc version");
+    assert!(stdout.contains("rsmultigit"), "version output should contain 'rsmultigit'");
+    assert!(stdout.contains("GIT_SHA:"), "version output should contain git sha");
+    assert!(stdout.contains("GIT_BRANCH:"), "version output should contain git branch");
+    assert!(stdout.contains("RUSTC_SEMVER:"), "version output should contain rustc version");
 }
 
 #[test]
