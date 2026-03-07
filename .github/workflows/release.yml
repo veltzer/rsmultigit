@@ -49,19 +49,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
-      - name: Install OpenSSL (macOS)
-        if: runner.os == 'macOS'
-        run: brew install openssl@3
-
-      - name: Set OpenSSL environment (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+      - name: Install Perl (Windows)
+        if: runner.os == 'Windows'
+        uses: shogo82148/actions-setup-perl@v1
 
       - name: Build
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --target ${{ matrix.target }} --features vendored-openssl
 
       - name: Rename binary (Unix)
         if: runner.os != 'Windows'
