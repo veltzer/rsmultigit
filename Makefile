@@ -11,3 +11,7 @@ test:
 .PHONY: clean
 clean:
 	@cargo clean
+
+.PHONY: artifacts
+artifacts:
+	@gh release view --json assets --jq '.assets[] | "\(.name)\t\(.size)\t\(.downloadCount)"' | column -t -N NAME,SIZE,DOWNLOADS
