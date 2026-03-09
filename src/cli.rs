@@ -82,94 +82,37 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Commands {
-    // ── do_count ──
-    /// Count repositories matching a condition
-    Count {
-        /// What to count
-        #[arg(value_enum)]
-        what: CountWhat,
-    },
-
-    // ── print_projects_that_return_data ──
-    /// Show status of repositories
-    Status,
-    /// Show dirty repositories
-    Dirty,
-    /// List discovered projects
-    ListProjects,
     /// Show the age of the last commit per repo
     Age,
     /// Show unique commit authors per repo
     Authors,
-    /// Show a git config value across all repos
-    Config {
-        /// Git config key to show
-        key: String,
+    /// Run git blame on a file across all repositories
+    Blame {
+        /// File path to blame
+        file: String,
     },
-    /// Show the size of the .git directory per repo
-    Size,
-    /// Show the most recent tag per repo
-    LastTag,
-
-    // ── do_for_all_projects ──
     /// Branch operations
     Branch {
         /// What branch info to show
         #[arg(value_enum)]
         what: BranchWhat,
     },
-    /// Pull all repositories
-    Pull {
-        /// Pass --quiet to git pull
-        #[arg(long, default_value_t = false)]
-        quiet: bool,
+    /// Build projects
+    Build {
+        /// What build system to use
+        #[arg(value_enum)]
+        what: BuildWhat,
     },
-    /// Push all repositories
-    Push,
-    /// Fetch from origin for all repositories
-    Fetch,
+    /// Checkout a branch across all repositories
+    Checkout {
+        /// Branch name to checkout
+        branch: String,
+    },
     /// Clean repositories
     Clean {
         /// What kind of clean to perform
         #[arg(value_enum)]
         what: CleanWhat,
-    },
-    /// Stash operations
-    Stash {
-        /// What stash operation to perform
-        #[arg(value_enum)]
-        what: StashWhat,
-    },
-    /// Reset operations
-    Reset {
-        /// What kind of reset to perform
-        #[arg(value_enum)]
-        what: ResetWhat,
-    },
-    /// Show diff for all repositories
-    Diff,
-    /// Show recent commits
-    Log {
-        /// Number of commits to show
-        #[arg(long, default_value_t = 10)]
-        count: u32,
-    },
-    /// List tags
-    Tag {
-        /// What tags to show
-        #[arg(value_enum)]
-        what: TagWhat,
-    },
-    /// Show remote URLs
-    Remote,
-    /// Prune stale remote-tracking branches
-    Prune,
-    /// Run git garbage collection
-    Gc,
-    /// Checkout a branch across all repositories
-    Checkout {
-        /// Branch name to checkout
-        branch: String,
     },
     /// Commit all changes across all repositories
     Commit {
@@ -177,13 +120,31 @@ pub enum Commands {
         #[arg(short, long)]
         message: String,
     },
-    /// Update submodules recursively
-    SubmoduleUpdate,
-    /// Run git blame on a file across all repositories
-    Blame {
-        /// File path to blame
-        file: String,
+    /// Generate shell completion scripts
+    Complete {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
     },
+    /// Show a git config value across all repos
+    Config {
+        /// Git config key to show
+        key: String,
+    },
+    /// Count repositories matching a condition
+    Count {
+        /// What to count
+        #[arg(value_enum)]
+        what: CountWhat,
+    },
+    /// Show diff for all repositories
+    Diff,
+    /// Show dirty repositories
+    Dirty,
+    /// Fetch from origin for all repositories
+    Fetch,
+    /// Run git garbage collection
+    Gc,
     /// Grep across all repositories
     Grep {
         /// Regular expression to search for
@@ -192,22 +153,52 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         files: bool,
     },
-
-    // ── build commands ──
-    /// Build projects
-    Build {
-        /// What build system to use
-        #[arg(value_enum)]
-        what: BuildWhat,
+    /// Show the most recent tag per repo
+    LastTag,
+    /// List discovered projects
+    ListProjects,
+    /// Show recent commits
+    Log {
+        /// Number of commits to show
+        #[arg(long, default_value_t = 10)]
+        count: u32,
     },
-
-    /// Generate shell completion scripts
-    Complete {
-        /// Shell to generate completions for
-        #[arg(value_enum)]
-        shell: Shell,
+    /// Prune stale remote-tracking branches
+    Prune,
+    /// Pull all repositories
+    Pull {
+        /// Pass --quiet to git pull
+        #[arg(long, default_value_t = false)]
+        quiet: bool,
     },
-
+    /// Push all repositories
+    Push,
+    /// Show remote URLs
+    Remote,
+    /// Reset operations
+    Reset {
+        /// What kind of reset to perform
+        #[arg(value_enum)]
+        what: ResetWhat,
+    },
+    /// Show the size of the .git directory per repo
+    Size,
+    /// Stash operations
+    Stash {
+        /// What stash operation to perform
+        #[arg(value_enum)]
+        what: StashWhat,
+    },
+    /// Show status of repositories
+    Status,
+    /// Update submodules recursively
+    SubmoduleUpdate,
+    /// List tags
+    Tag {
+        /// What tags to show
+        #[arg(value_enum)]
+        what: TagWhat,
+    },
     /// Print version information
     Version,
 }
