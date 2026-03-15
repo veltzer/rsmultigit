@@ -18,9 +18,12 @@ pub fn build_bootstrap(_project: &Path) -> Result<bool> {
     Ok(true)
 }
 
-/// Run pydmt build.
+/// Run pydmt build, but only if the project has a .pydmt.config file.
 pub fn build_pydmt(_project: &Path) -> Result<bool> {
     if is_build_disabled() {
+        return Ok(false);
+    }
+    if !Path::new(".pydmt.config").exists() {
         return Ok(false);
     }
     check_call("pydmt", &["build"])?;
@@ -45,18 +48,24 @@ pub fn build_venv_make(_project: &Path) -> Result<bool> {
     Ok(true)
 }
 
-/// Run pydmt inside a virtualenv.
+/// Run pydmt inside a virtualenv, but only if the project has a .pydmt.config file.
 pub fn build_venv_pydmt(_project: &Path) -> Result<bool> {
     if is_build_disabled() {
+        return Ok(false);
+    }
+    if !Path::new(".pydmt.config").exists() {
         return Ok(false);
     }
     check_call_ve(&["pydmt", "build"])?;
     Ok(true)
 }
 
-/// Run pydmt build_venv.
+/// Run pydmt build_venv, but only if the project has a .pydmt.config file.
 pub fn build_pydmt_build_venv(_project: &Path) -> Result<bool> {
     if is_build_disabled() {
+        return Ok(false);
+    }
+    if !Path::new(".pydmt.config").exists() {
         return Ok(false);
     }
     check_call("pydmt", &["build_venv"])?;
