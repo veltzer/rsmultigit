@@ -76,6 +76,18 @@ pub fn build_cargo(project: &Path) -> Result<bool> {
     Ok(true)
 }
 
+/// Run cargo publish, but only if the project has a Cargo.toml file.
+pub fn build_cargo_publish(project: &Path) -> Result<bool> {
+    if is_build_disabled() {
+        return Ok(false);
+    }
+    if !project.join("Cargo.toml").exists() {
+        return Ok(false);
+    }
+    check_call("cargo", &["publish"])?;
+    Ok(true)
+}
+
 /// Run rsbuild build, but only if the project has an rsbuild.toml file.
 pub fn build_rsbuild(_project: &Path) -> Result<bool> {
     if is_build_disabled() {

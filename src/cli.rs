@@ -285,6 +285,8 @@ pub enum BuildWhat {
     Rsbuild,
     /// Run cargo build on projects that have a Cargo.toml file
     Cargo,
+    /// Run cargo publish on projects that have a Cargo.toml file
+    CargoPublish,
 }
 
 /// Generate shell completions and print to stdout.
@@ -406,6 +408,7 @@ mod tests {
             "pydmt-build-venv",
             "rsbuild",
             "cargo",
+            "cargo-publish",
         ];
         for what in build_whats {
             let result = Cli::try_parse_from(["rsmultigit", "build", what]);
