@@ -24,7 +24,11 @@ pub fn do_grep(project: &Path, regexp: &str, files_only: bool) -> Result<bool> {
         .unwrap_or_default();
 
     for line in stdout.lines() {
-        println!("{project_name}: {line}");
+        if files_only {
+            println!("{project_name}/{line}");
+        } else {
+            println!("{project_name}: {line}");
+        }
     }
 
     Ok(true)
