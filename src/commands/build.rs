@@ -97,14 +97,14 @@ pub fn build_cargo_publish(project: &Path) -> Result<bool> {
     Ok(true)
 }
 
-/// Run rsbuild build, but only if the project has an rsbuild.toml file.
-pub fn build_rsbuild(_project: &Path) -> Result<bool> {
+/// Run rsconstruct build, but only if the project has an rsconstruct.toml file.
+pub fn build_rsconstruct(_project: &Path) -> Result<bool> {
     if is_build_disabled() {
         return Ok(false);
     }
-    if !Path::new("rsbuild.toml").exists() {
+    if !Path::new("rsconstruct.toml").exists() {
         return Ok(false);
     }
-    check_call("rsbuild", &["--quiet", "build"])?;
+    check_call("rsconstruct", &["--quiet", "build"])?;
     Ok(true)
 }

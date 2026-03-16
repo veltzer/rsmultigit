@@ -36,4 +36,4 @@ RSMultiGit does not use a configuration file. All behavior is controlled via CLI
 
 ## Build command skipping
 
-Build commands (`build-*`) automatically skip projects that contain a `.disable` file in their root directory. The `build-rsbuild` command additionally skips projects that do not have an `rsbuild.toml` file.
+Build commands (`build-*`) automatically skip projects that contain a `.disable` file in their root directory. The `build-rsconstruct` command additionally skips projects that do not have an `rsconstruct.toml` file.

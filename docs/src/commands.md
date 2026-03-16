@@ -361,12 +361,12 @@ Run `pydmt build` inside the project's virtualenv.
 
 Run `pydmt build_venv` in each project.
 
-### `rsmultigit build-rsbuild`
+### `rsmultigit build-rsconstruct`
 
-Run `rsbuild build` on projects that have an `rsbuild.toml` file. Projects without `rsbuild.toml` are skipped.
+Run `rsconstruct build` on projects that have an `rsconstruct.toml` file. Projects without `rsconstruct.toml` are skipped.
 
 ```bash
-rsmultigit build-rsbuild
+rsmultigit build-rsconstruct
 ```
 
 ## Utility Commands

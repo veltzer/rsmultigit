@@ -65,10 +65,10 @@ Run make across all repos:
 rsmultigit build-make
 ```
 
-Run rsbuild build on projects that have an `rsbuild.toml`:
+Run rsconstruct build on projects that have an `rsconstruct.toml`:
 
 ```bash
-rsmultigit build-rsbuild
+rsmultigit build-rsconstruct
 ```
 
 ## Filtering projects

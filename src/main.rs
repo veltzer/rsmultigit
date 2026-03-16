@@ -203,7 +203,7 @@ fn main() -> Result<()> {
                 BuildWhat::VenvMake => commands::build::build_venv_make,
                 BuildWhat::VenvPydmt => commands::build::build_venv_pydmt,
                 BuildWhat::PydmtBuildVenv => commands::build::build_pydmt_build_venv,
-                BuildWhat::Rsbuild => commands::build::build_rsbuild,
+                BuildWhat::Rsconstruct => commands::build::build_rsconstruct,
                 BuildWhat::Cargo => commands::build::build_cargo,
                 BuildWhat::CargoPublish => commands::build::build_cargo_publish,
             };

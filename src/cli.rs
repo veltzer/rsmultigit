@@ -281,8 +281,8 @@ pub enum BuildWhat {
     VenvPydmt,
     /// Run pydmt build_venv across all projects
     PydmtBuildVenv,
-    /// Run rsbuild build on projects that have an rsbuild.toml file
-    Rsbuild,
+    /// Run rsconstruct build on projects that have an rsconstruct.toml file
+    Rsconstruct,
     /// Run cargo build on projects that have a Cargo.toml file
     Cargo,
     /// Run cargo publish on projects that have a Cargo.toml file
@@ -406,7 +406,7 @@ mod tests {
             "venv-make",
             "venv-pydmt",
             "pydmt-build-venv",
-            "rsbuild",
+            "rsconstruct",
             "cargo",
             "cargo-publish",
         ];
