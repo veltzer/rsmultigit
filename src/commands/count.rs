@@ -75,6 +75,36 @@ pub fn non_synchronized(project: &Path) -> Result<bool> {
     Ok(ahead != 0 || behind != 0)
 }
 
+/// Returns true if the local branch has commits ahead of its upstream.
+pub fn is_ahead(project: &Path) -> Result<bool> {
+    let repo = Repository::open(project)
+        .with_context(|| format!("failed to open repo at {}", project.display()))?;
+
+    let head = match repo.head() {
+        Ok(h) => h,
+        Err(_) => return Ok(false),
+    };
+
+    let local_oid = match head.target() {
+        Some(oid) => oid,
+        None => return Ok(false),
+    };
+
+    let branch_name = match head.shorthand() {
+        Some(name) => name.to_string(),
+        None => return Ok(false),
+    };
+
+    let upstream_ref = format!("refs/remotes/origin/{branch_name}");
+    let upstream_oid = match repo.refname_to_id(&upstream_ref) {
+        Ok(oid) => oid,
+        Err(_) => return Ok(false), // no upstream → nothing to push to
+    };
+
+    let (ahead, _behind) = repo.graph_ahead_behind(local_oid, upstream_oid)?;
+    Ok(ahead != 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
