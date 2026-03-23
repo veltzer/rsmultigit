@@ -40,13 +40,32 @@ where
 /// Runner for "do for all projects" commands.
 /// Changes into each project directory, runs an action, and handles errors.
 /// The action returns `Result<bool>` — `true` if it did something, `false` if it skipped.
-/// The project header is only printed when the action did something, or when `--verbose` is set.
+/// The project header is printed before the action runs, but only for projects where
+/// the action will actually do work (i.e. returns `true`).
+/// When `--verbose` is set, the header is always printed before the action.
 pub fn do_for_all_projects<F>(
     config: &AppConfig,
     projects: &[PathBuf],
     action: F,
 ) -> Result<()>
 where
+    F: Fn(&Path) -> Result<bool>,
+{
+    do_for_all_projects_with_check(config, projects, |_| Ok(true), action)
+}
+
+/// Like `do_for_all_projects`, but accepts a separate `check` predicate.
+/// When provided, `check` runs first to decide if the action applies.
+/// The project header is printed after the check passes but before the action runs,
+/// so output from the action appears under its project header.
+pub fn do_for_all_projects_with_check<C, F>(
+    config: &AppConfig,
+    projects: &[PathBuf],
+    check: C,
+    action: F,
+) -> Result<()>
+where
+    C: Fn(&Path) -> Result<bool>,
     F: Fn(&Path) -> Result<bool>,
 {
     let original_dir = std::env::current_dir().context("failed to get current directory")?;
@@ -62,7 +81,18 @@ where
             format!("failed to cd into {}", abs_path.display())
         })?;
 
-        if !config.terse {
+        if !config.terse && config.verbose {
+            print_project_header(project);
+        }
+
+        let dominated = check(&abs_path).with_context(|| {
+            format!("error checking project {}", project.display())
+        })?;
+        if !dominated {
+            continue;
+        }
+
+        if !config.terse && !config.verbose {
             print_project_header(project);
         }
 

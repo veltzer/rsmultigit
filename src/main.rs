@@ -196,18 +196,21 @@ fn main() -> Result<()> {
 
         // ── build commands ──
         Commands::Build { what } => {
-            let build_fn: fn(&Path) -> anyhow::Result<bool> = match what {
-                BuildWhat::Bootstrap => commands::build::build_bootstrap,
-                BuildWhat::Pydmt => commands::build::build_pydmt,
-                BuildWhat::Make => commands::build::build_make,
-                BuildWhat::VenvMake => commands::build::build_venv_make,
-                BuildWhat::VenvPydmt => commands::build::build_venv_pydmt,
-                BuildWhat::PydmtBuildVenv => commands::build::build_pydmt_build_venv,
-                BuildWhat::Rsconstruct => commands::build::build_rsconstruct,
-                BuildWhat::Cargo => commands::build::build_cargo,
-                BuildWhat::CargoPublish => commands::build::build_cargo_publish,
+            let (check_fn, build_fn): (
+                fn(&Path) -> anyhow::Result<bool>,
+                fn(&Path) -> anyhow::Result<bool>,
+            ) = match what {
+                BuildWhat::Bootstrap => (commands::build::check_bootstrap, commands::build::build_bootstrap),
+                BuildWhat::Pydmt => (commands::build::check_pydmt, commands::build::build_pydmt),
+                BuildWhat::Make => (commands::build::check_make, commands::build::build_make),
+                BuildWhat::VenvMake => (commands::build::check_venv_make, commands::build::build_venv_make),
+                BuildWhat::VenvPydmt => (commands::build::check_venv_pydmt, commands::build::build_venv_pydmt),
+                BuildWhat::PydmtBuildVenv => (commands::build::check_pydmt_build_venv, commands::build::build_pydmt_build_venv),
+                BuildWhat::Rsconstruct => (commands::build::check_rsconstruct, commands::build::build_rsconstruct),
+                BuildWhat::Cargo => (commands::build::check_cargo, commands::build::build_cargo),
+                BuildWhat::CargoPublish => (commands::build::check_cargo_publish, commands::build::build_cargo_publish),
             };
-            runner::do_for_all_projects(&config, &projects, build_fn)?;
+            runner::do_for_all_projects_with_check(&config, &projects, check_fn, build_fn)?;
         }
 
         Commands::Complete { .. } => unreachable!("handled above"),
