@@ -211,9 +211,102 @@ fn main() -> Result<()> {
             runner::do_for_all_projects_with_check(&config, &projects, check_fn, build_fn)?;
         }
 
+        Commands::CheckSame { config: cfg_path, rule } => {
+            let exit_code = run_check_same(&config, &projects, cfg_path, rule.as_deref())?;
+            std::process::exit(exit_code);
+        }
+
         Commands::Complete { .. } => unreachable!("handled above"),
         Commands::Version => unreachable!("handled above"),
     }
 
     Ok(())
+}
+
+/// Run the check-same command. Returns the process exit code.
+fn run_check_same(
+    app: &AppConfig,
+    projects: &[std::path::PathBuf],
+    config_path: &str,
+    only_rule: Option<&str>,
+) -> Result<i32> {
+    use commands::check;
+
+    let cfg = check::load_config(Path::new(config_path))?;
+    let rules: Vec<&check::Rule> = cfg
+        .check
+        .iter()
+        .filter(|r| only_rule.is_none_or(|name| r.name == name))
+        .collect();
+
+    if rules.is_empty() {
+        if let Some(name) = only_rule {
+            eprintln!("no rule named {name:?} in {config_path}");
+            return Ok(1);
+        }
+        if app.verbose {
+            println!("no rules to check");
+        }
+        return Ok(0);
+    }
+
+    let mut any_mismatch = false;
+    for rule in rules {
+        let result = check::evaluate_rule(rule, projects)?;
+        if result.is_consistent() {
+            if app.verbose {
+                if !app.terse && !app.no_header {
+                    println!("[{}]", result.name);
+                }
+                println!("ok ({} files)", result.total_files);
+            }
+            continue;
+        }
+
+        any_mismatch = true;
+
+        if app.terse {
+            println!("{}", result.name);
+            continue;
+        }
+
+        if !app.no_header {
+            println!("[{}]", result.name);
+        }
+        println!(
+            "{} files, {} groups{}",
+            result.total_files,
+            result.groups.len(),
+            if result.skipped.is_empty() {
+                String::new()
+            } else {
+                format!(" ({} skipped)", result.skipped.len())
+            },
+        );
+        if !app.no_output {
+            for (i, group) in result.groups.iter().enumerate() {
+                let label = group_label(i);
+                println!("  group {label} ({} files):", group.len());
+                for file in group {
+                    println!("    {}", file.display());
+                }
+            }
+        }
+    }
+
+    Ok(if any_mismatch { 1 } else { 0 })
+}
+
+fn group_label(i: usize) -> String {
+    let mut n = i;
+    let mut s = String::new();
+    loop {
+        s.insert(0, (b'A' + (n % 26) as u8) as char);
+        n /= 26;
+        if n == 0 {
+            break;
+        }
+        n -= 1;
+    }
+    s
 }

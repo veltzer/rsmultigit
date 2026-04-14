@@ -3,6 +3,7 @@ pub mod authors;
 pub mod blame;
 pub mod branch;
 pub mod build;
+pub mod check;
 pub mod checkout;
 pub mod clean;
 pub mod commit;

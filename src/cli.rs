@@ -103,6 +103,15 @@ pub enum Commands {
         /// Branch name to checkout
         branch: String,
     },
+    /// Check that files declared in a config are identical across repos
+    CheckSame {
+        /// Path to TOML config file (default: .rsmultigit.toml)
+        #[arg(long, default_value = ".rsmultigit.toml")]
+        config: String,
+        /// Only run the rule with this name
+        #[arg(long)]
+        rule: Option<String>,
+    },
     /// Clean repositories
     Clean {
         /// What kind of clean to perform
