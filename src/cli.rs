@@ -134,6 +134,9 @@ pub enum Commands {
         /// Git config key to show
         key: String,
     },
+    /// Print a sample rsmultigit config.toml to stdout.
+    /// Redirect to ~/.config/rsmultigit/config.toml to bootstrap a new install.
+    ConfigExample,
     /// Count repositories matching a condition
     Count {
         /// What to count

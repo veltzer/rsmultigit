@@ -504,6 +504,78 @@ path = ".gitignore"
     assert!(stderr.contains("repos"), "stderr should mention repos: {stderr}");
 }
 
+// ── config-example ───────────────────────────────────────────────────────────
+
+#[test]
+fn config_example_does_not_require_existing_config() {
+    // Point RSMULTIGIT_CONFIG at a non-existent path; the subcommand must still
+    // succeed (it's meant for bootstrapping a fresh install).
+    let tmp = setup_git_repos(&["a"]);
+    let missing = tmp.path().join("does-not-exist.toml");
+    let output = run_rsmultigit_with_env(
+        tmp.path(),
+        &["config-example"],
+        &[("RSMULTIGIT_CONFIG", &missing.to_string_lossy())],
+    );
+    assert!(output.status.success(), "stderr: {}", stderr_str(&output));
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("repos ="), "should contain a `repos =` line: {stdout}");
+    assert!(stdout.contains("[[check]]"), "should contain at least one [[check]] block");
+}
+
+#[test]
+fn config_example_output_parses_as_valid_config() {
+    // Round-trip: config-example → write to disk → load with rsmultigit → works.
+    let tmp = setup_git_repos(&["a"]);
+    fs::create_dir_all(tmp.path().join("a/.github/workflows")).unwrap();
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+
+    let example = run_rsmultigit_with_env(
+        tmp.path(),
+        &["config-example"],
+        &[("RSMULTIGIT_CONFIG", "/nonexistent")],
+    );
+    assert!(example.status.success());
+    let example_toml = String::from_utf8_lossy(&example.stdout).into_owned();
+
+    // Rewrite `repos` to point at our tempdir so the config is actually usable.
+    // The example ships with `repos = ["~/git/veltzer/*"]` which won't exist in tests.
+    let rewritten = regex_replace_repos_line(&example_toml, tmp.path());
+    let cfg_path = tmp.path().join("config.toml");
+    fs::write(&cfg_path, &rewritten).unwrap();
+
+    // Now a normal invocation using this config should parse it (list-checks is
+    // the cheapest command that reads the full config without doing much).
+    let output = run(tmp.path(), &cfg_path, &["list-checks"]);
+    assert!(output.status.success(), "stderr: {}", stderr_str(&output));
+    // Should emit at least one rule name.
+    assert!(!stdout_str(&output).is_empty());
+}
+
+/// Replace the `repos = [...]` line in a config blob with one that points at
+/// `<dir>/*`. Avoids a full regex dep — we know the exact shape of the example.
+fn regex_replace_repos_line(text: &str, dir: &Path) -> String {
+    let mut out = String::new();
+    let mut in_repos = false;
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("repos = [") {
+            out.push_str(&format!("repos = [\"{}/*\"]\n", dir.display()));
+            in_repos = !trimmed.contains(']');
+            continue;
+        }
+        if in_repos {
+            if trimmed.contains(']') {
+                in_repos = false;
+            }
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 // ── list-checks ──────────────────────────────────────────────────────────────
 
 #[test]

@@ -1,5 +1,10 @@
-# Example rsmultigit config. Copy this file to ~/.config/rsmultigit/config.toml
-# (that location is fixed — there is no --config flag). Every rsmultigit
+# Example rsmultigit config. This same text is available from a running binary
+# via `rsmultigit config-example`, so to bootstrap:
+#
+#   mkdir -p ~/.config/rsmultigit
+#   rsmultigit config-example > ~/.config/rsmultigit/config.toml
+#
+# The config location is fixed — there is no --config flag. Every rsmultigit
 # command reads this file to decide which repositories to operate on.
 #
 # `repos` is a list of shell-expanded glob patterns that resolve to repo roots.

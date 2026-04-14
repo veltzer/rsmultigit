@@ -31,6 +31,12 @@ fn main() -> Result<()> {
         println!("BUILD_TIMESTAMP: {}", env!("BUILD_TIMESTAMP"));
         return Ok(());
     }
+    if matches!(&cli.command, Commands::ConfigExample) {
+        // Doesn't need (and must not require) a config file — this subcommand
+        // is how a fresh user bootstraps their ~/.config/rsmultigit/config.toml.
+        print!("{}", include_str!("../examples/veltzer.rsmultigit.toml"));
+        return Ok(());
+    }
 
     let config = AppConfig::from(&cli);
 
@@ -241,6 +247,7 @@ fn main() -> Result<()> {
 
         Commands::CheckSame { .. } => unreachable!("handled above"),
         Commands::Complete { .. } => unreachable!("handled above"),
+        Commands::ConfigExample => unreachable!("handled above"),
         Commands::Version => unreachable!("handled above"),
     }
 
