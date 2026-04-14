@@ -34,7 +34,7 @@ fn main() -> Result<()> {
     if matches!(&cli.command, Commands::ConfigExample) {
         // Doesn't need (and must not require) a config file — this subcommand
         // is how a fresh user bootstraps their ~/.config/rsmultigit/config.toml.
-        print!("{}", include_str!("../examples/veltzer.rsmultigit.toml"));
+        print!("{}", include_str!("../assets/config-example.toml"));
         return Ok(());
     }
 

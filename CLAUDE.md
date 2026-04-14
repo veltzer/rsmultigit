@@ -6,7 +6,7 @@ A Rust CLI tool for managing multiple Git repositories at once. Reads the list o
 
 ## Configuration
 
-rsmultigit requires a config file at `~/.config/rsmultigit/config.toml`. Tests override this via the `RSMULTIGIT_CONFIG` env var. See `examples/veltzer.rsmultigit.toml` for a worked example.
+rsmultigit requires a config file at `~/.config/rsmultigit/config.toml`. Tests override this via the `RSMULTIGIT_CONFIG` env var. Run `rsmultigit config-example` to print a worked example; its source is `assets/config-example.toml` (embedded at compile time via `include_str!`).
 
 - `repos = [...]` — list of shell-expanded globs. Matches that aren't git repos are filtered out.
 - `[[check]]` blocks — consumed only by `check-same`. Fields: `name`, `select`, `exclude?`, `marker?`, `path`, `enabled?` (default true).
