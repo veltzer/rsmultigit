@@ -14,7 +14,7 @@
 #   marker  — only include repos that contain this file (relative to repo root)
 #   path    — file inside each repo to compare (required)
 #   enabled — bool (default true). Disabled rules are silently skipped, but can
-#             still be forced on with `--rule <name>` for ad-hoc checks.
+#             still be forced on with `--checks <name...>` for ad-hoc checks.
 #
 # A rule passes when every surviving repo's `path` hashes the same.
 # Repos that don't contain `path` are silently skipped.
@@ -199,7 +199,7 @@ path = "app.yaml"
 
 # ── disabled rules (were commented out in mg_check_same_files.sh) ─────────────
 # Re-enable by flipping `enabled = true`, or run ad hoc via:
-#   rsmultigit check-same --rule <name>
+#   rsmultigit check-same --checks <name>
 
 [[check]]
 name = "py-deps-config"

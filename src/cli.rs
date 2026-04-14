@@ -89,13 +89,21 @@ pub enum Commands {
     },
     /// Check that files declared in ~/.config/rsmultigit/config.toml are identical across repos
     CheckSame {
-        /// Only run the rule with this name (overrides `enabled = false`)
-        #[arg(long)]
-        rule: Option<String>,
-        /// For rules where files fall into exactly two content groups, print a
-        /// unified diff between representatives of the two groups.
+        /// Run only the listed check rules (space- or repeat-separated).
+        /// Listed names override `enabled = false`. Unknown names are a hard error.
+        #[arg(long, num_args = 1.., value_delimiter = ' ')]
+        checks: Vec<String>,
+        /// Show a unified diff between representative files of mismatching groups.
+        /// With 2 groups this runs automatically; with 3+ groups it prompts interactively
+        /// and offers to diff further pairs.
         #[arg(long, default_value_t = false)]
         diff: bool,
+        /// Interactively copy one group's content over another's.
+        /// Prompts for the "from" and "to" groups, then overwrites every file in the
+        /// "to" group with the content of a representative file from the "from" group.
+        /// Always exits 0 on success, regardless of whether mismatches remain.
+        #[arg(long, default_value_t = false)]
+        copy: bool,
     },
     /// Clean repositories
     Clean {

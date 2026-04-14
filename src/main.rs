@@ -6,7 +6,7 @@ mod subprocess_utils;
 
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 
 use cli::{BranchWhat, BuildWhat, Cli, CleanWhat, Commands, CountWhat, ResetWhat, StashWhat, TagWhat};
@@ -39,9 +39,8 @@ fn main() -> Result<()> {
     let file_config = commands::check::load_config(&config_path)?;
     let projects = commands::check::resolve_repos(&file_config)?;
 
-    if let Commands::CheckSame { rule, diff } = &cli.command {
-        let exit_code =
-            run_check_same(&config, &file_config, &projects, rule.as_deref(), *diff)?;
+    if let Commands::CheckSame { checks, diff, copy } = &cli.command {
+        let exit_code = run_check_same(&config, &file_config, &projects, checks, *diff, *copy)?;
         std::process::exit(exit_code);
     }
 
@@ -230,39 +229,64 @@ fn main() -> Result<()> {
 }
 
 /// Run the check-same command. Returns the process exit code.
+///
+/// `requested` is the (possibly empty) list of rule names from `--checks`.
+/// Empty → run all enabled rules. Non-empty → run exactly those rules, even if
+/// they are `enabled = false`; any unknown name is a hard error.
+///
+/// When `copy` is set, interactive prompts are served. In that mode the overall
+/// exit code is always 0 regardless of mismatches — `--copy` is a tool to fix
+/// drift, not a pass/fail check.
 fn run_check_same(
     app: &AppConfig,
     file_config: &commands::check::CheckConfig,
     projects: &[std::path::PathBuf],
-    only_rule: Option<&str>,
+    requested: &[String],
     show_diff: bool,
+    do_copy: bool,
 ) -> Result<i32> {
     use commands::check;
+    use commands::interactive;
 
-    // `--rule` overrides the `enabled` flag (user explicitly asked for that rule);
-    // otherwise disabled rules are silently skipped.
-    let rules: Vec<&check::Rule> = file_config
-        .check
-        .iter()
-        .filter(|r| match only_rule {
-            Some(name) => r.name == name,
-            None => r.enabled,
-        })
-        .collect();
+    let rules: Vec<&check::Rule> = if requested.is_empty() {
+        file_config.check.iter().filter(|r| r.enabled).collect()
+    } else {
+        let known: std::collections::HashSet<&str> =
+            file_config.check.iter().map(|r| r.name.as_str()).collect();
+        let unknown: Vec<&String> = requested
+            .iter()
+            .filter(|name| !known.contains(name.as_str()))
+            .collect();
+        if !unknown.is_empty() {
+            let joined = unknown
+                .iter()
+                .map(|s| format!("{s:?}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            anyhow::bail!("unknown check name(s): {joined}");
+        }
+        requested
+            .iter()
+            .filter_map(|name| file_config.check.iter().find(|r| &r.name == name))
+            .collect()
+    };
 
     if rules.is_empty() {
-        if let Some(name) = only_rule {
-            eprintln!("no rule named {name:?} in config");
-            return Ok(1);
-        }
         if app.verbose {
             println!("no rules to check");
         }
         return Ok(0);
     }
 
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
     let mut any_mismatch = false;
+    let mut quit_requested = false;
+
     for rule in rules {
+        if quit_requested {
+            break;
+        }
         let result = check::evaluate_rule(rule, projects)?;
         if result.is_consistent() {
             if app.verbose {
@@ -296,7 +320,7 @@ fn run_check_same(
         );
         if !app.no_output {
             for (i, group) in result.groups.iter().enumerate() {
-                let label = group_label(i);
+                let label = interactive::group_label(i);
                 println!("  group {label} ({} files):", group.len());
                 for file in group {
                     println!("    {}", file.display());
@@ -304,54 +328,117 @@ fn run_check_same(
             }
 
             if show_diff {
-                emit_diff_if_applicable(&result);
+                match run_diff(&result, &mut stdin.lock(), &mut stdout.lock())? {
+                    FlowControl::Quit => {
+                        quit_requested = true;
+                        continue;
+                    }
+                    FlowControl::Continue => {}
+                }
+            }
+
+            if do_copy {
+                match run_copy(&result, &mut stdin.lock(), &mut stdout.lock())? {
+                    FlowControl::Quit => {
+                        quit_requested = true;
+                        continue;
+                    }
+                    FlowControl::Continue => {}
+                }
             }
         }
     }
 
-    Ok(if any_mismatch { 1 } else { 0 })
+    if do_copy {
+        Ok(0)
+    } else {
+        Ok(if any_mismatch { 1 } else { 0 })
+    }
 }
 
-/// When `--diff` is set and a rule's files fall into exactly two groups, print
-/// a unified diff between a representative of each group. For 3+ groups, skip
-/// with a short note (pairwise diffs would explode). For non-UTF-8 files, print
-/// a "binary files differ" line instead of panicking.
-fn emit_diff_if_applicable(result: &commands::check::RuleResult) {
-    if result.groups.len() != 2 {
-        println!(
-            "  (skipping --diff: {} groups — diff is only shown for 2-group mismatches)",
-            result.groups.len()
-        );
-        return;
+#[derive(Debug, PartialEq, Eq)]
+enum FlowControl {
+    Continue,
+    Quit,
+}
+
+/// Run the diff flow for a rule with at least two content groups.
+/// - 2 groups: auto-pair and diff, no prompting.
+/// - 3+ groups: prompt for from/to, diff, then offer to diff another pair.
+fn run_diff<R: std::io::BufRead, W: std::io::Write>(
+    result: &commands::check::RuleResult,
+    reader: &mut R,
+    writer: &mut W,
+) -> Result<FlowControl> {
+    use commands::interactive::{Choice, confirm, pick_group};
+
+    let n = result.groups.len();
+    if n == 2 {
+        emit_pair_diff(result, 0, 1, writer);
+        return Ok(FlowControl::Continue);
     }
-    let a = &result.groups[0][0];
-    let b = &result.groups[1][0];
+
+    loop {
+        let from = match pick_group(&mut *reader, &mut *writer, "diff from group?", n, None)? {
+            Choice::Value(i) => i,
+            Choice::Skip => return Ok(FlowControl::Continue),
+            Choice::Quit => return Ok(FlowControl::Quit),
+        };
+        let to = match pick_group(
+            &mut *reader,
+            &mut *writer,
+            "diff to group?",
+            n,
+            Some(from),
+        )? {
+            Choice::Value(i) => i,
+            Choice::Skip => return Ok(FlowControl::Continue),
+            Choice::Quit => return Ok(FlowControl::Quit),
+        };
+        emit_pair_diff(result, from, to, writer);
+
+        if !confirm(&mut *reader, &mut *writer, "diff another pair?")? {
+            return Ok(FlowControl::Continue);
+        }
+    }
+}
+
+/// Write a unified diff between representatives of `groups[a]` and `groups[b]`
+/// to `writer`. Handles I/O errors and non-UTF-8 content gracefully.
+fn emit_pair_diff<W: std::io::Write>(
+    result: &commands::check::RuleResult,
+    a_idx: usize,
+    b_idx: usize,
+    writer: &mut W,
+) {
+    let a = &result.groups[a_idx][0];
+    let b = &result.groups[b_idx][0];
 
     let a_bytes = match std::fs::read(a) {
         Ok(b) => b,
         Err(e) => {
-            println!("  (could not read {}: {e})", a.display());
+            let _ = writeln!(writer, "  (could not read {}: {e})", a.display());
             return;
         }
     };
     let b_bytes = match std::fs::read(b) {
         Ok(b) => b,
         Err(e) => {
-            println!("  (could not read {}: {e})", b.display());
+            let _ = writeln!(writer, "  (could not read {}: {e})", b.display());
             return;
         }
     };
-
     let (a_text, b_text) = match (std::str::from_utf8(&a_bytes), std::str::from_utf8(&b_bytes)) {
         (Ok(a), Ok(b)) => (a, b),
         _ => {
-            println!("  (binary files differ, not shown)");
+            let _ = writeln!(writer, "  (binary files differ, not shown)");
             return;
         }
     };
 
     let diff = similar::TextDiff::from_lines(a_text, b_text);
-    print!(
+    let _ = write!(
+        writer,
         "{}",
         diff.unified_diff()
             .context_radius(3)
@@ -359,16 +446,66 @@ fn emit_diff_if_applicable(result: &commands::check::RuleResult) {
     );
 }
 
-fn group_label(i: usize) -> String {
-    let mut n = i;
-    let mut s = String::new();
-    loop {
-        s.insert(0, (b'A' + (n % 26) as u8) as char);
-        n /= 26;
-        if n == 0 {
-            break;
-        }
-        n -= 1;
+/// Run the interactive copy flow for a rule: prompt for "from" and "to" groups,
+/// confirm, then overwrite every file in the "to" group with the content of a
+/// representative from the "from" group (preserving the destination's mode).
+fn run_copy<R: std::io::BufRead, W: std::io::Write>(
+    result: &commands::check::RuleResult,
+    reader: &mut R,
+    writer: &mut W,
+) -> Result<FlowControl> {
+    use commands::interactive::{Choice, confirm, group_label, pick_group};
+
+    let n = result.groups.len();
+    let from = match pick_group(&mut *reader, &mut *writer, "copy from group?", n, None)? {
+        Choice::Value(i) => i,
+        Choice::Skip => return Ok(FlowControl::Continue),
+        Choice::Quit => return Ok(FlowControl::Quit),
+    };
+    let to = match pick_group(
+        &mut *reader,
+        &mut *writer,
+        "copy to group?",
+        n,
+        Some(from),
+    )? {
+        Choice::Value(i) => i,
+        Choice::Skip => return Ok(FlowControl::Continue),
+        Choice::Quit => return Ok(FlowControl::Quit),
+    };
+
+    let src = &result.groups[from][0];
+    let dst_group = &result.groups[to];
+    let prompt = format!(
+        "overwrite {} file(s) in group {} with content from {}?",
+        dst_group.len(),
+        group_label(to),
+        src.display()
+    );
+    if !confirm(&mut *reader, &mut *writer, &prompt)? {
+        let _ = writeln!(writer, "  (skipped)");
+        return Ok(FlowControl::Continue);
     }
-    s
+
+    for dst in dst_group {
+        if let Err(e) = copy_preserving_mode(src, dst) {
+            let _ = writeln!(writer, "  error: {} -> {}: {e}", src.display(), dst.display());
+        } else {
+            let _ = writeln!(writer, "  copied -> {}", dst.display());
+        }
+    }
+    Ok(FlowControl::Continue)
+}
+
+/// `fs::copy` replaces the destination's permissions with the source's. We want
+/// the opposite — overwrite the *content* but keep the destination's mode.
+fn copy_preserving_mode(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+    let original_mode = std::fs::metadata(dst)
+        .with_context(|| format!("failed to stat {}", dst.display()))?
+        .permissions();
+    std::fs::copy(src, dst)
+        .with_context(|| format!("failed to copy {} -> {}", src.display(), dst.display()))?;
+    std::fs::set_permissions(dst, original_mode)
+        .with_context(|| format!("failed to restore permissions on {}", dst.display()))?;
+    Ok(())
 }

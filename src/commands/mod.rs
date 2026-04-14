@@ -5,6 +5,7 @@ pub mod branch;
 pub mod build;
 pub mod check;
 pub mod checkout;
+pub mod interactive;
 pub mod clean;
 pub mod commit;
 pub mod config;

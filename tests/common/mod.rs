@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 use tempfile::TempDir;
 
 /// Write a minimal config file at <dir>/config.toml with `repos = ["<dir>/*"]`
@@ -32,6 +33,34 @@ pub fn run_rsmultigit_with_env(dir: &Path, args: &[&str], env: &[(&str, &str)]) 
         cmd.env(k, v);
     }
     cmd.output().expect("Failed to execute rsmultigit")
+}
+
+/// Run the rsmultigit binary with piped stdin so tests can feed interactive input.
+/// Writes `stdin_bytes` to the child's stdin, then reads the output.
+pub fn run_rsmultigit_with_stdin(
+    dir: &Path,
+    args: &[&str],
+    env: &[(&str, &str)],
+    stdin_bytes: &[u8],
+) -> Output {
+    let bin_path = env!("CARGO_BIN_EXE_rsmultigit");
+    let mut cmd = Command::new(bin_path);
+    cmd.current_dir(dir)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    let mut child = cmd.spawn().expect("Failed to spawn rsmultigit");
+    {
+        let stdin = child.stdin.as_mut().expect("stdin must be piped");
+        stdin.write_all(stdin_bytes).expect("failed writing stdin");
+    }
+    child
+        .wait_with_output()
+        .expect("Failed to wait on rsmultigit")
 }
 
 /// Get stdout from an Output as a trimmed String.
