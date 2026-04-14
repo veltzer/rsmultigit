@@ -42,30 +42,9 @@ pub struct Cli {
     #[arg(long, global = true, default_value_t = false)]
     pub print_not: bool,
 
-    // Main
-    /// Do not sort project list
-    #[arg(long, global = true, default_value_t = false)]
-    pub no_sort: bool,
-
-    /// Glob pattern for discovering projects (default: */*)
-    #[arg(long, global = true, default_value = "*/*")]
-    pub glob: String,
-
-    /// Disable glob-based discovery
-    #[arg(long, global = true, default_value_t = false)]
-    pub no_glob: bool,
-
-    /// Explicit list of folders to operate on
-    #[arg(long, global = true, value_delimiter = ',')]
-    pub folders: Vec<String>,
-
     /// Do not stop on errors
     #[arg(long, global = true, default_value_t = false)]
     pub no_stop: bool,
-
-    /// Do not print 'no projects found' message
-    #[arg(long, global = true, default_value_t = false)]
-    pub no_print_no_projects: bool,
 
     /// Number of parallel workers (default: 1; use 0 for num_cpus)
     #[arg(short = 'j', long, global = true, default_value_t = 1)]
@@ -103,7 +82,7 @@ pub enum Commands {
         /// Branch name to checkout
         branch: String,
     },
-    /// Check that files declared in ~/.config/rsmultigit/check.toml are identical across repos
+    /// Check that files declared in ~/.config/rsmultigit/config.toml are identical across repos
     CheckSame {
         /// Only run the rule with this name (overrides `enabled = false`)
         #[arg(long)]
@@ -484,16 +463,14 @@ mod tests {
     fn parse_global_flags() {
         let cli = parse(&[
             "rsmultigit", "--terse", "--no-output", "--verbose", "--print-not",
-            "--no-sort", "--no-stop", "--no-print-no-projects",
+            "--no-stop",
             "count", "dirty",
         ]);
         assert!(cli.terse);
         assert!(cli.no_output);
         assert!(cli.verbose);
         assert!(cli.print_not);
-        assert!(cli.no_sort);
         assert!(cli.no_stop);
-        assert!(cli.no_print_no_projects);
     }
 
     #[test]
@@ -508,24 +485,6 @@ mod tests {
     fn default_jobs_is_one() {
         let cli = parse(&["rsmultigit", "list-projects"]);
         assert_eq!(cli.jobs, 1);
-    }
-
-    #[test]
-    fn parse_glob_pattern() {
-        let cli = parse(&["rsmultigit", "--glob", "myorg/*", "list-projects"]);
-        assert_eq!(cli.glob, "myorg/*");
-    }
-
-    #[test]
-    fn parse_folders() {
-        let cli = parse(&["rsmultigit", "--folders", "a,b,c", "list-projects"]);
-        assert_eq!(cli.folders, vec!["a", "b", "c"]);
-    }
-
-    #[test]
-    fn default_glob_is_star_star() {
-        let cli = parse(&["rsmultigit", "list-projects"]);
-        assert_eq!(cli.glob, "*/*");
     }
 
     #[test]

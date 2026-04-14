@@ -1,13 +1,26 @@
 #![allow(dead_code)]
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use tempfile::TempDir;
 
-/// Run the rsmultigit binary with the given arguments, using `dir` as the working directory.
+/// Write a minimal config file at <dir>/config.toml with `repos = ["<dir>/*"]`
+/// and the given `extra` body appended (for `[[check]]` blocks, etc).
+/// Returns the config path, to be fed into `RSMULTIGIT_CONFIG`.
+pub fn write_config(dir: &Path, extra: &str) -> PathBuf {
+    let path = dir.join("config.toml");
+    let body = format!("repos = [\"{}/*\"]\n\n{}", dir.display(), extra);
+    fs::write(&path, body).unwrap();
+    path
+}
+
+/// Run rsmultigit against a tempdir of git repos, pointing the tool at
+/// a config written by `write_config`.
 pub fn run_rsmultigit(dir: &Path, args: &[&str]) -> Output {
-    run_rsmultigit_with_env(dir, args, &[])
+    let cfg = write_config(dir, "");
+    let cfg_str = cfg.to_string_lossy().into_owned();
+    run_rsmultigit_with_env(dir, args, &[("RSMULTIGIT_CONFIG", &cfg_str)])
 }
 
 /// Run the rsmultigit binary with extra env vars layered on top of the parent env.

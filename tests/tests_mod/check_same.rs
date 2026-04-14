@@ -2,24 +2,11 @@ use std::fs;
 use std::path::Path;
 use std::process::Output;
 
-use crate::common::{run_rsmultigit_with_env, setup_git_repos, stderr_str, stdout_str};
-
-/// Write a config at <tmp>/check.toml, with `repos = ["<tmp>/*"]` auto-populated
-/// before `rule_body`. Returns the config path.
-fn write_config(tmp: &Path, rule_body: &str) -> std::path::PathBuf {
-    let config_path = tmp.join("check.toml");
-    let body = format!(
-        "repos = [\"{}/*\"]\n\n{}",
-        tmp.display(),
-        rule_body
-    );
-    fs::write(&config_path, body).unwrap();
-    config_path
-}
+use crate::common::{run_rsmultigit_with_env, setup_git_repos, stderr_str, stdout_str, write_config};
 
 fn run(tmp: &Path, config: &Path, args: &[&str]) -> Output {
     let cfg_str = config.to_string_lossy().to_string();
-    run_rsmultigit_with_env(tmp, args, &[("RSMULTIGIT_CHECK_CONFIG", &cfg_str)])
+    run_rsmultigit_with_env(tmp, args, &[("RSMULTIGIT_CONFIG", &cfg_str)])
 }
 
 #[test]
@@ -160,7 +147,6 @@ path = ".gitignore"
 #[test]
 fn check_same_missing_config_fails() {
     let tmp = setup_git_repos(&["a"]);
-    // Point at a nonexistent config.
     let nonexistent = tmp.path().join("nope.toml");
     let output = run(tmp.path(), &nonexistent, &["check-same"]);
     assert!(!output.status.success());
@@ -190,8 +176,6 @@ path = "Makefile"
 #[test]
 fn check_same_marker_requires_file() {
     let tmp = setup_git_repos(&["a", "b"]);
-    // Only repo 'a' has the marker; its .gitignore content is "x". b has "y" but
-    // is excluded by the marker filter, so no divergence.
     fs::write(tmp.path().join("a/.tag"), "").unwrap();
     fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
     fs::write(tmp.path().join("b/.gitignore"), "y\n").unwrap();
@@ -226,7 +210,6 @@ enabled = false
 "#,
     );
 
-    // Disabled rule — divergence is not flagged.
     let output = run(tmp.path(), &cfg, &["check-same"]);
     assert!(output.status.success(), "stdout: {}\nstderr: {}", stdout_str(&output), stderr_str(&output));
 }
@@ -247,7 +230,6 @@ enabled = false
 "#,
     );
 
-    // --rule selects the rule explicitly and should override enabled=false.
     let output = run(tmp.path(), &cfg, &["check-same", "--rule", "gi"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
@@ -280,7 +262,7 @@ path = ".gitignore"
 fn check_same_config_without_repos_fails() {
     let tmp = setup_git_repos(&["a"]);
     // Config missing the `repos` key.
-    let cfg_path = tmp.path().join("check.toml");
+    let cfg_path = tmp.path().join("no-repos.toml");
     fs::write(
         &cfg_path,
         r#"
@@ -296,25 +278,4 @@ path = ".gitignore"
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(stderr.contains("repos"), "stderr should mention repos: {stderr}");
-}
-
-#[test]
-fn check_same_warns_on_unused_discovery_flags() {
-    let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(tmp.path().join("a/.gitignore"), "same\n").unwrap();
-    fs::write(tmp.path().join("b/.gitignore"), "same\n").unwrap();
-    let cfg = write_config(
-        tmp.path(),
-        r#"
-[[check]]
-name = "gi"
-select = "*"
-path = ".gitignore"
-"#,
-    );
-
-    let output = run(tmp.path(), &cfg, &["--glob", "foo/*", "check-same"]);
-    assert!(output.status.success());
-    let stderr = stderr_str(&output);
-    assert!(stderr.contains("--glob is ignored"), "stderr: {stderr}");
 }

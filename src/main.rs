@@ -1,7 +1,6 @@
 mod cli;
 mod commands;
 mod config;
-mod discovery;
 mod runner;
 mod subprocess_utils;
 
@@ -35,19 +34,14 @@ fn main() -> Result<()> {
 
     let config = AppConfig::from(&cli);
 
-    // check-same owns its own repo discovery via ~/.config/rsmultigit/check.toml;
-    // it ignores --folders/--glob/--no-glob. Handle it before filesystem discovery.
+    // Repo list comes from ~/.config/rsmultigit/config.toml for every command.
+    let config_path = commands::check::default_config_path()?;
+    let file_config = commands::check::load_config(&config_path)?;
+    let projects = commands::check::resolve_repos(&file_config)?;
+
     if let Commands::CheckSame { rule } = &cli.command {
-        warn_if_discovery_flags_set(&cli);
-        let exit_code = run_check_same(&config, rule.as_deref())?;
+        let exit_code = run_check_same(&config, &file_config, &projects, rule.as_deref())?;
         std::process::exit(exit_code);
-    }
-
-    let projects = discovery::discover_projects(&config)?;
-
-    if projects.is_empty() && !config.no_print_no_projects {
-        eprintln!("no projects found");
-        return Ok(());
     }
 
     match &cli.command {
@@ -228,31 +222,18 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Print a stderr warning if the user passed filesystem-discovery flags that
-/// `check-same` ignores (it pulls repos from its own config).
-fn warn_if_discovery_flags_set(cli: &Cli) {
-    if !cli.folders.is_empty() {
-        eprintln!("warning: --folders is ignored by check-same (repos come from check.toml)");
-    }
-    if cli.no_glob {
-        eprintln!("warning: --no-glob is ignored by check-same (repos come from check.toml)");
-    }
-    if cli.glob != "*/*" {
-        eprintln!("warning: --glob is ignored by check-same (repos come from check.toml)");
-    }
-}
-
 /// Run the check-same command. Returns the process exit code.
-fn run_check_same(app: &AppConfig, only_rule: Option<&str>) -> Result<i32> {
+fn run_check_same(
+    app: &AppConfig,
+    file_config: &commands::check::CheckConfig,
+    projects: &[std::path::PathBuf],
+    only_rule: Option<&str>,
+) -> Result<i32> {
     use commands::check;
-
-    let config_path = check::default_config_path()?;
-    let cfg = check::load_config(&config_path)?;
-    let projects = check::resolve_repos(&cfg)?;
 
     // `--rule` overrides the `enabled` flag (user explicitly asked for that rule);
     // otherwise disabled rules are silently skipped.
-    let rules: Vec<&check::Rule> = cfg
+    let rules: Vec<&check::Rule> = file_config
         .check
         .iter()
         .filter(|r| match only_rule {
@@ -263,7 +244,7 @@ fn run_check_same(app: &AppConfig, only_rule: Option<&str>) -> Result<i32> {
 
     if rules.is_empty() {
         if let Some(name) = only_rule {
-            eprintln!("no rule named {name:?} in {}", config_path.display());
+            eprintln!("no rule named {name:?} in config");
             return Ok(1);
         }
         if app.verbose {
@@ -274,7 +255,7 @@ fn run_check_same(app: &AppConfig, only_rule: Option<&str>) -> Result<i32> {
 
     let mut any_mismatch = false;
     for rule in rules {
-        let result = check::evaluate_rule(rule, &projects)?;
+        let result = check::evaluate_rule(rule, projects)?;
         if result.is_consistent() {
             if app.verbose {
                 if !app.terse && !app.no_header {

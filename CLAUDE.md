@@ -2,7 +2,14 @@
 
 ## What is this project?
 
-A Rust CLI tool for managing multiple Git repositories at once. Discovers repos in a directory tree and runs bulk operations (status, pull, build, grep, etc.) across all of them. Rewrite of [pymultigit](https://github.com/veltzer/pymultigit) for native speed.
+A Rust CLI tool for managing multiple Git repositories at once. Reads the list of target repos from `~/.config/rsmultigit/config.toml` and runs bulk operations (status, pull, build, grep, check-same, etc.) across all of them. Rewrite of [pymultigit](https://github.com/veltzer/pymultigit) for native speed.
+
+## Configuration
+
+rsmultigit requires a config file at `~/.config/rsmultigit/config.toml`. Tests override this via the `RSMULTIGIT_CONFIG` env var. See `examples/veltzer.rsmultigit.toml` for a worked example.
+
+- `repos = [...]` — list of shell-expanded globs. Matches that aren't git repos are filtered out.
+- `[[check]]` blocks — consumed only by `check-same`. Fields: `name`, `select`, `exclude?`, `marker?`, `path`, `enabled?` (default true).
 
 ## Build & Test
 
@@ -24,10 +31,9 @@ src/
 ├── main.rs              # Entry point, command dispatch
 ├── cli.rs               # Clap derive CLI definitions (commands + global flags)
 ├── config.rs            # AppConfig: transforms CLI args to runtime config
-├── discovery.rs         # Project discovery (glob, explicit folders)
 ├── runner.rs            # Three runner patterns for executing across repos
 ├── subprocess_utils.rs  # Shell command helpers (capture_output, check_call)
-└── commands/            # 27 command modules (one per operation)
+└── commands/            # Command modules (one per operation); `check.rs` owns config-file parsing
 tests/
 ├── main.rs              # Integration test entry
 ├── common/mod.rs        # Test helpers (setup_git_repos, run_rsmultigit)
@@ -61,9 +67,12 @@ All commands use one of three patterns in `runner.rs`:
 
 ## Dependencies
 
-Only 5 runtime deps — keep it minimal:
+Runtime deps — keep it minimal:
 - `clap` (derive) — CLI parsing
 - `clap_complete` — shell completions
 - `git2` — native git operations
 - `glob` — pattern matching
 - `anyhow` — error handling
+- `serde` + `toml` — config-file parsing
+- `sha2` — SHA-256 hashing for `check-same`
+- `shellexpand` — tilde/env expansion in config paths

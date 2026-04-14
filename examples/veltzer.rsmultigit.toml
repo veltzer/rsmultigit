@@ -1,11 +1,14 @@
-# Example check-same config derived from the legacy pymultigit script
-# `mg_check_same_files.sh`. Copy this file to ~/.config/rsmultigit/check.toml
-# (that location is fixed — there is no --config flag).
+# Example rsmultigit config. Copy this file to ~/.config/rsmultigit/config.toml
+# (that location is fixed — there is no --config flag). Every rsmultigit
+# command reads this file to decide which repositories to operate on.
 #
 # `repos` is a list of shell-expanded glob patterns that resolve to repo roots.
 # Matches that aren't git repos are filtered out automatically.
 #
-# Selection primitives (per-rule):
+# `[[check]]` blocks are consumed only by `rsmultigit check-same`, which verifies
+# that a given path has identical content across a selection of repos.
+#
+# Selection primitives (per check rule):
 #   select  — glob over repo names (required)
 #   exclude — glob of repo names to drop from the selection
 #   marker  — only include repos that contain this file (relative to repo root)

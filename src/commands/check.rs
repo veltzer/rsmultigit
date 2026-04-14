@@ -53,14 +53,14 @@ impl RuleResult {
 }
 
 /// Environment variable used to override the config path (tests set this).
-pub const CONFIG_PATH_ENV: &str = "RSMULTIGIT_CHECK_CONFIG";
+pub const CONFIG_PATH_ENV: &str = "RSMULTIGIT_CONFIG";
 
-/// Resolve the path of the config file. Tests can override via `RSMULTIGIT_CHECK_CONFIG`.
+/// Resolve the path of the config file. Tests can override via `RSMULTIGIT_CONFIG`.
 pub fn default_config_path() -> Result<PathBuf> {
     if let Ok(p) = std::env::var(CONFIG_PATH_ENV) {
         return Ok(PathBuf::from(p));
     }
-    let expanded = shellexpand::full("~/.config/rsmultigit/check.toml")
+    let expanded = shellexpand::full("~/.config/rsmultigit/config.toml")
         .context("failed to expand default config path")?;
     Ok(PathBuf::from(expanded.into_owned()))
 }

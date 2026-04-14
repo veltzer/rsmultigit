@@ -6,8 +6,6 @@ mod check_same;
 mod cli;
 #[path = "tests_mod/count.rs"]
 mod count;
-#[path = "tests_mod/discovery.rs"]
-mod discovery;
 #[path = "tests_mod/status.rs"]
 mod status;
 #[path = "tests_mod/version.rs"]
