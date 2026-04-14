@@ -504,6 +504,47 @@ path = ".gitignore"
     assert!(stderr.contains("repos"), "stderr should mention repos: {stderr}");
 }
 
+// ── list-checks ──────────────────────────────────────────────────────────────
+
+#[test]
+fn list_checks_prints_every_rule_name() {
+    let tmp = setup_git_repos(&["a"]);
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "alpha"
+select = "*"
+path = "a"
+
+[[check]]
+name = "beta"
+select = "*"
+path = "b"
+enabled = false
+
+[[check]]
+name = "gamma"
+select = "*"
+path = "c"
+"#,
+    );
+    let output = run(tmp.path(), &cfg, &["list-checks"]);
+    assert!(output.status.success(), "stderr: {}", stderr_str(&output));
+    // Order should match config order, and disabled rules must still appear
+    // (completion needs to offer them so they can be forced on via --checks).
+    assert_eq!(stdout_str(&output), "alpha\nbeta\ngamma");
+}
+
+#[test]
+fn list_checks_empty_when_no_rules() {
+    let tmp = setup_git_repos(&["a"]);
+    let cfg = write_config(tmp.path(), "");
+    let output = run(tmp.path(), &cfg, &["list-checks"]);
+    assert!(output.status.success(), "stderr: {}", stderr_str(&output));
+    assert_eq!(stdout_str(&output), "");
+}
+
 // ── interactive --diff (3+ groups) ──────────────────────────────────────────
 
 #[test]

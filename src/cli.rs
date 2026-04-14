@@ -161,6 +161,10 @@ pub enum Commands {
     /// Print the path of every configured repo, one per line (no header by default).
     /// Pass --verbose to also emit the [project] header for each entry.
     ListRepos,
+    /// Print the name of every check rule defined in the config, one per line.
+    /// Intended for use in shell-completion scripts. All rules are listed,
+    /// including those with `enabled = false`.
+    ListChecks,
     /// Show recent commits
     Log {
         /// Number of commits to show
