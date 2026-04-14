@@ -135,7 +135,8 @@ pub enum Commands {
     },
     /// Show the most recent tag per repo
     LastTag,
-    /// List discovered projects
+    /// Print the path of every configured repo, one per line (no header by default).
+    /// Pass --verbose to also emit the [project] header for each entry.
     ListProjects,
     /// Show recent commits
     Log {

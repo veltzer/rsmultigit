@@ -63,9 +63,15 @@ fn main() -> Result<()> {
             runner::print_if_data(&config, &projects, commands::status::do_dirty)?;
         }
         Commands::ListProjects => {
-            runner::print_if_data(&config, &projects, |project: &Path| {
-                Ok(Some(project.display().to_string()))
-            })?;
+            // Prints one path per line with no header — the project path *is* the data,
+            // so the bracketed header would be redundant. --verbose re-enables the
+            // standard [project]\n<data> format for consistency with other commands.
+            for project in &projects {
+                if config.verbose && !config.terse && !config.no_header {
+                    println!("[{}]", project.display());
+                }
+                println!("{}", project.display());
+            }
         }
         Commands::Age => {
             runner::print_if_data(&config, &projects, commands::age::do_age)?;
