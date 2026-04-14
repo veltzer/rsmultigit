@@ -92,6 +92,10 @@ pub enum Commands {
         /// Only run the rule with this name (overrides `enabled = false`)
         #[arg(long)]
         rule: Option<String>,
+        /// For rules where files fall into exactly two content groups, print a
+        /// unified diff between representatives of the two groups.
+        #[arg(long, default_value_t = false)]
+        diff: bool,
     },
     /// Clean repositories
     Clean {

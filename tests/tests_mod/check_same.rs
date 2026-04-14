@@ -259,6 +259,126 @@ path = ".gitignore"
 }
 
 #[test]
+fn check_same_diff_emits_unified_diff_for_two_groups() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    fs::write(tmp.path().join("a/.gitignore"), "target\nnode_modules\n.env\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "target\ndist\n.env\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--diff"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    // Unified diff markers must appear.
+    assert!(stdout.contains("--- "), "stdout should contain unified diff header: {stdout}");
+    assert!(stdout.contains("+++ "), "stdout should contain unified diff header: {stdout}");
+    assert!(stdout.contains("-node_modules"), "should show removed line: {stdout}");
+    assert!(stdout.contains("+dist"), "should show added line: {stdout}");
+}
+
+#[test]
+fn check_same_diff_skipped_for_three_groups() {
+    let tmp = setup_git_repos(&["a", "b", "c"]);
+    fs::write(tmp.path().join("a/.gitignore"), "one\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "two\n").unwrap();
+    fs::write(tmp.path().join("c/.gitignore"), "three\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--diff"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(
+        stdout.contains("skipping --diff"),
+        "should note that diff was skipped: {stdout}"
+    );
+    // No diff body emitted.
+    assert!(!stdout.contains("--- "), "stdout should not contain diff header: {stdout}");
+}
+
+#[test]
+fn check_same_diff_off_by_default() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    fs::write(tmp.path().join("a/.gitignore"), "target\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "dist\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+"#,
+    );
+
+    // Without --diff, no unified-diff output.
+    let output = run(tmp.path(), &cfg, &["check-same"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(!stdout.contains("+++ "), "no diff without --diff: {stdout}");
+}
+
+#[test]
+fn check_same_diff_binary_files() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    // Non-UTF-8 payloads.
+    fs::write(tmp.path().join("a/blob.bin"), [0xffu8, 0xfe, 0x00, 0x01]).unwrap();
+    fs::write(tmp.path().join("b/blob.bin"), [0xffu8, 0xfe, 0x00, 0x02]).unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "bin"
+select = "*"
+path = "blob.bin"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--diff"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(
+        stdout.contains("binary files differ"),
+        "should note binary files: {stdout}"
+    );
+}
+
+#[test]
+fn check_same_diff_suppressed_by_terse() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    fs::write(tmp.path().join("a/.gitignore"), "target\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "dist\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+"#,
+    );
+
+    // --terse takes precedence — only the rule name, no grouping output, no diff.
+    let output = run(tmp.path(), &cfg, &["check-same", "--terse", "--diff"]);
+    assert!(!output.status.success());
+    assert_eq!(stdout_str(&output), "gi");
+}
+
+#[test]
 fn check_same_config_without_repos_fails() {
     let tmp = setup_git_repos(&["a"]);
     // Config missing the `repos` key.

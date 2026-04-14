@@ -39,8 +39,9 @@ fn main() -> Result<()> {
     let file_config = commands::check::load_config(&config_path)?;
     let projects = commands::check::resolve_repos(&file_config)?;
 
-    if let Commands::CheckSame { rule } = &cli.command {
-        let exit_code = run_check_same(&config, &file_config, &projects, rule.as_deref())?;
+    if let Commands::CheckSame { rule, diff } = &cli.command {
+        let exit_code =
+            run_check_same(&config, &file_config, &projects, rule.as_deref(), *diff)?;
         std::process::exit(exit_code);
     }
 
@@ -234,6 +235,7 @@ fn run_check_same(
     file_config: &commands::check::CheckConfig,
     projects: &[std::path::PathBuf],
     only_rule: Option<&str>,
+    show_diff: bool,
 ) -> Result<i32> {
     use commands::check;
 
@@ -300,10 +302,61 @@ fn run_check_same(
                     println!("    {}", file.display());
                 }
             }
+
+            if show_diff {
+                emit_diff_if_applicable(&result);
+            }
         }
     }
 
     Ok(if any_mismatch { 1 } else { 0 })
+}
+
+/// When `--diff` is set and a rule's files fall into exactly two groups, print
+/// a unified diff between a representative of each group. For 3+ groups, skip
+/// with a short note (pairwise diffs would explode). For non-UTF-8 files, print
+/// a "binary files differ" line instead of panicking.
+fn emit_diff_if_applicable(result: &commands::check::RuleResult) {
+    if result.groups.len() != 2 {
+        println!(
+            "  (skipping --diff: {} groups — diff is only shown for 2-group mismatches)",
+            result.groups.len()
+        );
+        return;
+    }
+    let a = &result.groups[0][0];
+    let b = &result.groups[1][0];
+
+    let a_bytes = match std::fs::read(a) {
+        Ok(b) => b,
+        Err(e) => {
+            println!("  (could not read {}: {e})", a.display());
+            return;
+        }
+    };
+    let b_bytes = match std::fs::read(b) {
+        Ok(b) => b,
+        Err(e) => {
+            println!("  (could not read {}: {e})", b.display());
+            return;
+        }
+    };
+
+    let (a_text, b_text) = match (std::str::from_utf8(&a_bytes), std::str::from_utf8(&b_bytes)) {
+        (Ok(a), Ok(b)) => (a, b),
+        _ => {
+            println!("  (binary files differ, not shown)");
+            return;
+        }
+    };
+
+    let diff = similar::TextDiff::from_lines(a_text, b_text);
+    print!(
+        "{}",
+        diff.unified_diff()
+            .context_radius(3)
+            .header(&a.display().to_string(), &b.display().to_string())
+    );
 }
 
 fn group_label(i: usize) -> String {
