@@ -1,0 +1,220 @@
+# Example check-same config derived from the legacy pymultigit script
+# `mg_check_same_files.sh`. Point `rsmultigit check-same --config` at this file
+# (or copy it to `.rsmultigit.toml` in your repo garden).
+#
+# Selection primitives:
+#   select  — glob over repo names (required)
+#   exclude — glob of repo names to drop from the selection
+#   marker  — only include repos that contain this file (relative to repo root)
+#   path    — file inside each repo to compare (required)
+#   enabled — bool (default true). Disabled rules are silently skipped, but can
+#             still be forced on with `--rule <name>` for ad-hoc checks.
+#
+# A rule passes when every surviving repo's `path` hashes the same.
+# Repos that don't contain `path` are silently skipped.
+
+# ── shared dev-tooling configs across all repos ───────────────────────────────
+
+[[check]]
+name = "mypy-ini"
+select = "*"
+path = ".mypy.ini"
+
+[[check]]
+name = "pylintrc"
+select = "*"
+path = ".pylintrc"
+
+[[check]]
+name = "gitignore"
+select = "*"
+path = ".gitignore"
+
+[[check]]
+name = "shellcheckrc"
+select = "*"
+path = ".shellcheckrc"
+
+[[check]]
+name = "jshintrc"
+select = "*"
+path = ".jshintrc"
+
+[[check]]
+name = "jshintignore"
+select = "*"
+path = ".jshintignore"
+
+# ── python-module specifics (repos prefixed `py` with the veltzer tag) ────────
+
+[[check]]
+name = "py-makefile"
+select = "py*"
+marker = ".veltzer.tag"
+path = "Makefile"
+
+[[check]]
+name = "py-license-template"
+select = "py*"
+marker = ".veltzer.tag"
+path = "templates/LICENSE.mako"
+
+[[check]]
+name = "py-pyproject-template"
+select = "py*"
+marker = ".veltzer.tag"
+path = "templates/pyproject.toml.mako"
+
+[[check]]
+name = "py-readme-template"
+select = "py*"
+marker = ".veltzer.tag"
+path = "templates/README.md.mako"
+
+[[check]]
+name = "py-build-workflow"
+select = "py*"
+marker = ".veltzer.tag"
+path = ".github/workflows/build.yml"
+
+# ── non-python repos (everything except `py*`) with the veltzer tag ───────────
+
+[[check]]
+name = "non-py-readme-template"
+select = "*"
+exclude = "py*"
+marker = ".veltzer.tag"
+path = "templates/README.md.mako"
+
+[[check]]
+name = "non-py-build-workflow"
+select = "*"
+exclude = "py*"
+marker = ".veltzer.tag"
+path = ".github/workflows/build.yml"
+
+# ── repos with the veltzer tag (mix of py / non-py) ───────────────────────────
+
+[[check]]
+name = "build-workflow-template"
+select = "*"
+marker = ".veltzer.tag"
+path = "templates/.github/workflows/build.yml.mako"
+
+[[check]]
+name = "requirements-thawed-template"
+select = "*"
+marker = ".veltzer.tag"
+path = "templates/requirements.thawed.txt.mako"
+
+[[check]]
+name = "github-funding"
+select = "*"
+marker = ".veltzer.tag"
+path = ".github/FUNDING.yml"
+
+[[check]]
+name = "sphinx-conf"
+select = "*"
+marker = ".veltzer.tag"
+path = "sphinx/conf.py"
+
+[[check]]
+name = "sphinx-index"
+select = "*"
+marker = ".veltzer.tag"
+path = "sphinx/index.rst"
+
+[[check]]
+name = "config-platform"
+select = "*"
+marker = ".veltzer.tag"
+path = "config/platform.py"
+
+[[check]]
+name = "config-personal"
+select = "*"
+marker = ".veltzer.tag"
+path = "config/personal.py"
+
+[[check]]
+name = "config-github"
+select = "*"
+marker = ".veltzer.tag"
+path = "config/github.py"
+
+[[check]]
+name = "config-shared"
+select = "*"
+marker = ".veltzer.tag"
+path = "config/shared.py"
+
+[[check]]
+name = "aspell-conf"
+select = "*"
+marker = ".veltzer.tag"
+path = ".aspell.conf"
+
+[[check]]
+name = "mdlrc"
+select = "*"
+marker = ".veltzer.tag"
+path = ".mdlrc"
+
+[[check]]
+name = "mdl-style"
+select = "*"
+marker = ".veltzer.tag"
+path = ".mdl.style.rb"
+
+# ── GCP repos ─────────────────────────────────────────────────────────────────
+
+[[check]]
+name = "gcp-gcloudignore"
+select = "gcp-*"
+marker = ".gcp.conf"
+path = ".gcloudignore"
+
+[[check]]
+name = "gcp-makefile"
+select = "gcp-*"
+marker = ".gcp.conf"
+path = "Makefile"
+
+[[check]]
+name = "gcp-app-yaml"
+select = "gcp-*"
+marker = ".gcp.conf"
+path = "app.yaml"
+
+# ── disabled rules (were commented out in mg_check_same_files.sh) ─────────────
+# Re-enable by flipping `enabled = true`, or run ad hoc via:
+#   rsmultigit check-same --rule <name>
+
+[[check]]
+name = "py-deps-config"
+select = "py*"
+marker = ".veltzer.tag"
+path = "config/deps.py"
+enabled = false
+
+[[check]]
+name = "py-setup-template"
+select = "py*"
+marker = ".veltzer.tag"
+path = "templates/setup.py.mako"
+enabled = false
+
+[[check]]
+name = "py-readme-rst-template"
+select = "py*"
+marker = ".veltzer.tag"
+path = "templates/README.rst.mako"
+enabled = false
+
+[[check]]
+name = "py-idea-gitignore"
+select = "py*"
+marker = ".veltzer.tag"
+path = ".idea/.gitignore"
+enabled = false

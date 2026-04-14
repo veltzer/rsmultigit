@@ -233,10 +233,15 @@ fn run_check_same(
     use commands::check;
 
     let cfg = check::load_config(Path::new(config_path))?;
+    // `--rule` overrides the `enabled` flag (user explicitly asked for that rule);
+    // otherwise disabled rules are silently skipped.
     let rules: Vec<&check::Rule> = cfg
         .check
         .iter()
-        .filter(|r| only_rule.is_none_or(|name| r.name == name))
+        .filter(|r| match only_rule {
+            Some(name) => r.name == name,
+            None => r.enabled,
+        })
         .collect();
 
     if rules.is_empty() {

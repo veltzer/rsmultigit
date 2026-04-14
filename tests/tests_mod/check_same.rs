@@ -193,6 +193,50 @@ path = ".gitignore"
 }
 
 #[test]
+fn check_same_disabled_rule_is_skipped() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "y\n").unwrap();
+    write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+enabled = false
+"#,
+    );
+
+    // Disabled rule — divergence is not flagged.
+    let output = run_rsmultigit(tmp.path(), &["check-same"]);
+    assert!(output.status.success(), "stdout: {}\nstderr: {}", stdout_str(&output), stderr_str(&output));
+}
+
+#[test]
+fn check_same_rule_flag_overrides_enabled_false() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "y\n").unwrap();
+    write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+enabled = false
+"#,
+    );
+
+    // --rule selects the rule explicitly and should override enabled=false.
+    let output = run_rsmultigit(tmp.path(), &["check-same", "--rule", "gi"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+}
+
+#[test]
 fn check_same_verbose_reports_consistent_rules() {
     let tmp = setup_git_repos(&["a", "b"]);
     fs::write(tmp.path().join("a/.gitignore"), "same\n").unwrap();

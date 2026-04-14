@@ -22,6 +22,12 @@ pub struct Rule {
     #[serde(default)]
     pub marker: Option<String>,
     pub path: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+fn default_enabled() -> bool {
+    true
 }
 
 /// Outcome of evaluating a single rule.
@@ -175,6 +181,31 @@ mod tests {
     }
 
     #[test]
+    fn enabled_defaults_to_true() {
+        let toml = r#"
+            [[check]]
+            name = "a"
+            select = "*"
+            path = "x"
+        "#;
+        let config: CheckConfig = toml::from_str(toml).unwrap();
+        assert!(config.check[0].enabled);
+    }
+
+    #[test]
+    fn enabled_can_be_disabled() {
+        let toml = r#"
+            [[check]]
+            name = "a"
+            select = "*"
+            path = "x"
+            enabled = false
+        "#;
+        let config: CheckConfig = toml::from_str(toml).unwrap();
+        assert!(!config.check[0].enabled);
+    }
+
+    #[test]
     fn identical_files_form_one_group() {
         let tmp = TempDir::new().unwrap();
         for r in ["a", "b", "c"] {
@@ -187,6 +218,7 @@ mod tests {
             exclude: None,
             marker: None,
             path: ".gitignore".into(),
+            enabled: true,
         };
         let result = evaluate_rule(&rule, &repos).unwrap();
         assert!(result.is_consistent());
@@ -207,6 +239,7 @@ mod tests {
             exclude: None,
             marker: None,
             path: ".gitignore".into(),
+            enabled: true,
         };
         let result = evaluate_rule(&rule, &repos).unwrap();
         assert!(!result.is_consistent());
@@ -229,6 +262,7 @@ mod tests {
             exclude: None,
             marker: None,
             path: ".gitignore".into(),
+            enabled: true,
         };
         let result = evaluate_rule(&rule, &repos).unwrap();
         assert!(result.is_consistent());
@@ -252,6 +286,7 @@ mod tests {
             exclude: None,
             marker: None,
             path: "Makefile".into(),
+            enabled: true,
         };
         let result = evaluate_rule(&rule, &repos).unwrap();
         assert!(result.is_consistent());
@@ -274,6 +309,7 @@ mod tests {
             exclude: Some("pydraft*".into()),
             marker: None,
             path: "Makefile".into(),
+            enabled: true,
         };
         let result = evaluate_rule(&rule, &repos).unwrap();
         assert!(result.is_consistent());
@@ -293,6 +329,7 @@ mod tests {
             exclude: None,
             marker: Some(".tag".into()),
             path: ".gitignore".into(),
+            enabled: true,
         };
         let result = evaluate_rule(&rule, &repos).unwrap();
         assert!(result.is_consistent());
