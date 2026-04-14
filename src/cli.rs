@@ -352,7 +352,10 @@ if declare -F _rsmultigit >/dev/null; then
                 return 0
             fi
         fi
-        _rsmultigit_clap
+        # Bash passes (cmd_name, current_word, previous_word) as "$@" to the
+        # completion function; clap's generated code reads them via $2/$3, so
+        # we must forward all args intact.
+        _rsmultigit_clap "$@"
     }
 fi
 "#;
