@@ -1,5 +1,6 @@
 use crate::cli::Cli;
 
+#[derive(Clone)]
 pub struct AppConfig {
     // Output control
     pub terse: bool,

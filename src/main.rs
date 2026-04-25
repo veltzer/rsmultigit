@@ -83,6 +83,10 @@ fn main() -> Result<()> {
 
         // ── print_if_data ──
         Commands::Status => {
+            let mut config = config.clone();
+            if !config.verbose {
+                config.terse = true;
+            }
             runner::print_if_data(&config, &projects, commands::status::do_status)?;
         }
         Commands::Dirty => {

@@ -40,8 +40,20 @@ fn status_shows_dirty_repo() {
         "should show the dirty repo: {stdout}"
     );
     assert!(
+        !stdout.contains("file.txt"),
+        "default status is terse: should not include git output: {stdout}"
+    );
+
+    let output = run_rsmultigit(tmp.path(), &["--verbose", "status"]);
+    assert!(output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(
+        stdout.contains("dirty"),
+        "verbose should show the dirty repo: {stdout}"
+    );
+    assert!(
         stdout.contains("file.txt"),
-        "should mention the changed file: {stdout}"
+        "verbose should mention the changed file: {stdout}"
     );
 }
 
