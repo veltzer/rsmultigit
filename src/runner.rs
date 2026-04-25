@@ -121,8 +121,7 @@ where
         jobs,
         projects,
         |project| {
-            test_fn(project)
-                .with_context(|| format!("error testing project {}", project.display()))
+            test_fn(project).with_context(|| format!("error testing project {}", project.display()))
         },
         |project, result| {
             let matches = match result {
@@ -203,8 +202,8 @@ where
                 print_project_header(project);
             }
 
-            if let Err(e) = action(&abs)
-                .with_context(|| format!("error in project {}", project.display()))
+            if let Err(e) =
+                action(&abs).with_context(|| format!("error in project {}", project.display()))
             {
                 if config.no_stop {
                     eprintln!("error in {}: {e:#}", project.display());
@@ -233,14 +232,15 @@ where
                 if !passed {
                     return Ok(false);
                 }
-                action(&abs)
-                    .with_context(|| format!("error in project {}", project.display()))?;
+                action(&abs).with_context(|| format!("error in project {}", project.display()))?;
                 Ok(true)
             })();
             let captured = crate::subprocess_utils::leave_capture();
             match r {
                 Ok(passed) => Ok((passed, captured)),
-                Err(e) => Err(e.context(format!("captured: {}", String::from_utf8_lossy(&captured)))),
+                Err(e) => {
+                    Err(e.context(format!("captured: {}", String::from_utf8_lossy(&captured))))
+                }
             }
         },
         |project, result| -> Result<()> {

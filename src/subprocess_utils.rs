@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 
 // Per-thread capture buffer. When present, `check_call` and `check_call_ve`
 // collect subprocess stdout/stderr into it instead of inheriting the parent's
@@ -52,10 +52,7 @@ pub fn check_call(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
 
 fn run_inheriting_or_capturing(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
     if is_capturing() {
-        let output = Command::new(cmd)
-            .args(args)
-            .current_dir(cwd)
-            .output()?;
+        let output = Command::new(cmd).args(args).current_dir(cwd).output()?;
         append_to_capture(&output.stdout);
         append_to_capture(&output.stderr);
         if !output.status.success() {

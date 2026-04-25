@@ -9,7 +9,9 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use clap::Parser;
 
-use cli::{BranchWhat, BuildWhat, Cli, CleanWhat, Commands, CountWhat, ResetWhat, StashWhat, TagWhat};
+use cli::{
+    BranchWhat, BuildWhat, CleanWhat, Cli, Commands, CountWhat, ResetWhat, StashWhat, TagWhat,
+};
 use config::AppConfig;
 
 fn main() -> Result<()> {
@@ -21,7 +23,11 @@ fn main() -> Result<()> {
         return Ok(());
     }
     if matches!(&cli.command, Commands::Version) {
-        println!("rsmultigit {} by {}", env!("CARGO_PKG_VERSION"), env!("CARGO_PKG_AUTHORS"));
+        println!(
+            "rsmultigit {} by {}",
+            env!("CARGO_PKG_VERSION"),
+            env!("CARGO_PKG_AUTHORS")
+        );
         println!("GIT_DESCRIBE: {}", env!("GIT_DESCRIBE"));
         println!("GIT_SHA: {}", env!("GIT_SHA"));
         println!("GIT_BRANCH: {}", env!("GIT_BRANCH"));
@@ -128,9 +134,13 @@ fn main() -> Result<()> {
         }
         Commands::Pull { quiet } => {
             let quiet = *quiet;
-            runner::do_for_all_projects(&config, &projects, move |project: &Path| -> anyhow::Result<bool> {
-                commands::pull::do_pull(project, quiet)
-            })?;
+            runner::do_for_all_projects(
+                &config,
+                &projects,
+                move |project: &Path| -> anyhow::Result<bool> {
+                    commands::pull::do_pull(project, quiet)
+                },
+            )?;
         }
         Commands::Push => {
             runner::do_for_all_projects(&config, &projects, commands::push::do_push)?;
@@ -168,9 +178,13 @@ fn main() -> Result<()> {
         }
         Commands::Log { count } => {
             let count = *count;
-            runner::do_for_all_projects(&config, &projects, move |project: &Path| -> anyhow::Result<bool> {
-                commands::log::do_log(project, count)
-            })?;
+            runner::do_for_all_projects(
+                &config,
+                &projects,
+                move |project: &Path| -> anyhow::Result<bool> {
+                    commands::log::do_log(project, count)
+                },
+            )?;
         }
         Commands::Tag { what } => match what {
             TagWhat::Local | TagWhat::Remote => {
@@ -189,7 +203,7 @@ fn main() -> Result<()> {
                 };
                 runner::do_count(&config, &projects, test_fn)?;
             }
-        }
+        },
         Commands::Remote => {
             runner::do_for_all_projects(&config, &projects, commands::remote::do_remote)?;
         }
@@ -201,46 +215,83 @@ fn main() -> Result<()> {
         }
         Commands::Checkout { branch } => {
             let branch = branch.clone();
-            runner::do_for_all_projects(&config, &projects, move |project: &Path| -> anyhow::Result<bool> {
-                commands::checkout::do_checkout(project, &branch)
-            })?;
+            runner::do_for_all_projects(
+                &config,
+                &projects,
+                move |project: &Path| -> anyhow::Result<bool> {
+                    commands::checkout::do_checkout(project, &branch)
+                },
+            )?;
         }
         Commands::Commit { message } => {
             let message = message.clone();
-            runner::do_for_all_projects(&config, &projects, move |project: &Path| -> anyhow::Result<bool> {
-                commands::commit::do_commit(project, &message)
-            })?;
+            runner::do_for_all_projects(
+                &config,
+                &projects,
+                move |project: &Path| -> anyhow::Result<bool> {
+                    commands::commit::do_commit(project, &message)
+                },
+            )?;
         }
         Commands::SubmoduleUpdate => {
             runner::do_for_all_projects(&config, &projects, commands::submodule::submodule_update)?;
         }
         Commands::Blame { file } => {
             let file = file.clone();
-            runner::do_for_all_projects(&config, &projects, move |project: &Path| -> anyhow::Result<bool> {
-                commands::blame::do_blame(project, &file)
-            })?;
+            runner::do_for_all_projects(
+                &config,
+                &projects,
+                move |project: &Path| -> anyhow::Result<bool> {
+                    commands::blame::do_blame(project, &file)
+                },
+            )?;
         }
         Commands::Grep { regexp, files } => {
             let regexp = regexp.clone();
             let files = *files;
-            runner::do_for_all_projects(&config, &projects, move |project: &Path| -> anyhow::Result<bool> {
-                commands::grep::do_grep(project, &regexp, files)
-            })?;
+            runner::do_for_all_projects(
+                &config,
+                &projects,
+                move |project: &Path| -> anyhow::Result<bool> {
+                    commands::grep::do_grep(project, &regexp, files)
+                },
+            )?;
         }
 
         // ── build commands ──
         Commands::Build { what } => {
             type ProjectFn = fn(&Path) -> anyhow::Result<bool>;
             let (check_fn, build_fn): (ProjectFn, ProjectFn) = match what {
-                BuildWhat::Bootstrap => (commands::build::check_not_disabled, commands::build::build_bootstrap),
+                BuildWhat::Bootstrap => (
+                    commands::build::check_not_disabled,
+                    commands::build::build_bootstrap,
+                ),
                 BuildWhat::Pydmt => (commands::build::check_pydmt, commands::build::build_pydmt),
-                BuildWhat::Make => (commands::build::check_not_disabled, commands::build::build_make),
-                BuildWhat::VenvMake => (commands::build::check_not_disabled, commands::build::build_venv_make),
-                BuildWhat::VenvPydmt => (commands::build::check_pydmt, commands::build::build_venv_pydmt),
-                BuildWhat::PydmtBuildVenv => (commands::build::check_pydmt, commands::build::build_pydmt_build_venv),
-                BuildWhat::Rsconstruct => (commands::build::check_rsconstruct, commands::build::build_rsconstruct),
+                BuildWhat::Make => (
+                    commands::build::check_not_disabled,
+                    commands::build::build_make,
+                ),
+                BuildWhat::VenvMake => (
+                    commands::build::check_not_disabled,
+                    commands::build::build_venv_make,
+                ),
+                BuildWhat::VenvPydmt => (
+                    commands::build::check_pydmt,
+                    commands::build::build_venv_pydmt,
+                ),
+                BuildWhat::PydmtBuildVenv => (
+                    commands::build::check_pydmt,
+                    commands::build::build_pydmt_build_venv,
+                ),
+                BuildWhat::Rsconstruct => (
+                    commands::build::check_rsconstruct,
+                    commands::build::build_rsconstruct,
+                ),
                 BuildWhat::Cargo => (commands::build::check_cargo, commands::build::build_cargo),
-                BuildWhat::CargoPublish => (commands::build::check_cargo, commands::build::build_cargo_publish),
+                BuildWhat::CargoPublish => (
+                    commands::build::check_cargo,
+                    commands::build::build_cargo_publish,
+                ),
             };
             runner::do_for_all_projects_with_check(&config, &projects, check_fn, build_fn)?;
         }
@@ -435,13 +486,7 @@ fn run_diff<R: std::io::BufRead, W: std::io::Write>(
             Choice::Skip => return Ok(FlowControl::Continue),
             Choice::Quit => return Ok(FlowControl::Quit),
         };
-        let to = match pick_group(
-            &mut *reader,
-            &mut *writer,
-            "diff to group?",
-            n,
-            Some(from),
-        )? {
+        let to = match pick_group(&mut *reader, &mut *writer, "diff to group?", n, Some(from))? {
             Choice::Value(i) => i,
             Choice::Skip => return Ok(FlowControl::Continue),
             Choice::Quit => return Ok(FlowControl::Quit),
@@ -513,13 +558,7 @@ fn run_copy<R: std::io::BufRead, W: std::io::Write>(
         Choice::Skip => return Ok(FlowControl::Continue),
         Choice::Quit => return Ok(FlowControl::Quit),
     };
-    let to = match pick_group(
-        &mut *reader,
-        &mut *writer,
-        "copy to group?",
-        n,
-        Some(from),
-    )? {
+    let to = match pick_group(&mut *reader, &mut *writer, "copy to group?", n, Some(from))? {
         Choice::Value(i) => i,
         Choice::Skip => return Ok(FlowControl::Continue),
         Choice::Quit => return Ok(FlowControl::Quit),
@@ -540,7 +579,12 @@ fn run_copy<R: std::io::BufRead, W: std::io::Write>(
 
     for dst in dst_group {
         if let Err(e) = copy_preserving_mode(src, dst) {
-            let _ = writeln!(writer, "  error: {} -> {}: {e}", src.display(), dst.display());
+            let _ = writeln!(
+                writer,
+                "  error: {} -> {}: {e}",
+                src.display(),
+                dst.display()
+            );
         } else {
             let _ = writeln!(writer, "  copied -> {}", dst.display());
         }
@@ -626,7 +670,12 @@ fn run_fix_missing<R: std::io::BufRead, W: std::io::Write>(
                 let _ = writeln!(writer, "  created -> {}", dst.display());
             }
             Err(e) => {
-                let _ = writeln!(writer, "  error: {} -> {}: {e}", src.display(), dst.display());
+                let _ = writeln!(
+                    writer,
+                    "  error: {} -> {}: {e}",
+                    src.display(),
+                    dst.display()
+                );
             }
         }
     }

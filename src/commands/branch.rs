@@ -21,7 +21,14 @@ pub fn branch_github(project: &Path) -> Result<bool> {
     let output = capture_output(
         project,
         "gh",
-        &["repo", "view", "--json", "defaultBranchRef", "-q", ".defaultBranchRef.name"],
+        &[
+            "repo",
+            "view",
+            "--json",
+            "defaultBranchRef",
+            "-q",
+            ".defaultBranchRef.name",
+        ],
     )?;
     println!("{output}");
     Ok(true)

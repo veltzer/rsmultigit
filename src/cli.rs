@@ -6,7 +6,7 @@
 use std::io;
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
-use clap_complete::{generate, Shell};
+use clap_complete::{Shell, generate};
 
 #[derive(Parser)]
 #[command(name = "rsmultigit")]
@@ -406,7 +406,12 @@ mod tests {
     #[test]
     fn parse_count_dirty() {
         let cli = parse(&["rsmultigit", "count", "dirty"]);
-        assert!(matches!(cli.command, Commands::Count { what: CountWhat::Dirty }));
+        assert!(matches!(
+            cli.command,
+            Commands::Count {
+                what: CountWhat::Dirty
+            }
+        ));
     }
 
     #[test]
@@ -582,9 +587,14 @@ mod tests {
     #[test]
     fn parse_global_flags() {
         let cli = parse(&[
-            "rsmultigit", "--terse", "--no-output", "--verbose", "--print-not",
+            "rsmultigit",
+            "--terse",
+            "--no-output",
+            "--verbose",
+            "--print-not",
             "--no-stop",
-            "count", "dirty",
+            "count",
+            "dirty",
         ]);
         assert!(cli.terse);
         assert!(cli.no_output);

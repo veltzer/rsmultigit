@@ -44,7 +44,9 @@ pub fn parse_group_label(input: &str, num_groups: usize) -> Option<usize> {
         if !c.is_ascii_alphabetic() {
             return None;
         }
-        n = n.checked_mul(26)?.checked_add((c as u8 - b'A') as usize + 1)?;
+        n = n
+            .checked_mul(26)?
+            .checked_add((c as u8 - b'A') as usize + 1)?;
     }
     let idx = n.checked_sub(1)?;
     if idx < num_groups { Some(idx) } else { None }
@@ -72,7 +74,9 @@ pub fn pick_group<R: BufRead, W: Write>(
         writer.flush().context("failed to flush prompt")?;
 
         let mut line = String::new();
-        let n = reader.read_line(&mut line).context("failed to read input")?;
+        let n = reader
+            .read_line(&mut line)
+            .context("failed to read input")?;
         if n == 0 {
             // EOF — treat as quit so we never hang.
             return Ok(Choice::Quit);
@@ -99,7 +103,9 @@ pub fn confirm<R: BufRead, W: Write>(mut reader: R, mut writer: W, prompt: &str)
     write!(writer, "{prompt} [y/N]: ")?;
     writer.flush().context("failed to flush prompt")?;
     let mut line = String::new();
-    let n = reader.read_line(&mut line).context("failed to read input")?;
+    let n = reader
+        .read_line(&mut line)
+        .context("failed to read input")?;
     if n == 0 {
         return Ok(false);
     }

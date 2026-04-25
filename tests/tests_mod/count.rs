@@ -1,5 +1,5 @@
+use crate::common::{run_rsmultigit, setup_git_repos, stdout_str};
 use std::fs;
-use crate::common::{run_rsmultigit, stdout_str, setup_git_repos};
 
 #[test]
 fn count_dirty_clean_repos() {
@@ -7,7 +7,10 @@ fn count_dirty_clean_repos() {
     let output = run_rsmultigit(tmp.path(), &["count", "dirty"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("0/2"), "clean repos should show 0/2: {stdout}");
+    assert!(
+        stdout.contains("0/2"),
+        "clean repos should show 0/2: {stdout}"
+    );
 }
 
 #[test]
@@ -32,7 +35,10 @@ fn count_dirty_with_modified_file() {
     let output = run_rsmultigit(tmp.path(), &["count", "dirty"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("1/2"), "one dirty repo should show 1/2: {stdout}");
+    assert!(
+        stdout.contains("1/2"),
+        "one dirty repo should show 1/2: {stdout}"
+    );
 }
 
 #[test]
@@ -43,7 +49,10 @@ fn untracked_detects_new_files() {
     let output = run_rsmultigit(tmp.path(), &["count", "untracked"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("1/2"), "one repo with untracked should show 1/2: {stdout}");
+    assert!(
+        stdout.contains("1/2"),
+        "one repo with untracked should show 1/2: {stdout}"
+    );
 }
 
 #[test]
@@ -67,6 +76,12 @@ fn print_not_inverts_selection() {
     let output = run_rsmultigit(tmp.path(), &["--print-not", "count", "untracked"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("b"), "should print the non-matching repo: {stdout}");
-    assert!(!stdout.contains("/a\n"), "should not print the matching repo");
+    assert!(
+        stdout.contains("b"),
+        "should print the non-matching repo: {stdout}"
+    );
+    assert!(
+        !stdout.contains("/a\n"),
+        "should not print the matching repo"
+    );
 }

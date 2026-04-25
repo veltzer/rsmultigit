@@ -96,8 +96,8 @@ pub fn resolve_repos(config: &CheckConfig) -> Result<Vec<PathBuf>> {
     for entry in &config.repos {
         let expanded = shellexpand::full(entry)
             .with_context(|| format!("failed to expand `{entry}` in repos"))?;
-        let matches = glob::glob(&expanded)
-            .with_context(|| format!("invalid glob pattern `{entry}`"))?;
+        let matches =
+            glob::glob(&expanded).with_context(|| format!("invalid glob pattern `{entry}`"))?;
         for m in matches {
             let path = m.with_context(|| format!("error iterating glob `{entry}`"))?;
             if path.is_dir() && path.join(".git").is_dir() {

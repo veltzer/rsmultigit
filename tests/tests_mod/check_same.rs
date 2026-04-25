@@ -101,7 +101,10 @@ path = ".gitignore"
     let output = run(tmp.path(), &cfg, &["check-same", "--no-header"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
-    assert!(!stdout.contains("[gi]"), "stdout should not contain [gi]: {stdout}");
+    assert!(
+        !stdout.contains("[gi]"),
+        "stdout should not contain [gi]: {stdout}"
+    );
     assert!(stdout.contains("2 files, 2 groups"), "stdout: {stdout}");
 }
 
@@ -163,12 +166,19 @@ path = "LICENSE"
     );
 
     // Run only gi + license; readme's divergence must not appear.
-    let output = run(tmp.path(), &cfg, &["check-same", "--checks", "gi", "license"]);
+    let output = run(
+        tmp.path(),
+        &cfg,
+        &["check-same", "--checks", "gi", "license"],
+    );
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
     assert!(stdout.contains("[license]"), "stdout: {stdout}");
-    assert!(!stdout.contains("[readme]"), "readme should be skipped: {stdout}");
+    assert!(
+        !stdout.contains("[readme]"),
+        "readme should be skipped: {stdout}"
+    );
 }
 
 #[test]
@@ -194,7 +204,11 @@ path = "README"
     );
 
     // Request in reverse of config order.
-    let output = run(tmp.path(), &cfg, &["check-same", "--checks", "readme", "gi"]);
+    let output = run(
+        tmp.path(),
+        &cfg,
+        &["check-same", "--checks", "readme", "gi"],
+    );
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     let readme_pos = stdout.find("[readme]").expect("missing [readme]");
@@ -243,7 +257,10 @@ path = ".gitignore"
     let output = run(tmp.path(), &cfg, &["check-same", "--checks", "gi", "bogus"]);
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
-    assert!(stderr.contains("bogus"), "stderr should mention bogus: {stderr}");
+    assert!(
+        stderr.contains("bogus"),
+        "stderr should mention bogus: {stderr}"
+    );
 }
 
 #[test]
@@ -272,7 +289,12 @@ path = "Makefile"
 
     // Only py* repos considered — they match, so should succeed even though go-proj differs.
     let output = run(tmp.path(), &cfg, &["check-same"]);
-    assert!(output.status.success(), "stdout: {}\nstderr: {}", stdout_str(&output), stderr_str(&output));
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        stdout_str(&output),
+        stderr_str(&output)
+    );
 }
 
 #[test]
@@ -293,7 +315,12 @@ path = ".gitignore"
     );
 
     let output = run(tmp.path(), &cfg, &["check-same"]);
-    assert!(output.status.success(), "stdout: {}\nstderr: {}", stdout_str(&output), stderr_str(&output));
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        stdout_str(&output),
+        stderr_str(&output)
+    );
 }
 
 #[test]
@@ -313,7 +340,12 @@ enabled = false
     );
 
     let output = run(tmp.path(), &cfg, &["check-same"]);
-    assert!(output.status.success(), "stdout: {}\nstderr: {}", stdout_str(&output), stderr_str(&output));
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        stdout_str(&output),
+        stderr_str(&output)
+    );
 }
 
 #[test]
@@ -363,7 +395,11 @@ path = ".gitignore"
 #[test]
 fn check_same_diff_emits_unified_diff_for_two_groups() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(tmp.path().join("a/.gitignore"), "target\nnode_modules\n.env\n").unwrap();
+    fs::write(
+        tmp.path().join("a/.gitignore"),
+        "target\nnode_modules\n.env\n",
+    )
+    .unwrap();
     fs::write(tmp.path().join("b/.gitignore"), "target\ndist\n.env\n").unwrap();
     let cfg = write_config(
         tmp.path(),
@@ -379,9 +415,18 @@ path = ".gitignore"
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     // Unified diff markers must appear.
-    assert!(stdout.contains("--- "), "stdout should contain unified diff header: {stdout}");
-    assert!(stdout.contains("+++ "), "stdout should contain unified diff header: {stdout}");
-    assert!(stdout.contains("-node_modules"), "should show removed line: {stdout}");
+    assert!(
+        stdout.contains("--- "),
+        "stdout should contain unified diff header: {stdout}"
+    );
+    assert!(
+        stdout.contains("+++ "),
+        "stdout should contain unified diff header: {stdout}"
+    );
+    assert!(
+        stdout.contains("-node_modules"),
+        "should show removed line: {stdout}"
+    );
     assert!(stdout.contains("+dist"), "should show added line: {stdout}");
 }
 
@@ -411,7 +456,10 @@ path = ".gitignore"
         "should prompt for a pair: {stdout}"
     );
     // With closed stdin, no diff body should be emitted.
-    assert!(!stdout.contains("--- "), "stdout should not contain diff header: {stdout}");
+    assert!(
+        !stdout.contains("--- "),
+        "stdout should not contain diff header: {stdout}"
+    );
 }
 
 #[test]
@@ -501,7 +549,10 @@ path = ".gitignore"
     let output = run(tmp.path(), &cfg_path, &["check-same"]);
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
-    assert!(stderr.contains("repos"), "stderr should mention repos: {stderr}");
+    assert!(
+        stderr.contains("repos"),
+        "stderr should mention repos: {stderr}"
+    );
 }
 
 // ── config-example ───────────────────────────────────────────────────────────
@@ -519,8 +570,14 @@ fn config_example_does_not_require_existing_config() {
     );
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("repos ="), "should contain a `repos =` line: {stdout}");
-    assert!(stdout.contains("[[check]]"), "should contain at least one [[check]] block");
+    assert!(
+        stdout.contains("repos ="),
+        "should contain a `repos =` line: {stdout}"
+    );
+    assert!(
+        stdout.contains("[[check]]"),
+        "should contain at least one [[check]] block"
+    );
 }
 
 #[test]
@@ -642,11 +699,23 @@ path = ".gitignore"
     );
 
     let output = run_with_stdin(tmp.path(), &cfg, &["check-same", "--diff"], b"A\nB\nn\n");
-    assert!(!output.status.success(), "non-copy invocation: mismatch → exit 1");
+    assert!(
+        !output.status.success(),
+        "non-copy invocation: mismatch → exit 1"
+    );
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("--- "), "should emit a diff header: {stdout}");
-    assert!(stdout.contains("-one"), "should show group A content: {stdout}");
-    assert!(stdout.contains("+two"), "should show group B content: {stdout}");
+    assert!(
+        stdout.contains("--- "),
+        "should emit a diff header: {stdout}"
+    );
+    assert!(
+        stdout.contains("-one"),
+        "should show group A content: {stdout}"
+    );
+    assert!(
+        stdout.contains("+two"),
+        "should show group B content: {stdout}"
+    );
 }
 
 #[test]
@@ -679,7 +748,10 @@ path = ".gitignore"
     );
     let stdout = stdout_str(&output);
     let plus_count = stdout.matches("+++ ").count();
-    assert_eq!(plus_count, 2, "expected 2 diff bodies, got {plus_count}: {stdout}");
+    assert_eq!(
+        plus_count, 2,
+        "expected 2 diff bodies, got {plus_count}: {stdout}"
+    );
 }
 
 // ── --copy ──────────────────────────────────────────────────────────────────
@@ -702,12 +774,7 @@ path = ".gitignore"
 
     // 2 groups: A = {a, b} (canonical, larger), B = {c} (stale).
     // Copy from A to B, confirm.
-    let output = run_with_stdin(
-        tmp.path(),
-        &cfg,
-        &["check-same", "--copy"],
-        b"A\nB\ny\n",
-    );
+    let output = run_with_stdin(tmp.path(), &cfg, &["check-same", "--copy"], b"A\nB\ny\n");
     assert!(
         output.status.success(),
         "--copy always exits 0: stderr={}",
@@ -737,12 +804,7 @@ path = ".gitignore"
     );
 
     // Pick A from, B to, but decline the confirmation.
-    let output = run_with_stdin(
-        tmp.path(),
-        &cfg,
-        &["check-same", "--copy"],
-        b"A\nB\nn\n",
-    );
+    let output = run_with_stdin(tmp.path(), &cfg, &["check-same", "--copy"], b"A\nB\nn\n");
     assert!(output.status.success());
     let a = fs::read_to_string(tmp.path().join("a/.gitignore")).unwrap();
     let b = fs::read_to_string(tmp.path().join("b/.gitignore")).unwrap();
@@ -804,12 +866,7 @@ select = "*"
 path = ".gitignore"
 "#,
     );
-    let output = run_with_stdin(
-        tmp.path(),
-        &cfg,
-        &["check-same", "--copy"],
-        b"A\nB\ny\n",
-    );
+    let output = run_with_stdin(tmp.path(), &cfg, &["check-same", "--copy"], b"A\nB\ny\n");
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
 
     let content = fs::read_to_string(tmp.path().join("b1/.gitignore")).unwrap();
@@ -853,12 +910,7 @@ path = ".gitignore"
     );
 
     // Copy A → C, leave B alone.
-    let output = run_with_stdin(
-        tmp.path(),
-        &cfg,
-        &["check-same", "--copy"],
-        b"A\nC\ny\n",
-    );
+    let output = run_with_stdin(tmp.path(), &cfg, &["check-same", "--copy"], b"A\nC\ny\n");
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     assert_eq!(
         fs::read_to_string(tmp.path().join("c1/.gitignore")).unwrap(),
@@ -894,15 +946,13 @@ path = ".gitignore"
 
     // User picks A for "from", then tries A again for "to" — should be rejected
     // and re-prompted. After re-prompt, pick B and confirm.
-    let output = run_with_stdin(
-        tmp.path(),
-        &cfg,
-        &["check-same", "--copy"],
-        b"A\nA\nB\ny\n",
-    );
+    let output = run_with_stdin(tmp.path(), &cfg, &["check-same", "--copy"], b"A\nA\nB\ny\n");
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("invalid choice"), "should reject same group: {stdout}");
+    assert!(
+        stdout.contains("invalid choice"),
+        "should reject same group: {stdout}"
+    );
     assert_eq!(
         fs::read_to_string(tmp.path().join("b1/.gitignore")).unwrap(),
         "from-a\n"
@@ -927,7 +977,12 @@ path = ".gitignore"
     );
 
     let output = run(tmp.path(), &cfg, &["check-same"]);
-    assert!(output.status.success(), "stdout: {}\nstderr: {}", stdout_str(&output), stderr_str(&output));
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        stdout_str(&output),
+        stderr_str(&output)
+    );
 }
 
 #[test]
@@ -946,10 +1001,19 @@ must_have = true
     );
 
     let output = run(tmp.path(), &cfg, &["check-same"]);
-    assert!(!output.status.success(), "must_have violation should exit 1");
+    assert!(
+        !output.status.success(),
+        "must_have violation should exit 1"
+    );
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("1 missing"), "summary should mention missing count: {stdout}");
-    assert!(stdout.contains("missing in:"), "should emit missing-in block: {stdout}");
+    assert!(
+        stdout.contains("1 missing"),
+        "summary should mention missing count: {stdout}"
+    );
+    assert!(
+        stdout.contains("missing in:"),
+        "should emit missing-in block: {stdout}"
+    );
     assert!(
         stdout.contains(tmp.path().join("b").to_string_lossy().as_ref()),
         "should list the violating repo: {stdout}"
@@ -1026,7 +1090,11 @@ must_have = true
     );
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     let dst = tmp.path().join("b/.github/workflows/build.yml");
-    assert!(dst.exists(), "nested file should have been created: {}", dst.display());
+    assert!(
+        dst.exists(),
+        "nested file should have been created: {}",
+        dst.display()
+    );
     assert_eq!(fs::read_to_string(&dst).unwrap(), "on: push\n");
 }
 
@@ -1053,7 +1121,10 @@ must_have = true
         b"A\nn\n",
     );
     assert!(output.status.success());
-    assert!(!tmp.path().join("b/.gitignore").exists(), "file should not have been created");
+    assert!(
+        !tmp.path().join("b/.gitignore").exists(),
+        "file should not have been created"
+    );
 }
 
 #[test]
