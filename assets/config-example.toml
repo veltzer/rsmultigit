@@ -31,7 +31,7 @@
 # Repos that don't contain `path` are silently skipped when must_have = false.
 
 repos = [
-    "~/git/veltzer/*",
+    "~/git/*",
 ]
 
 # ── shared dev-tooling configs across all repos ───────────────────────────────

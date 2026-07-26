@@ -27,12 +27,12 @@ rsmultigit --no-glob list-repos
 By default, RSMultiGit uses the glob pattern `*/*` to find projects two levels deep (e.g., `org/repo`). If no projects are found with `*/*`, it automatically falls back to `*` to handle the common case where immediate subdirectories are git repos.
 
 ```bash
-# Works from ~/git/veltzer (repos are at */*)
-cd ~/git
+# Works from a directory whose repos are nested (repos are at */*)
+cd ~/src
 rsmultigit list-repos
 
-# Also works from ~/git/veltzer (repos are at *)
-cd ~/git/veltzer
+# Also works from ~/git (repos are at *)
+cd ~/git
 rsmultigit list-repos
 ```
 

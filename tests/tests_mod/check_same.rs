@@ -596,7 +596,7 @@ fn config_example_output_parses_as_valid_config() {
     let example_toml = String::from_utf8_lossy(&example.stdout).into_owned();
 
     // Rewrite `repos` to point at our tempdir so the config is actually usable.
-    // The example ships with `repos = ["~/git/veltzer/*"]` which won't exist in tests.
+    // The example ships with `repos = ["~/git/*"]` which won't exist in tests.
     let rewritten = regex_replace_repos_line(&example_toml, tmp.path());
     let cfg_path = tmp.path().join("config.toml");
     fs::write(&cfg_path, &rewritten).unwrap();
