@@ -261,6 +261,16 @@ fn main() -> Result<()> {
                 },
             )?;
         }
+        Commands::Run { command } => {
+            let command = command.clone();
+            runner::do_for_all_projects(
+                &config,
+                &projects,
+                move |project: &Path| -> anyhow::Result<bool> {
+                    commands::run::do_run(project, &command)
+                },
+            )?;
+        }
 
         // ── build commands ──
         Commands::Build { what } => {

@@ -333,6 +333,16 @@ rsmultigit grep "TODO"
 rsmultigit grep --files "TODO"               # Only show filenames
 ```
 
+### `rsmultigit run <COMMAND...>` (alias: `rsmultigit exec`)
+
+Run an arbitrary command across all repositories.
+
+```bash
+rsmultigit run touch marker.txt
+rsmultigit run "echo hello > greeting.txt"
+rsmultigit exec cargo check
+```
+
 ## Build Commands
 
 These commands run build tools in each project directory. Projects with a `.disable` file are skipped.

@@ -192,6 +192,13 @@ pub enum Commands {
         #[arg(value_enum)]
         what: ResetWhat,
     },
+    /// Run an arbitrary command across all repositories
+    #[command(alias = "exec")]
+    Run {
+        /// Command and arguments to execute
+        #[arg(required = true, num_args = 1.., trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
     /// Show the size of the .git directory per repo
     Size,
     /// Stash operations
@@ -615,6 +622,28 @@ mod tests {
     fn default_jobs_is_one() {
         let cli = parse(&["rsmultigit", "list-repos"]);
         assert_eq!(cli.jobs, 1);
+    }
+
+    #[test]
+    fn parse_run_command() {
+        let cli = parse(&["rsmultigit", "run", "git", "status"]);
+        match &cli.command {
+            Commands::Run { command } => {
+                assert_eq!(command, &vec!["git", "status"]);
+            }
+            _ => panic!("expected Run"),
+        }
+    }
+
+    #[test]
+    fn parse_exec_command_alias() {
+        let cli = parse(&["rsmultigit", "exec", "ls", "-la"]);
+        match &cli.command {
+            Commands::Run { command } => {
+                assert_eq!(command, &vec!["ls", "-la"]);
+            }
+            _ => panic!("expected Run"),
+        }
     }
 
     #[test]

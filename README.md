@@ -131,6 +131,7 @@ rsmultigit complete bash >> ~/.bash_completion
 | `branch local` | Show local branches |
 | `branch remote` | Show remote branches |
 | `branch github` | Show GitHub default branch |
+| `run <cmd>` | Run an arbitrary shell command across all repositories |
 
 ### Build
 | Command | Description |

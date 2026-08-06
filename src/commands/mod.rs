@@ -21,6 +21,7 @@ pub mod pull;
 pub mod push;
 pub mod remote;
 pub mod reset;
+pub mod run;
 pub mod size;
 pub mod stash;
 pub mod status;
