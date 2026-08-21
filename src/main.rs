@@ -83,11 +83,14 @@ fn main() -> Result<()> {
 
         // ── print_if_data ──
         Commands::Status => {
-            let mut config = config.clone();
-            if !config.verbose {
-                config.terse = true;
+            // Default: one-line summary of each repo's situation (counts of
+            // modified/staged/untracked files, ahead/behind). --verbose switches
+            // to the full `git status -s` per-file output.
+            if config.verbose {
+                runner::print_if_data(&config, &projects, commands::status::do_status)?;
+            } else {
+                runner::print_if_data(&config, &projects, commands::status::do_status_summary)?;
             }
-            runner::print_if_data(&config, &projects, commands::status::do_status)?;
         }
         Commands::Dirty => {
             runner::print_if_data(&config, &projects, commands::status::do_dirty)?;

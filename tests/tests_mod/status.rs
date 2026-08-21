@@ -40,8 +40,12 @@ fn status_shows_dirty_repo() {
         "should show the dirty repo: {stdout}"
     );
     assert!(
+        stdout.contains("1 modified"),
+        "default status should summarize the situation: {stdout}"
+    );
+    assert!(
         !stdout.contains("file.txt"),
-        "default status is terse: should not include git output: {stdout}"
+        "default status is a summary: should not include per-file git output: {stdout}"
     );
 
     let output = run_rsmultigit(tmp.path(), &["--verbose", "status"]);
@@ -75,7 +79,11 @@ fn status_shows_repo_with_unpushed_commits() {
     .unwrap();
     let branch = branch.trim();
     std::process::Command::new("git")
-        .args(["update-ref", &format!("refs/remotes/origin/{branch}"), "HEAD"])
+        .args([
+            "update-ref",
+            &format!("refs/remotes/origin/{branch}"),
+            "HEAD",
+        ])
         .current_dir(&repo_path)
         .status()
         .unwrap();
@@ -89,8 +97,8 @@ fn status_shows_repo_with_unpushed_commits() {
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
-        stdout.contains("ahead"),
-        "should list the repo that is ahead of origin: {stdout}"
+        stdout.contains("ahead 1"),
+        "should summarize the repo that is ahead of origin: {stdout}"
     );
     assert!(
         !stdout.contains("insync"),

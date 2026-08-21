@@ -67,12 +67,18 @@ These commands inspect each repo and print output only for repos that have data.
 
 ### `rsmultigit status`
 
-Show repositories that need attention: `git status -s` output for repos with
-working-tree changes, plus a note for repos whose branch is ahead of or behind
-`origin` (e.g. commits that have not been pushed yet).
+Show repositories that need attention, with a one-line summary of each repo's
+situation: counts of conflicted, staged, modified, deleted, and untracked
+files, plus ahead/behind counts when the branch has diverged from `origin`
+(e.g. commits that have not been pushed yet). Clean, in-sync repos are
+skipped. Pass `--verbose` for the full per-file `git status -s` output
+instead of the summary.
 
 ```bash
 rsmultigit status
+# [~/git/myrepo]
+# 2 modified, 1 untracked, ahead 1
+rsmultigit --verbose status
 ```
 
 ### `rsmultigit dirty`

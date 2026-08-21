@@ -17,7 +17,7 @@ src/
   commands/
     mod.rs             Module declarations
     count.rs           git2-based repo inspection (dirty, untracked, synchronized)
-    status.rs          git status / diff via subprocess
+    status.rs          Status summary via git2; per-file detail / diff via subprocess
     branch.rs          Branch listing (local, remote, github)
     pull.rs            git pull
     clean.rs           git clean -ffxd
