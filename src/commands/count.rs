@@ -3,7 +3,7 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use git2::Repository;
 
-fn open_repo(project: &Path) -> Result<Repository> {
+pub(crate) fn open_repo(project: &Path) -> Result<Repository> {
     Repository::open(project)
         .with_context(|| format!("failed to open repo at {}", project.display()))
 }
@@ -54,7 +54,7 @@ pub fn has_untracked(project: &Path) -> Result<bool> {
 
 /// Returns `Some((ahead, behind))` relative to `refs/remotes/origin/<current_branch>`,
 /// or `None` when the repo has no HEAD, no branch, or no upstream ref.
-fn ahead_behind(project: &Path) -> Result<Option<(usize, usize)>> {
+pub fn ahead_behind(project: &Path) -> Result<Option<(usize, usize)>> {
     let repo = open_repo(project)?;
 
     let head = match repo.head() {

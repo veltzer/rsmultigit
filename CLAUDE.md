@@ -54,7 +54,7 @@ All commands use one of three patterns in `runner.rs`:
 
 - **Edition 2024** Rust
 - **Error handling**: `anyhow::Result<T>` everywhere, with `.context()` for error messages
-- **Git inspection**: Use `git2` crate for fast checks (dirty, untracked, synchronized). Use `git` CLI subprocess for everything else.
+- **Git inspection**: Prefer the `git2` crate for everything libgit2 can do — subprocess startup times 260 repos dominates runtime (see "Git inspection" in `docs/src/architecture.md` for the recorded benchmark). Use the `git` CLI subprocess only for network ops (`pull`/`push`/`fetch`) and commands whose value is git's own output formatting (`log`, `blame`, `grep`).
 - **Command module pattern**: Each command is a simple `pub fn` returning `Result<bool>` or `Result<Option<String>>`
 - **No rustfmt.toml or clippy.toml** — uses Rust defaults
 - **Release profile**: `strip = true`, `lto = true`

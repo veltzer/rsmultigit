@@ -2,11 +2,26 @@ use std::path::Path;
 
 use anyhow::Result;
 
+use crate::commands::count::ahead_behind;
 use crate::subprocess_utils::capture_output;
 
-/// Returns `Some(output)` if `git status -s` produces any output (i.e., working tree is not clean).
+/// Returns `Some(output)` when the repo needs attention: `git status -s` shows
+/// working-tree changes, or the branch is ahead of / behind its upstream
+/// (commits not yet pushed or not yet merged). A repo with no upstream is
+/// reported by working-tree state only.
 pub fn do_status(project: &Path) -> Result<Option<String>> {
-    let output = capture_output(project, "git", &["status", "-s"])?;
+    let mut output = capture_output(project, "git", &["status", "-s"])?;
+    if let Some((ahead, behind)) = ahead_behind(project)? {
+        for (count, direction) in [(ahead, "ahead of"), (behind, "behind")] {
+            if count > 0 {
+                if !output.is_empty() {
+                    output.push('\n');
+                }
+                let plural = if count == 1 { "" } else { "s" };
+                output.push_str(&format!("{direction} origin by {count} commit{plural}"));
+            }
+        }
+    }
     if output.is_empty() {
         Ok(None)
     } else {

@@ -42,11 +42,47 @@ For action commands (`pull`, `clean-hard`, `diff`, `grep`, `branch-*`, `build-*`
 
 For status commands (`status`, `dirty`, `list-repos`). Changes into each project directory, calls a data function. If it returns `Some(text)`, prints the project name and data. If `None`, the project is silently skipped.
 
-## Git inspection
+## Git inspection — prefer the `git2` crate
 
-The count commands (`count-dirty`, `untracked`, `synchronized`) use the `git2` crate for direct repository inspection. This avoids forking `git` subprocesses and is significantly faster for large numbers of repos.
+**Policy: every git operation that libgit2 can do is done through the `git2`
+crate, in-process. The `git` CLI subprocess is the fallback, not the default.**
 
-All other git operations use `std::process::Command` to run the `git` CLI, which provides familiar output formatting and handles edge cases that libgit2 may not cover.
+The reasoning: rsmultigit's whole job is running the same small operation
+across hundreds of repositories. A subprocess pays fork + exec + git binary
+startup (config parsing, index loading) on every repo — a few milliseconds
+each that pure library calls don't pay. Per repo this is negligible; times
+260 repos it dominates the runtime of the fast inspection commands.
+
+Subprocesses remain the right tool where libgit2 is genuinely weaker:
+network operations (`pull`, `push`, `fetch` — credential helpers, SSH agent
+and transport quirks are handled far better by the real git), and commands
+whose value *is* git's own output formatting (`log`, `blame`, `grep`).
+
+### Recorded benchmark (2026-08-21)
+
+Measured on a real 260-repo config, release build, warm page cache, five
+runs each. `rsmultigit status` spawned `git status -s` per repo;
+`rsmultigit count dirty` performs the equivalent working-tree scan
+in-process via `git2`, so the pair isolates the subprocess overhead:
+
+| Command                       | Wall    | User    | Sys     |
+|-------------------------------|---------|---------|---------|
+| `status` (subprocess per repo)| ~0.89 s | ~0.34 s | ~0.58 s |
+| `count dirty` (git2)          | ~0.52 s | ~0.30 s | ~0.21 s |
+
+The wall-clock win is ~40%. The telling column is **sys**: 0.58 s → 0.21 s
+is the cost of 260 fork+exec+startup cycles disappearing. **User** time is
+nearly identical because git and libgit2 do broadly the same
+index-vs-worktree comparison — the library doesn't scan faster, it just
+skips the process machinery around the scan.
+
+### Known trade-offs
+
+- Very large working trees can regress: `git status` supports the untracked
+  cache and fsmonitor extensions, libgit2 does not. None of the benchmarked
+  repos was big enough to flip the result, but a kernel-sized repo could be.
+- Output parity with git porcelain formats is close but not byte-perfect
+  (submodule state, unusual ignore rules).
 
 ## Error handling
 

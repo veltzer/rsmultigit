@@ -58,6 +58,55 @@ fn status_shows_dirty_repo() {
 }
 
 #[test]
+fn status_shows_repo_with_unpushed_commits() {
+    let tmp = setup_git_repos(&["insync", "ahead"]);
+    let repo_path = tmp.path().join("ahead");
+
+    // Mark the current commit as the upstream tip, then commit past it so the
+    // repo is ahead of origin with a clean working tree.
+    let branch = String::from_utf8(
+        std::process::Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .current_dir(&repo_path)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .unwrap();
+    let branch = branch.trim();
+    std::process::Command::new("git")
+        .args(["update-ref", &format!("refs/remotes/origin/{branch}"), "HEAD"])
+        .current_dir(&repo_path)
+        .status()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "local only"])
+        .current_dir(&repo_path)
+        .status()
+        .unwrap();
+
+    let output = run_rsmultigit(tmp.path(), &["status"]);
+    assert!(output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(
+        stdout.contains("ahead"),
+        "should list the repo that is ahead of origin: {stdout}"
+    );
+    assert!(
+        !stdout.contains("insync"),
+        "repo without upstream and no changes should not be listed: {stdout}"
+    );
+
+    let output = run_rsmultigit(tmp.path(), &["--verbose", "status"]);
+    assert!(output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(
+        stdout.contains("ahead of origin by 1 commit"),
+        "verbose should explain the unpushed commit: {stdout}"
+    );
+}
+
+#[test]
 fn dirty_subcommand_shows_diff_stat() {
     let tmp = setup_git_repos(&["repo"]);
     let repo_path = tmp.path().join("repo");

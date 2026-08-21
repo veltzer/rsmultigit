@@ -67,7 +67,9 @@ These commands inspect each repo and print output only for repos that have data.
 
 ### `rsmultigit status`
 
-Show `git status -s` output for repositories that are not clean.
+Show repositories that need attention: `git status -s` output for repos with
+working-tree changes, plus a note for repos whose branch is ahead of or behind
+`origin` (e.g. commits that have not been pushed yet).
 
 ```bash
 rsmultigit status
