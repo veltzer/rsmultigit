@@ -208,12 +208,18 @@ select = "gcp-*"
 marker = ".gcp.conf"
 path = "app.yaml"
 
-# ── rs* Rust repos: canonical CI workflow, synced from rsconstruct ────────────
+# ── rs* Rust repos: canonical files, synced from rsconstruct ──────────────────
 
 [[check]]
 name = "rs-ci-workflow"
 select = "rs*"
 path = ".github/workflows/ci.yml"
+must_have = true
+
+[[check]]
+name = "rs-build-rs"
+select = "rs*"
+path = "build.rs"
 must_have = true
 
 # ── disabled rules (were commented out in mg_check_same_files.sh) ─────────────
