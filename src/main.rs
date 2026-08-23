@@ -53,6 +53,7 @@ fn main() -> Result<()> {
 
     if let Commands::CheckSame {
         checks,
+        checks_re,
         diff,
         copy,
         fix_missing,
@@ -62,10 +63,13 @@ fn main() -> Result<()> {
             &config,
             &file_config,
             &projects,
-            checks,
-            *diff,
-            *copy,
-            *fix_missing,
+            &CheckSameOpts {
+                requested: checks,
+                requested_re: checks_re,
+                show_diff: *diff,
+                do_copy: *copy,
+                do_fix_missing: *fix_missing,
+            },
         )?;
         std::process::exit(exit_code);
     }
@@ -322,11 +326,23 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+/// The check-same flag set, bundled to keep `run_check_same`'s signature small.
+struct CheckSameOpts<'a> {
+    requested: &'a [String],
+    requested_re: &'a [String],
+    show_diff: bool,
+    do_copy: bool,
+    do_fix_missing: bool,
+}
+
 /// Run the check-same command. Returns the process exit code.
 ///
-/// `requested` is the (possibly empty) list of rule names from `--checks`.
-/// Empty → run all enabled rules. Non-empty → run exactly those rules, even if
-/// they are `enabled = false`; any unknown name is a hard error.
+/// `requested` is the (possibly empty) list of rule names from `--checks`;
+/// `requested_re` the (possibly empty) list of regexes from `--checks-re`.
+/// Both empty → run all enabled rules. Otherwise → run exactly the rules named
+/// by `--checks` (in request order) plus, in config order, every rule whose
+/// name a regex matches (unanchored search), even if they are `enabled = false`.
+/// Any unknown name, invalid regex, or regex matching no rule is a hard error.
 ///
 /// When `copy` is set, interactive prompts are served. In that mode the overall
 /// exit code is always 0 regardless of mismatches — `--copy` is a tool to fix
@@ -335,15 +351,20 @@ fn run_check_same(
     app: &AppConfig,
     file_config: &commands::check::CheckConfig,
     projects: &[std::path::PathBuf],
-    requested: &[String],
-    show_diff: bool,
-    do_copy: bool,
-    do_fix_missing: bool,
+    opts: &CheckSameOpts<'_>,
 ) -> Result<i32> {
     use commands::check;
     use commands::interactive;
 
-    let rules: Vec<&check::Rule> = if requested.is_empty() {
+    let &CheckSameOpts {
+        requested,
+        requested_re,
+        show_diff,
+        do_copy,
+        do_fix_missing,
+    } = opts;
+
+    let rules: Vec<&check::Rule> = if requested.is_empty() && requested_re.is_empty() {
         file_config.check.iter().filter(|r| r.enabled).collect()
     } else {
         let known: std::collections::HashSet<&str> =
@@ -360,10 +381,27 @@ fn run_check_same(
                 .join(", ");
             anyhow::bail!("unknown check name(s): {joined}");
         }
-        requested
+        let mut selected: Vec<&check::Rule> = requested
             .iter()
             .filter_map(|name| file_config.check.iter().find(|r| &r.name == name))
-            .collect()
+            .collect();
+        for pattern in requested_re {
+            let re = regex_lite::Regex::new(pattern)
+                .with_context(|| format!("invalid check regex {pattern:?}"))?;
+            let mut matched_any = false;
+            for rule in &file_config.check {
+                if re.is_match(&rule.name) {
+                    matched_any = true;
+                    if !selected.iter().any(|r| r.name == rule.name) {
+                        selected.push(rule);
+                    }
+                }
+            }
+            if !matched_any {
+                anyhow::bail!("check regex {pattern:?} matches no check name");
+            }
+        }
+        selected
     };
 
     if rules.is_empty() {

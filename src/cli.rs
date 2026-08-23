@@ -93,6 +93,12 @@ pub enum Commands {
         /// Listed names override `enabled = false`. Unknown names are a hard error.
         #[arg(long, num_args = 1.., value_delimiter = ' ')]
         checks: Vec<String>,
+        /// Run only check rules whose name matches one of the given regular
+        /// expressions (unanchored, like grep; use ^...$ to match a full name).
+        /// Combines with --checks. Matched rules override `enabled = false`.
+        /// A pattern matching no check name is a hard error.
+        #[arg(long, num_args = 1.., value_delimiter = ' ')]
+        checks_re: Vec<String>,
         /// Show a unified diff between representative files of mismatching groups.
         /// With 2 groups this runs automatically; with 3+ groups it prompts interactively
         /// and offers to diff further pairs.

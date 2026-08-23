@@ -217,6 +217,157 @@ path = "README"
 }
 
 #[test]
+fn check_same_checks_re_selects_matching_rules() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    // All three checks diverge; only the rs-* ones should be reported.
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "y\n").unwrap();
+    fs::write(tmp.path().join("a/README"), "one\n").unwrap();
+    fs::write(tmp.path().join("b/README"), "two\n").unwrap();
+    fs::write(tmp.path().join("a/LICENSE"), "MIT\n").unwrap();
+    fs::write(tmp.path().join("b/LICENSE"), "BSD\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "rs-gitignore"
+select = "*"
+path = ".gitignore"
+
+[[check]]
+name = "rs-readme"
+select = "*"
+path = "README"
+
+[[check]]
+name = "py-license"
+select = "*"
+path = "LICENSE"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--checks-re", "^rs-"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("[rs-gitignore]"), "stdout: {stdout}");
+    assert!(stdout.contains("[rs-readme]"), "stdout: {stdout}");
+    assert!(
+        !stdout.contains("[py-license]"),
+        "py-license should be skipped: {stdout}"
+    );
+}
+
+#[test]
+fn check_same_checks_re_combines_with_checks() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "y\n").unwrap();
+    fs::write(tmp.path().join("a/README"), "one\n").unwrap();
+    fs::write(tmp.path().join("b/README"), "two\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+
+[[check]]
+name = "readme"
+select = "*"
+path = "README"
+"#,
+    );
+
+    // --checks names one rule, --checks-re matches the other (and also
+    // re-matches the first, which must not be run twice).
+    let output = run(
+        tmp.path(),
+        &cfg,
+        &[
+            "check-same",
+            "--checks",
+            "readme",
+            "--checks-re",
+            "^gi$|readme",
+        ],
+    );
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert_eq!(
+        stdout.matches("[readme]").count(),
+        1,
+        "readme must run exactly once: {stdout}"
+    );
+}
+
+#[test]
+fn check_same_checks_re_overrides_enabled_false() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "y\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+enabled = false
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--checks-re", "gi"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+}
+
+#[test]
+fn check_same_checks_re_no_match_fails() {
+    let tmp = setup_git_repos(&["a"]);
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--checks-re", "^bogus"]);
+    assert!(!output.status.success());
+    let stderr = stderr_str(&output);
+    assert!(
+        stderr.contains("^bogus") && stderr.contains("matches no check name"),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+fn check_same_checks_re_invalid_regex_fails() {
+    let tmp = setup_git_repos(&["a"]);
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--checks-re", "("]);
+    assert!(!output.status.success());
+    let stderr = stderr_str(&output);
+    assert!(stderr.contains("invalid check regex"), "stderr: {stderr}");
+}
+
+#[test]
 fn check_same_unknown_rule_fails() {
     let tmp = setup_git_repos(&["a"]);
     fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
