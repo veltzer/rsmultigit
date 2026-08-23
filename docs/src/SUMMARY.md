@@ -9,3 +9,4 @@
 - [Architecture](architecture.md)
 - [CLI Parser Notes](cli-parser-notes.md)
 - [Testing](testing.md)
+- [Release Info](release-info.md)

@@ -7,13 +7,13 @@ description = "Manage multiple git repositories at once"
 license = "MIT"
 repository = "https://github.com/veltzer/rsmultigit"
 
-[features]
-vendored-openssl = ["git2/vendored-openssl"]
-
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4.5"
-git2 = "0.20"
+# vendored-openssl unconditionally: the canonical ci.yml builds every target
+# with a plain `cargo build --release`, and the aarch64 cross build cannot
+# link the runner's x86_64 libssl.
+git2 = { version = "0.20", features = ["vendored-openssl"] }
 glob = "0.3"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
