@@ -56,6 +56,12 @@ select = "*"
 path = ".gitignore"
 
 [[check]]
+name = "editorconfig"
+select = "*"
+path = ".editorconfig"
+must_have = true
+
+[[check]]
 name = "shellcheckrc"
 select = "*"
 path = ".shellcheckrc"
