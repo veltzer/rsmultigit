@@ -17,6 +17,7 @@ These flags can be used with any subcommand and must appear before the subcomman
 | `--no-glob` | Disable glob — check immediate subdirectories only |
 | `--folders <LIST>` | Comma-separated list of folders to operate on |
 | `--no-stop` | Do not stop on errors — continue to next project |
+| `--short-circuit` | Stop at the first negative result. Off by default; honoured by `check-same` |
 | `--no-print-no-projects` | Suppress the "no projects found" message |
 
 Example:
@@ -24,6 +25,7 @@ Example:
 ```bash
 rsmultigit --stats --terse count-dirty       # Just print "3/50"
 rsmultigit --no-stop pull                    # Pull all, skip failures
+rsmultigit --short-circuit check-same        # Stop at the first broken rule
 rsmultigit --glob "python-*" status          # Only match python-* dirs
 rsmultigit --folders a,b,c list-repos     # Operate on specific folders
 ```

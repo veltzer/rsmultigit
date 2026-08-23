@@ -51,6 +51,12 @@ pub struct Cli {
     #[arg(long, global = true, default_value_t = false)]
     pub no_stop: bool,
 
+    /// Stop at the first negative result instead of processing everything.
+    /// Off by default. Currently honoured by `check-same`, which exits as soon
+    /// as one rule is broken instead of evaluating the remaining rules.
+    #[arg(long, global = true, default_value_t = false)]
+    pub short_circuit: bool,
+
     /// Number of parallel workers (default: 1; use 0 for num_cpus)
     #[arg(short = 'j', long, global = true, default_value_t = 1)]
     pub jobs: usize,
@@ -616,6 +622,7 @@ mod tests {
             "--verbose",
             "--print-not",
             "--no-stop",
+            "--short-circuit",
             "count",
             "dirty",
         ]);
@@ -624,6 +631,13 @@ mod tests {
         assert!(cli.verbose);
         assert!(cli.print_not);
         assert!(cli.no_stop);
+        assert!(cli.short_circuit);
+    }
+
+    #[test]
+    fn short_circuit_defaults_to_off() {
+        let cli = parse(&["rsmultigit", "check-same"]);
+        assert!(!cli.short_circuit);
     }
 
     #[test]

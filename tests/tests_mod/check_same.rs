@@ -1529,3 +1529,190 @@ must_have = true
     let output = run_with_stdin(tmp.path(), &cfg, &["check-same", "--fix-missing"], b"q\n");
     assert!(output.status.success());
 }
+
+#[test]
+fn check_same_short_circuit_stops_after_first_failing_rule() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    // Both rules fail; --short-circuit must report only the first one.
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "y\n").unwrap();
+    fs::write(tmp.path().join("a/README"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/README"), "y\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+
+[[check]]
+name = "readme"
+select = "*"
+path = "README"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--short-circuit"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(
+        !stdout.contains("[readme]"),
+        "short-circuit must not evaluate later rules: {stdout}"
+    );
+}
+
+#[test]
+fn check_same_short_circuit_skips_later_passing_rules_too() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    // gi fails, readme would pass — short-circuit must not report readme at all.
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "y\n").unwrap();
+    fs::write(tmp.path().join("a/README"), "same\n").unwrap();
+    fs::write(tmp.path().join("b/README"), "same\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+
+[[check]]
+name = "readme"
+select = "*"
+path = "README"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--short-circuit"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(!stdout.contains("[readme]"), "stdout: {stdout}");
+}
+
+#[test]
+fn check_same_short_circuit_keeps_earlier_passing_rules() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    // readme passes and comes first: it is still reported, then gi stops the run.
+    fs::write(tmp.path().join("a/README"), "same\n").unwrap();
+    fs::write(tmp.path().join("b/README"), "same\n").unwrap();
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "y\n").unwrap();
+    fs::write(tmp.path().join("a/AUTHORS"), "p\n").unwrap();
+    fs::write(tmp.path().join("b/AUTHORS"), "q\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "readme"
+select = "*"
+path = "README"
+
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+
+[[check]]
+name = "authors"
+select = "*"
+path = "AUTHORS"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--short-circuit"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("[readme]"), "stdout: {stdout}");
+    assert!(stdout.contains("ok (2 files)"), "stdout: {stdout}");
+    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(!stdout.contains("[authors]"), "stdout: {stdout}");
+}
+
+#[test]
+fn check_same_short_circuit_terse_prints_one_name() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "y\n").unwrap();
+    fs::write(tmp.path().join("a/README"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/README"), "y\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+
+[[check]]
+name = "readme"
+select = "*"
+path = "README"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--terse", "--short-circuit"]);
+    assert!(!output.status.success());
+    assert_eq!(stdout_str(&output), "gi");
+}
+
+#[test]
+fn check_same_short_circuit_stops_on_empty_rule_failure() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    // The first rule matches no files at all (a failure by default); the second
+    // one would pass. --short-circuit must stop before reaching it.
+    fs::write(tmp.path().join("a/README"), "same\n").unwrap();
+    fs::write(tmp.path().join("b/README"), "same\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "nothing"
+select = "*"
+path = "does-not-exist"
+
+[[check]]
+name = "readme"
+select = "*"
+path = "README"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--short-circuit"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("no files matched"), "stdout: {stdout}");
+    assert!(!stdout.contains("[readme]"), "stdout: {stdout}");
+}
+
+#[test]
+fn check_same_without_short_circuit_reports_every_failure() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "y\n").unwrap();
+    fs::write(tmp.path().join("a/README"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/README"), "y\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+
+[[check]]
+name = "readme"
+select = "*"
+path = "README"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(stdout.contains("[readme]"), "stdout: {stdout}");
+}

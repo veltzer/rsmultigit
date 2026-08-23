@@ -32,7 +32,27 @@ RSMultiGit does not use a configuration file. All behavior is controlled via CLI
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--no-stop` | `false` | Continue on errors instead of stopping |
+| `--short-circuit` | `false` | Stop at the first negative result instead of evaluating everything |
 | `--no-print-no-projects` | `false` | Suppress "no projects found" message |
+
+## Short-circuiting
+
+`--short-circuit` is a global flag, off by default. It tells a command to stop
+at the first negative result rather than working through everything.
+
+Today only `check-same` acts on it: with the flag set, evaluation stops as soon
+as one rule is found broken — the remaining rules are neither evaluated nor
+reported. Rules that already passed before the failure are still reported as
+usual, and the exit code is unchanged (non-zero when a rule is broken). Without
+the flag, every rule is evaluated and every failure reported.
+
+```bash
+rsmultigit check-same                        # report every broken rule
+rsmultigit --short-circuit check-same        # report the first broken rule and stop
+rsmultigit --terse --short-circuit check-same # print just that rule's name
+```
+
+Other commands accept the flag (it is global) but currently ignore it.
 
 ## Build command skipping
 

@@ -11,6 +11,8 @@ pub struct AppConfig {
 
     // Execution
     pub no_stop: bool,
+    /// Stop at the first negative result rather than evaluating everything.
+    pub short_circuit: bool,
     pub jobs: usize,
 }
 
@@ -23,6 +25,7 @@ impl Default for AppConfig {
             verbose: false,
             print_not: false,
             no_stop: false,
+            short_circuit: false,
             jobs: 1,
         }
     }
@@ -37,6 +40,7 @@ impl From<&Cli> for AppConfig {
             verbose: cli.verbose,
             print_not: cli.print_not,
             no_stop: cli.no_stop,
+            short_circuit: cli.short_circuit,
             jobs: cli.jobs,
         }
     }

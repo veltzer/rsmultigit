@@ -359,6 +359,9 @@ struct CheckSameOpts<'a> {
 /// When `copy` is set, interactive prompts are served. In that mode the overall
 /// exit code is always 0 regardless of mismatches — `--copy` is a tool to fix
 /// drift, not a pass/fail check.
+///
+/// With the global `--short-circuit` flag, evaluation stops as soon as the first
+/// rule is found broken: the remaining rules are neither evaluated nor reported.
 fn run_check_same(
     app: &AppConfig,
     file_config: &commands::check::CheckConfig,
@@ -442,6 +445,9 @@ fn run_check_same(
             any_mismatch = true;
             if app.terse {
                 println!("{}", result.name);
+                if app.short_circuit {
+                    break;
+                }
                 continue;
             }
             if !app.no_header {
@@ -453,6 +459,9 @@ fn run_check_same(
                 format!(" ({} skipped)", result.skipped.len())
             };
             println!("no files matched{suffix}");
+            if app.short_circuit {
+                break;
+            }
             continue;
         }
         if result.is_consistent() {
@@ -472,6 +481,9 @@ fn run_check_same(
 
         if app.terse {
             println!("{}", result.name);
+            if app.short_circuit {
+                break;
+            }
             continue;
         }
 
@@ -540,6 +552,10 @@ fn run_check_same(
                     FlowControl::Continue => {}
                 }
             }
+        }
+
+        if app.short_circuit {
+            break;
         }
     }
 
