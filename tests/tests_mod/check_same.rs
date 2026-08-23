@@ -18,7 +18,7 @@ fn run_with_stdin(tmp: &Path, config: &Path, args: &[&str], stdin_bytes: &[u8]) 
 }
 
 #[test]
-fn check_same_all_identical_is_silent() {
+fn check_same_all_identical_reports_ok() {
     let tmp = setup_git_repos(&["a", "b", "c"]);
     for repo in ["a", "b", "c"] {
         fs::write(tmp.path().join(repo).join(".gitignore"), "target\n").unwrap();
@@ -35,7 +35,92 @@ path = ".gitignore"
 
     let output = run(tmp.path(), &cfg, &["check-same"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
+    assert_eq!(stdout_str(&output), "[gi]\nok (3 files)");
+}
+
+#[test]
+fn check_same_only_failed_silences_passing_checks() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    for repo in ["a", "b"] {
+        fs::write(tmp.path().join(repo).join(".gitignore"), "target\n").unwrap();
+    }
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--only-failed"]);
+    assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     assert_eq!(stdout_str(&output), "");
+}
+
+#[test]
+fn check_same_only_failed_still_reports_failures() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    // gi diverges, readme passes; --only-failed must print gi and nothing else.
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "y\n").unwrap();
+    fs::write(tmp.path().join("a/README"), "same\n").unwrap();
+    fs::write(tmp.path().join("b/README"), "same\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+
+[[check]]
+name = "readme"
+select = "*"
+path = "README"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--only-failed"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(
+        !stdout.contains("[readme]"),
+        "passing readme should be silent: {stdout}"
+    );
+}
+
+#[test]
+fn check_same_mixed_results_report_ok_and_failure() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    fs::write(tmp.path().join("a/.gitignore"), "x\n").unwrap();
+    fs::write(tmp.path().join("b/.gitignore"), "y\n").unwrap();
+    fs::write(tmp.path().join("a/README"), "same\n").unwrap();
+    fs::write(tmp.path().join("b/README"), "same\n").unwrap();
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+
+[[check]]
+name = "readme"
+select = "*"
+path = "README"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(stdout.contains("2 files, 2 groups"), "stdout: {stdout}");
+    assert!(stdout.contains("[readme]"), "stdout: {stdout}");
+    assert!(stdout.contains("ok (2 files)"), "stdout: {stdout}");
 }
 
 #[test]
@@ -132,7 +217,11 @@ path = "README"
 
     let output = run(tmp.path(), &cfg, &["check-same", "--checks", "readme"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
-    assert_eq!(stdout_str(&output), "");
+    // Only the requested (passing) rule appears; gi's divergence must not.
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("[readme]"), "stdout: {stdout}");
+    assert!(stdout.contains("ok (2 files)"), "stdout: {stdout}");
+    assert!(!stdout.contains("[gi]"), "gi should not have run: {stdout}");
 }
 
 #[test]

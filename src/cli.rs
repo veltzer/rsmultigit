@@ -99,6 +99,11 @@ pub enum Commands {
         /// A pattern matching no check name is a hard error.
         #[arg(long, num_args = 1.., value_delimiter = ' ')]
         checks_re: Vec<String>,
+        /// Print only failing checks, suppressing the `ok` lines that passing
+        /// checks print by default. (--terse implies this: its output is a
+        /// machine-readable list of failing rule names.)
+        #[arg(long, default_value_t = false)]
+        only_failed: bool,
         /// Show a unified diff between representative files of mismatching groups.
         /// With 2 groups this runs automatically; with 3+ groups it prompts interactively
         /// and offers to diff further pairs.

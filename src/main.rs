@@ -54,6 +54,7 @@ fn main() -> Result<()> {
     if let Commands::CheckSame {
         checks,
         checks_re,
+        only_failed,
         diff,
         copy,
         fix_missing,
@@ -66,6 +67,7 @@ fn main() -> Result<()> {
             &CheckSameOpts {
                 requested: checks,
                 requested_re: checks_re,
+                only_failed: *only_failed,
                 show_diff: *diff,
                 do_copy: *copy,
                 do_fix_missing: *fix_missing,
@@ -330,6 +332,7 @@ fn main() -> Result<()> {
 struct CheckSameOpts<'a> {
     requested: &'a [String],
     requested_re: &'a [String],
+    only_failed: bool,
     show_diff: bool,
     do_copy: bool,
     do_fix_missing: bool,
@@ -343,6 +346,9 @@ struct CheckSameOpts<'a> {
 /// by `--checks` (in request order) plus, in config order, every rule whose
 /// name a regex matches (unanchored search), even if they are `enabled = false`.
 /// Any unknown name, invalid regex, or regex matching no rule is a hard error.
+///
+/// Passing rules print an `ok (N files)` line by default; `only_failed` (and
+/// `--terse`) restrict the output to failing rules.
 ///
 /// When `copy` is set, interactive prompts are served. In that mode the overall
 /// exit code is always 0 regardless of mismatches — `--copy` is a tool to fix
@@ -359,6 +365,7 @@ fn run_check_same(
     let &CheckSameOpts {
         requested,
         requested_re,
+        only_failed,
         show_diff,
         do_copy,
         do_fix_missing,
@@ -422,8 +429,11 @@ fn run_check_same(
         }
         let result = check::evaluate_rule(rule, projects)?;
         if result.is_consistent() {
-            if app.verbose {
-                if !app.terse && !app.no_header {
+            // Passing rules are reported by default; --only-failed suppresses
+            // them, as does --terse (whose output is a machine-readable list
+            // of failing rule names).
+            if !only_failed && !app.terse {
+                if !app.no_header {
                     println!("[{}]", result.name);
                 }
                 println!("ok ({} files)", result.total_files);
