@@ -9,7 +9,7 @@ A Rust CLI tool for managing multiple Git repositories at once. Reads the list o
 rsmultigit requires a config file at `~/.config/rsmultigit/config.toml`. Tests override this via the `RSMULTIGIT_CONFIG` env var. Run `rsmultigit config-example` to print a worked example; its source is `assets/config-example.toml` (embedded at compile time via `include_str!`).
 
 - `repos = [...]` — list of shell-expanded globs. Matches that aren't git repos are filtered out.
-- `[[check]]` blocks — consumed only by `check-same`. Fields: `name`, `select`, `exclude?`, `marker?`, `path`, `enabled?` (default true).
+- `[[check]]` blocks — consumed only by `check-same`. Fields: `name`, `select`, `exclude?`, `marker?`, `path`, `enabled?` (default true), `must_have?` (default false; when true, in-scope repos missing `path` are violations).
 
 ## Build & Test
 
@@ -62,8 +62,15 @@ All commands use one of three patterns in `runner.rs`:
 
 ## CI/CD
 
-- **Release**: Triggered by `v*` tags. Builds cross-platform binaries (Linux x64/ARM64, macOS x64/ARM64, Windows x64) with `--features vendored-openssl`.
-- **Docs**: mdBook deployed to GitHub Pages on push to master.
+This repo uses the canonical `.github/workflows/ci.yml` shared byte-identically
+by all rs* repos (canonical copy in rsconstruct — edit it there, not here; the
+`rs-ci-workflow` rule in `check-same` guards against drift).
+
+- **Every push**: build, clippy (`-D warnings`), tests.
+- **Release**: Triggered by `v*` tags. Builds binaries for Linux x64/ARM64 and
+  macOS x64/ARM64 (openssl is vendored unconditionally via the `git2` feature
+  in Cargo.toml, so no `--features` flag is needed).
+- **Docs**: mdBook deployed to GitHub Pages on `v*` tags and manual dispatch.
 
 ## Dependencies
 

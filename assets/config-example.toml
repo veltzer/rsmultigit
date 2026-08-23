@@ -208,6 +208,14 @@ select = "gcp-*"
 marker = ".gcp.conf"
 path = "app.yaml"
 
+# ── rs* Rust repos: canonical CI workflow, synced from rsconstruct ────────────
+
+[[check]]
+name = "rs-ci-workflow"
+select = "rs*"
+path = ".github/workflows/ci.yml"
+must_have = true
+
 # ── disabled rules (were commented out in mg_check_same_files.sh) ─────────────
 # Re-enable by flipping `enabled = true`, or run ad hoc via:
 #   rsmultigit check-same --checks <name>
