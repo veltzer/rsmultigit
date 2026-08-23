@@ -61,6 +61,13 @@ impl RuleResult {
     pub fn is_consistent(&self) -> bool {
         self.groups.len() <= 1 && self.must_have_violations.is_empty()
     }
+
+    /// True when the rule hashed no files and has no must_have violations to
+    /// report — i.e. it checked nothing at all. Usually a stale `select`/`path`,
+    /// so check-same treats this as a failure unless --allow-empty is passed.
+    pub fn matched_nothing(&self) -> bool {
+        self.total_files == 0 && self.must_have_violations.is_empty()
+    }
 }
 
 /// Environment variable used to override the config path (tests set this).
@@ -515,6 +522,57 @@ mod tests {
         let result = evaluate_rule(&rule, &repos).unwrap();
         assert!(result.is_consistent());
         assert!(result.must_have_violations.is_empty());
+    }
+
+    #[test]
+    fn rule_matching_no_files_reports_matched_nothing() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("a")).unwrap();
+        fs::create_dir_all(tmp.path().join("b")).unwrap();
+        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        let rule = Rule {
+            name: "gi".into(),
+            select: "*".into(),
+            exclude: None,
+            marker: None,
+            path: ".gitignore".into(),
+            enabled: true,
+            must_have: false,
+        };
+        let result = evaluate_rule(&rule, &repos).unwrap();
+        assert!(result.matched_nothing());
+        assert_eq!(result.total_files, 0);
+        // A must_have rule with the same emptiness has violations to report,
+        // so it is not "matched nothing" — it's a plain failure.
+        let must_have_rule = Rule {
+            must_have: true,
+            name: "gi".into(),
+            select: "*".into(),
+            exclude: None,
+            marker: None,
+            path: ".gitignore".into(),
+            enabled: true,
+        };
+        let result = evaluate_rule(&must_have_rule, &repos).unwrap();
+        assert!(!result.matched_nothing());
+    }
+
+    #[test]
+    fn rule_with_files_is_not_matched_nothing() {
+        let tmp = TempDir::new().unwrap();
+        write(&tmp.path().join("a/.gitignore"), "x\n");
+        let repos = vec![tmp.path().join("a")];
+        let rule = Rule {
+            name: "gi".into(),
+            select: "*".into(),
+            exclude: None,
+            marker: None,
+            path: ".gitignore".into(),
+            enabled: true,
+            must_have: false,
+        };
+        let result = evaluate_rule(&rule, &repos).unwrap();
+        assert!(!result.matched_nothing());
     }
 
     #[test]

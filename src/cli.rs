@@ -115,6 +115,11 @@ pub enum Commands {
         /// Always exits 0 on success, regardless of whether mismatches remain.
         #[arg(long, default_value_t = false)]
         copy: bool,
+        /// Treat a rule that matches no files at all as passing.
+        /// By default such a rule fails: catching 0 files almost always means
+        /// a stale `select`/`path`, not a healthy check.
+        #[arg(long, default_value_t = false)]
+        allow_empty: bool,
         /// Interactively create missing files in repos that violate a rule's
         /// `must_have = true` requirement. Prompts for which content group to
         /// seed from, then writes the file (creating parent directories as needed).

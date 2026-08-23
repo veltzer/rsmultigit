@@ -795,6 +795,123 @@ path = ".gitignore"
     );
 }
 
+// ── empty rules (0 files matched) ───────────────────────────────────────────
+
+#[test]
+fn check_same_rule_matching_no_files_fails_by_default() {
+    // Nobody has the file and must_have is false — the rule checks nothing,
+    // which is an error by default (usually a stale select/path).
+    let tmp = setup_git_repos(&["a", "b"]);
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same"]);
+    assert!(!output.status.success(), "empty rule should exit 1");
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("no files matched (2 skipped)"),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
+fn check_same_rule_selecting_no_repos_fails_by_default() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "zzz*"
+path = ".gitignore"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same"]);
+    assert!(!output.status.success(), "empty rule should exit 1");
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("no files matched"), "stdout: {stdout}");
+    assert!(
+        !stdout.contains("skipped"),
+        "no repos were in scope, so nothing was skipped: {stdout}"
+    );
+}
+
+#[test]
+fn check_same_allow_empty_restores_ok_for_empty_rule() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--allow-empty"]);
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        stdout_str(&output),
+        stderr_str(&output)
+    );
+    assert_eq!(stdout_str(&output), "[gi]\nok (0 files)");
+}
+
+#[test]
+fn check_same_empty_rule_terse_prints_rule_name() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same", "--terse"]);
+    assert!(!output.status.success());
+    assert_eq!(stdout_str(&output), "gi");
+}
+
+#[test]
+fn check_same_empty_must_have_rule_reports_missing_not_empty() {
+    // With must_have = true the missing files are already violations —
+    // report those, not "no files matched".
+    let tmp = setup_git_repos(&["a", "b"]);
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+must_have = true
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same"]);
+    assert!(!output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("missing in:"), "stdout: {stdout}");
+    assert!(
+        !stdout.contains("no files matched"),
+        "must_have violations take precedence: {stdout}"
+    );
+}
+
 // ── config-example ───────────────────────────────────────────────────────────
 
 #[test]

@@ -57,6 +57,7 @@ fn main() -> Result<()> {
         only_failed,
         diff,
         copy,
+        allow_empty,
         fix_missing,
     } = &cli.command
     {
@@ -70,6 +71,7 @@ fn main() -> Result<()> {
                 only_failed: *only_failed,
                 show_diff: *diff,
                 do_copy: *copy,
+                allow_empty: *allow_empty,
                 do_fix_missing: *fix_missing,
             },
         )?;
@@ -335,6 +337,7 @@ struct CheckSameOpts<'a> {
     only_failed: bool,
     show_diff: bool,
     do_copy: bool,
+    allow_empty: bool,
     do_fix_missing: bool,
 }
 
@@ -349,6 +352,9 @@ struct CheckSameOpts<'a> {
 ///
 /// Passing rules print an `ok (N files)` line by default; `only_failed` (and
 /// `--terse`) restrict the output to failing rules.
+///
+/// A rule that matches no files at all fails ("no files matched") unless
+/// `allow_empty` is set, in which case it passes as `ok (0 files)`.
 ///
 /// When `copy` is set, interactive prompts are served. In that mode the overall
 /// exit code is always 0 regardless of mismatches — `--copy` is a tool to fix
@@ -368,6 +374,7 @@ fn run_check_same(
         only_failed,
         show_diff,
         do_copy,
+        allow_empty,
         do_fix_missing,
     } = opts;
 
@@ -428,6 +435,26 @@ fn run_check_same(
             break;
         }
         let result = check::evaluate_rule(rule, projects)?;
+        if result.matched_nothing() && !allow_empty {
+            // A rule that checked nothing is almost always a stale select/path,
+            // so it fails by default; --allow-empty restores the old "ok (0
+            // files)" behavior.
+            any_mismatch = true;
+            if app.terse {
+                println!("{}", result.name);
+                continue;
+            }
+            if !app.no_header {
+                println!("[{}]", result.name);
+            }
+            let suffix = if result.skipped.is_empty() {
+                String::new()
+            } else {
+                format!(" ({} skipped)", result.skipped.len())
+            };
+            println!("no files matched{suffix}");
+            continue;
+        }
         if result.is_consistent() {
             // Passing rules are reported by default; --only-failed suppresses
             // them, as does --terse (whose output is a machine-readable list

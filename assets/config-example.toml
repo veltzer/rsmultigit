@@ -29,6 +29,10 @@
 # A rule passes when every surviving repo's `path` hashes the same, *and*
 # (when must_have = true) every in-scope repo contains the file.
 # Repos that don't contain `path` are silently skipped when must_have = false.
+#
+# A rule that ends up matching no files at all fails ("no files matched") —
+# that usually means a stale select/path. Pass `check-same --allow-empty` to
+# let such rules pass as `ok (0 files)` instead.
 
 repos = [
     "~/git/*",
