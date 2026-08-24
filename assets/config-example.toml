@@ -102,12 +102,6 @@ select = "py*"
 marker = ".veltzer.tag"
 path = "templates/README.md.mako"
 
-[[check]]
-name = "py-build-workflow"
-select = "py*"
-marker = ".veltzer.tag"
-path = ".github/workflows/build.yml"
-
 # ── non-python repos (everything except `py*`) with the veltzer tag ───────────
 
 [[check]]
@@ -116,13 +110,6 @@ select = "*"
 exclude = "py*"
 marker = ".veltzer.tag"
 path = "templates/README.md.mako"
-
-[[check]]
-name = "non-py-build-workflow"
-select = "*"
-exclude = "py*"
-marker = ".veltzer.tag"
-path = ".github/workflows/build.yml"
 
 # ── repos with the veltzer tag (mix of py / non-py) ───────────────────────────
 
@@ -217,6 +204,22 @@ name = "gcp-app-yaml"
 select = "gcp-*"
 marker = ".gcp.conf"
 path = "app.yaml"
+
+# ── build.yml: byte-identical in every repo that has rsconstruct.toml ─────────
+
+# The generic rsconstruct pipeline. It is deliberately the *same file*
+# everywhere — the repo-specific parts live in rsconstruct.toml, not here — so
+# any divergence is drift, not configuration. Scoped by the rsconstruct.toml
+# marker rather than .veltzer.tag: 25 repos carry build.yml without that tag,
+# and the old py*/non-py* split let the two halves drift past each other
+# unnoticed. must_have stays false because two repos legitimately have no
+# build.yml: demos-os-linux runs the same pipeline from cicd.yml inside its own
+# CI container, and rsslide is a Rust repo covered by the shared ci.yml.
+[[check]]
+name = "build-workflow"
+select = "*"
+marker = "rsconstruct.toml"
+path = ".github/workflows/build.yml"
 
 # ── rs* Rust repos: canonical files, synced from rsconstruct ──────────────────
 
