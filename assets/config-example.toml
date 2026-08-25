@@ -169,6 +169,15 @@ path = ".github/workflows/build.yml"
 # by design. (personal.lua, project.lua and version.lua legitimately differ per
 # repo and are deliberately not checked.)
 [[check]]
+name = "config-personal-lua"
+select = "*"
+# veltzer.github.io carries a zero-byte config/personal.lua (and an empty
+# project.lua) but has no tera.templates at all, so it never renders anything
+# and the placeholder is excluded rather than filled with unused config.
+exclude = "veltzer.github.io"
+path = "config/personal.lua"
+
+[[check]]
 name = "config-github-lua"
 select = "*"
 path = "config/github.lua"
