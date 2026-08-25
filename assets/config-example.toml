@@ -76,114 +76,66 @@ name = "jshintignore"
 select = "*"
 path = ".jshintignore"
 
-# ── python-module specifics (repos prefixed `py` with the veltzer tag) ────────
-
+# rsconstruct.toml: the long-term goal is byte-identical in every repo
+# (canonical copy: ~/git/rsconstruct.canonical.toml). Currently the files
+# diverge by design (src_dirs pruned per repo, rsconstruct.local.toml merged
+# in and removed on 2026-08-24), so this rule reports many groups; it stays
+# as the tracker for the goal.
 [[check]]
-name = "py-makefile"
-select = "py*"
-marker = ".veltzer.tag"
-path = "Makefile"
-
-[[check]]
-name = "py-license-template"
-select = "py*"
-marker = ".veltzer.tag"
-path = "templates/LICENSE.mako"
-
-[[check]]
-name = "py-pyproject-template"
-select = "py*"
-marker = ".veltzer.tag"
-path = "templates/pyproject.toml.mako"
-
-[[check]]
-name = "py-readme-template"
-select = "py*"
-marker = ".veltzer.tag"
-path = "templates/README.md.mako"
-
-# ── non-python repos (everything except `py*`) with the veltzer tag ───────────
-
-[[check]]
-name = "non-py-readme-template"
+name = "rsconstruct-toml"
 select = "*"
-exclude = "py*"
-marker = ".veltzer.tag"
-path = "templates/README.md.mako"
-
-# ── repos with the veltzer tag (mix of py / non-py) ───────────────────────────
+path = "rsconstruct.toml"
+enabled = false
 
 [[check]]
-name = "build-workflow-template"
+name = "license"
 select = "*"
-marker = ".veltzer.tag"
-path = "templates/.github/workflows/build.yml.mako"
+path = "LICENSE"
+must_have = true
+
+[[check]]
+name = "readme-template"
+select = "*"
+path = "tera.templates/README.md.tera"
 
 [[check]]
 name = "requirements-thawed-template"
 select = "*"
-marker = ".veltzer.tag"
 path = "templates/requirements.thawed.txt.mako"
 
 [[check]]
 name = "github-funding"
 select = "*"
-marker = ".veltzer.tag"
 path = ".github/FUNDING.yml"
 
 [[check]]
 name = "sphinx-conf"
 select = "*"
-marker = ".veltzer.tag"
-path = "sphinx/conf.py"
+path = "tera.templates/sphinx/conf.py.tera"
 
 [[check]]
 name = "sphinx-index"
 select = "*"
-marker = ".veltzer.tag"
 path = "sphinx/index.rst"
-
-[[check]]
-name = "config-platform"
-select = "*"
-marker = ".veltzer.tag"
-path = "config/platform.py"
-
-[[check]]
-name = "config-personal"
-select = "*"
-marker = ".veltzer.tag"
-path = "config/personal.py"
-
-[[check]]
-name = "config-github"
-select = "*"
-marker = ".veltzer.tag"
-path = "config/github.py"
-
-[[check]]
-name = "config-shared"
-select = "*"
-marker = ".veltzer.tag"
-path = "config/shared.py"
 
 [[check]]
 name = "aspell-conf"
 select = "*"
-marker = ".veltzer.tag"
 path = ".aspell.conf"
 
+# Disabled: no repo has mdl configs any more (markdown linting moved to
+# rumdl via rsconstruct), so these rules match nothing.
 [[check]]
 name = "mdlrc"
 select = "*"
-marker = ".veltzer.tag"
 path = ".mdlrc"
+enabled = false
 
 [[check]]
 name = "mdl-style"
 select = "*"
-marker = ".veltzer.tag"
 path = ".mdl.style.rb"
+enabled = false
 
 # ── GCP repos ─────────────────────────────────────────────────────────────────
 
@@ -193,30 +145,18 @@ select = "gcp-*"
 marker = ".gcp.conf"
 path = ".gcloudignore"
 
-[[check]]
-name = "gcp-makefile"
-select = "gcp-*"
-marker = ".gcp.conf"
-path = "Makefile"
-
+# Disabled: app.yaml is per-app deployment config. gcp-machines' copy carries
+# env_variables (ADMIN_EMAILS/ACCESS_TOKEN) that its own src/main.py reads, so
+# the three files legitimately differ and byte-identity is the wrong invariant.
 [[check]]
 name = "gcp-app-yaml"
 select = "gcp-*"
 marker = ".gcp.conf"
 path = "app.yaml"
+enabled = false
 
-# ── build.yml: byte-identical in every repo that has rsconstruct.toml ─────────
-
-# The generic rsconstruct pipeline. It is deliberately the *same file*
-# everywhere — the repo-specific parts live in rsconstruct.toml, not here — so
-# any divergence is drift, not configuration. Scoped by the rsconstruct.toml
-# marker rather than .veltzer.tag: 25 repos carry build.yml without that tag,
-# and the old py*/non-py* split let the two halves drift past each other
-# unnoticed. must_have stays false because two repos legitimately have no
-# build.yml: demos-os-linux runs the same pipeline from cicd.yml inside its own
-# CI container, and rsslide is a Rust repo covered by the shared ci.yml.
 [[check]]
-name = "build-workflow"
+name = "workflow-build-yml"
 select = "*"
 marker = "rsconstruct.toml"
 path = ".github/workflows/build.yml"
@@ -224,7 +164,7 @@ path = ".github/workflows/build.yml"
 # ── rs* Rust repos: canonical files, synced from rsconstruct ──────────────────
 
 [[check]]
-name = "rs-ci-workflow"
+name = "rs-workflow-ci"
 select = "rs*"
 path = ".github/workflows/ci.yml"
 must_have = true
@@ -235,34 +175,8 @@ select = "rs*"
 path = "build.rs"
 must_have = true
 
-# ── disabled rules (were commented out in mg_check_same_files.sh) ─────────────
-# Re-enable by flipping `enabled = true`, or run ad hoc via:
-#   rsmultigit check-same --checks <name>
-
 [[check]]
-name = "py-deps-config"
-select = "py*"
-marker = ".veltzer.tag"
-path = "config/deps.py"
-enabled = false
-
-[[check]]
-name = "py-setup-template"
-select = "py*"
-marker = ".veltzer.tag"
-path = "templates/setup.py.mako"
-enabled = false
-
-[[check]]
-name = "py-readme-rst-template"
-select = "py*"
-marker = ".veltzer.tag"
-path = "templates/README.rst.mako"
-enabled = false
-
-[[check]]
-name = "py-idea-gitignore"
-select = "py*"
-marker = ".veltzer.tag"
-path = ".idea/.gitignore"
-enabled = false
+name = "rs-release-toml"
+select = "rs*"
+path = "release.toml"
+must_have = true
