@@ -161,7 +161,43 @@ select = "*"
 marker = "rsconstruct.toml"
 path = ".github/workflows/build.yml"
 
+# ── shared lua config for the tera renderer ──────────────────────────────────
+
+# config/*.lua are read by rsconstruct's tera template renderer. github.lua and
+# platform.lua carry no per-repo values -- the runner/python matrix and the
+# license/classifier block are the same everywhere -- so they are byte-identical
+# by design. (personal.lua, project.lua and version.lua legitimately differ per
+# repo and are deliberately not checked.)
+[[check]]
+name = "config-github-lua"
+select = "*"
+path = "config/github.lua"
+
+[[check]]
+name = "config-platform-lua"
+select = "*"
+path = "config/platform.lua"
+
+# yamllint config: one shared ruleset wherever YAML is linted.
+[[check]]
+name = "yamllint"
+select = "*"
+path = ".yamllint.yaml"
+
+# The test package initializer is boilerplate, identical in every repo that
+# has a tests/ package.
+[[check]]
+name = "tests-init"
+select = "*"
+path = "tests/__init__.py"
+
 # ── rs* Rust repos: canonical files, synced from rsconstruct ──────────────────
+
+[[check]]
+name = "rs-release-info"
+select = "rs*"
+path = "docs/src/release-info.md"
+must_have = true
 
 [[check]]
 name = "rs-workflow-ci"
