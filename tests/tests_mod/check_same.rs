@@ -820,6 +820,42 @@ path = ".gitignore"
         stdout.contains("no files matched (2 skipped)"),
         "stdout: {stdout}"
     );
+    // The inline report scrolls away in a long run, so the command must also
+    // end with a loud error on stderr naming the empty rule.
+    let stderr = stderr_str(&output);
+    assert!(
+        stderr.contains("matched no files") && stderr.contains("\"gi\""),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+fn check_same_trailing_error_lists_all_empty_rules() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    let cfg = write_config(
+        tmp.path(),
+        r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+
+[[check]]
+name = "mk"
+select = "*"
+path = "Makefile"
+"#,
+    );
+
+    let output = run(tmp.path(), &cfg, &["check-same"]);
+    assert!(!output.status.success());
+    let stderr = stderr_str(&output);
+    assert!(
+        stderr.contains("2 rules matched no files")
+            && stderr.contains("\"gi\"")
+            && stderr.contains("\"mk\""),
+        "stderr: {stderr}"
+    );
 }
 
 #[test]
@@ -866,6 +902,10 @@ path = ".gitignore"
         stderr_str(&output)
     );
     assert_eq!(stdout_str(&output), "[gi]\nok (0 files)");
+    assert!(
+        !stderr_str(&output).contains("matched no files"),
+        "--allow-empty must suppress the trailing error"
+    );
 }
 
 #[test]

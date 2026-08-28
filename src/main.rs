@@ -417,7 +417,10 @@ struct CheckSameOpts<'a> {
 /// `--terse`) restrict the output to failing rules.
 ///
 /// A rule that matches no files at all fails ("no files matched") unless
-/// `allow_empty` is set, in which case it passes as `ok (0 files)`.
+/// `allow_empty` is set, in which case it passes as `ok (0 files)`. Because
+/// that inline report is easy to miss in a long run, the whole command then
+/// ends with a hard error on stderr listing the empty rules — even under
+/// `--copy`/`--fix-missing`, which otherwise always exit 0.
 ///
 /// When `copy` is set, interactive prompts are served. In that mode the overall
 /// exit code is always 0 regardless of mismatches — `--copy` is a tool to fix
@@ -494,6 +497,7 @@ fn run_check_same(
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut any_mismatch = false;
+    let mut empty_rules: Vec<String> = Vec::new();
     let mut quit_requested = false;
 
     for rule in rules {
@@ -506,6 +510,7 @@ fn run_check_same(
             // so it fails by default; --allow-empty restores the old "ok (0
             // files)" behavior.
             any_mismatch = true;
+            empty_rules.push(result.name.clone());
             if app.terse {
                 println!("{}", result.name);
                 if app.short_circuit {
@@ -620,6 +625,27 @@ fn run_check_same(
         if app.short_circuit {
             break;
         }
+    }
+
+    // The inline "no files matched" lines scroll away in a long run, so finish
+    // with a hard error on stderr — the last thing on screen — naming every
+    // empty rule. This takes precedence over --copy/--fix-missing's exit 0:
+    // an empty rule is a config bug, not drift those modes could fix.
+    if !empty_rules.is_empty() {
+        let joined = empty_rules
+            .iter()
+            .map(|name| format!("{name:?}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let noun = if empty_rules.len() == 1 {
+            "rule"
+        } else {
+            "rules"
+        };
+        anyhow::bail!(
+            "check-same: {} {noun} matched no files: {joined} (stale select/path? pass --allow-empty to accept)",
+            empty_rules.len(),
+        );
     }
 
     if do_copy || do_fix_missing {
