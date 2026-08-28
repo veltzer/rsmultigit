@@ -266,6 +266,11 @@ pub enum Commands {
         /// Only meaningful with `lock`; combining it with `sync` is an error.
         #[arg(long, default_value_t = false)]
         upgrade: bool,
+        /// Assert the lockfile is up to date without writing it
+        /// (`uv lock --check`; a stale lockfile is an error).
+        /// Only meaningful with `lock`; combining it with `sync` is an error.
+        #[arg(long, default_value_t = false, conflicts_with = "upgrade")]
+        check: bool,
     },
     /// Print version information
     Version,
@@ -636,6 +641,8 @@ mod tests {
         }
         let result = Cli::try_parse_from(["rsmultigit", "uv", "lock", "--upgrade"]);
         assert!(result.is_ok(), "uv lock --upgrade should parse");
+        let result = Cli::try_parse_from(["rsmultigit", "uv", "lock", "--check"]);
+        assert!(result.is_ok(), "uv lock --check should parse");
         let result = Cli::try_parse_from(["rsmultigit", "uv"]);
         assert!(result.is_err(), "uv without a what should not parse");
 
@@ -751,6 +758,38 @@ mod tests {
     fn default_jobs_is_one() {
         let cli = parse(&["rsmultigit", "list-repos"]);
         assert_eq!(cli.jobs, 1);
+    }
+
+    #[test]
+    fn parse_uv_lock_check() {
+        let cli = parse(&["rsmultigit", "uv", "lock", "--check"]);
+        match &cli.command {
+            Commands::Uv {
+                what,
+                upgrade,
+                check,
+            } => {
+                assert_eq!(*what, UvWhat::Lock);
+                assert!(!*upgrade);
+                assert!(*check);
+            }
+            _ => panic!("expected Uv"),
+        }
+    }
+
+    #[test]
+    fn parse_uv_lock_check_defaults_to_off() {
+        let cli = parse(&["rsmultigit", "uv", "lock"]);
+        match &cli.command {
+            Commands::Uv { check, .. } => assert!(!*check),
+            _ => panic!("expected Uv"),
+        }
+    }
+
+    #[test]
+    fn parse_uv_lock_check_conflicts_with_upgrade() {
+        let result = Cli::try_parse_from(["rsmultigit", "uv", "lock", "--check", "--upgrade"]);
+        assert!(result.is_err(), "--check and --upgrade should conflict");
     }
 
     #[test]

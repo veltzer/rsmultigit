@@ -16,12 +16,15 @@ pub fn sync(project: &Path) -> Result<bool> {
 }
 
 /// Re-resolve the lockfile from pyproject.toml: `uv lock`, optionally with
-/// `--upgrade` to allow moving already-locked versions forward.
-pub fn lock(project: &Path, upgrade: bool) -> Result<bool> {
-    let args: &[&str] = if upgrade {
-        &["lock", "--upgrade"]
-    } else {
-        &["lock"]
+/// `--upgrade` to allow moving already-locked versions forward, or with
+/// `--check` to only assert the lockfile is up to date (stale lockfile =
+/// non-zero exit = error). The two flags are mutually exclusive (enforced
+/// by clap).
+pub fn lock(project: &Path, upgrade: bool, check: bool) -> Result<bool> {
+    let args: &[&str] = match (upgrade, check) {
+        (true, _) => &["lock", "--upgrade"],
+        (_, true) => &["lock", "--check"],
+        _ => &["lock"],
     };
     check_call(project, "uv", args)?;
     Ok(true)

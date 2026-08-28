@@ -349,10 +349,18 @@ fn main() -> Result<()> {
             runner::do_for_all_projects_with_check(&config, &projects, check_fn, build_fn)?;
         }
 
-        Commands::Uv { what, upgrade } => {
+        Commands::Uv {
+            what,
+            upgrade,
+            check,
+        } => {
             let upgrade = *upgrade;
+            let check = *check;
             if upgrade && *what != UvWhat::Lock {
                 anyhow::bail!("--upgrade only applies to `uv lock`");
+            }
+            if check && *what != UvWhat::Lock {
+                anyhow::bail!("--check only applies to `uv lock`");
             }
             match what {
                 UvWhat::Lock => {
@@ -361,7 +369,7 @@ fn main() -> Result<()> {
                         &projects,
                         commands::uv::check_pyproject,
                         move |project: &Path| -> anyhow::Result<bool> {
-                            commands::uv::lock(project, upgrade)
+                            commands::uv::lock(project, upgrade, check)
                         },
                     )?;
                 }
