@@ -11,7 +11,7 @@ use clap::Parser;
 
 use cli::{
     BranchWhat, BuildWhat, CleanWhat, Cli, Commands, CountWhat, ResetWhat, RustWhat, StashWhat,
-    TagWhat,
+    TagWhat, UvWhat,
 };
 use config::AppConfig;
 
@@ -334,6 +334,33 @@ fn main() -> Result<()> {
                 ),
             };
             runner::do_for_all_projects_with_check(&config, &projects, check_fn, build_fn)?;
+        }
+
+        Commands::Uv { what, upgrade } => {
+            let upgrade = *upgrade;
+            if upgrade && *what != UvWhat::Lock {
+                anyhow::bail!("--upgrade only applies to `uv lock`");
+            }
+            match what {
+                UvWhat::Lock => {
+                    runner::do_for_all_projects_with_check(
+                        &config,
+                        &projects,
+                        commands::uv::check_pyproject,
+                        move |project: &Path| -> anyhow::Result<bool> {
+                            commands::uv::lock(project, upgrade)
+                        },
+                    )?;
+                }
+                UvWhat::Sync => {
+                    runner::do_for_all_projects_with_check(
+                        &config,
+                        &projects,
+                        commands::uv::check_pyproject,
+                        commands::uv::sync,
+                    )?;
+                }
+            }
         }
 
         Commands::CheckSame { .. } => unreachable!("handled above"),

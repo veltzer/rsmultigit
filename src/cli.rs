@@ -248,8 +248,27 @@ pub enum Commands {
         #[arg(value_enum)]
         what: TagWhat,
     },
+    /// Run uv operations on projects that have a pyproject.toml file
+    Uv {
+        /// What uv operation to perform
+        #[arg(value_enum)]
+        what: UvWhat,
+        /// Allow upgrading locked versions (`uv lock --upgrade`).
+        /// Only meaningful with `lock`; combining it with `sync` is an error.
+        #[arg(long, default_value_t = false)]
+        upgrade: bool,
+    },
     /// Print version information
     Version,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum UvWhat {
+    /// Re-resolve the lockfile from pyproject.toml (`uv lock`; without
+    /// --upgrade, already-locked versions are kept)
+    Lock,
+    /// Sync the project environment from the lockfile (`uv sync`)
+    Sync,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -591,6 +610,17 @@ mod tests {
             let result = Cli::try_parse_from(["rsmultigit", "rust", what]);
             assert!(result.is_ok(), "rust {what} should parse");
         }
+
+        // uv requires a what argument; --upgrade parses with lock
+        let uv_whats = ["lock", "sync"];
+        for what in uv_whats {
+            let result = Cli::try_parse_from(["rsmultigit", "uv", what]);
+            assert!(result.is_ok(), "uv {what} should parse");
+        }
+        let result = Cli::try_parse_from(["rsmultigit", "uv", "lock", "--upgrade"]);
+        assert!(result.is_ok(), "uv lock --upgrade should parse");
+        let result = Cli::try_parse_from(["rsmultigit", "uv"]);
+        assert!(result.is_err(), "uv without a what should not parse");
 
         // complete requires an argument
         let complete_shells = ["bash", "zsh", "fish", "elvish", "powershell"];

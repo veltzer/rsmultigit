@@ -409,6 +409,34 @@ rsmultigit rust publish --type minor     # Minor release
 rsmultigit rust publish --type major     # Major release
 ```
 
+## uv Commands
+
+Run [uv](https://docs.astral.sh/uv/) operations across every repository that
+has a `pyproject.toml` at its root; other repositories are skipped.
+
+### `rsmultigit uv lock [--upgrade]`
+
+Run `uv lock` in each Python project, re-resolving `uv.lock` from
+`pyproject.toml`. Without `--upgrade`, versions that are already locked are
+kept and only added/removed dependencies change; with `--upgrade`, locked
+versions may move forward to the newest allowed releases. This is the
+fleet-wide dependency-refresh step now that `rsconstruct tools install-deps`
+installs the pinned closure from `uv.lock`.
+
+```bash
+rsmultigit uv lock                # Bring every lockfile in sync with pyproject
+rsmultigit uv lock --upgrade      # Deliberately upgrade all locked versions
+```
+
+### `rsmultigit uv sync`
+
+Run `uv sync` in each Python project, syncing its environment from the
+lockfile.
+
+```bash
+rsmultigit uv sync
+```
+
 ## Utility Commands
 
 ### `rsmultigit version`
