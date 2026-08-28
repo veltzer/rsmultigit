@@ -12,6 +12,7 @@ pub mod count;
 pub mod diff;
 pub mod fetch;
 pub mod gc;
+pub mod gh;
 pub mod grep;
 pub mod interactive;
 pub mod last_tag;

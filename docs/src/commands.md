@@ -437,6 +437,28 @@ lockfile.
 rsmultigit uv sync
 ```
 
+## GitHub Commands
+
+These commands talk to GitHub through the [gh CLI](https://cli.github.com/)
+(which must be installed and authenticated) and operate only on repositories
+that have a remote on github.com. Other repositories are skipped.
+
+### `rsmultigit gh clean-all [--keep <N>]`
+
+Clean up GitHub deployments, releases, and workflow runs for each repository.
+Keeps only the `--keep` (default 4) most recent non-failed of each and deletes
+the rest; failed deployments (latest status `failure`/`error`) and failed
+workflow runs (`failure`, `cancelled`, `timed_out`, `startup_failure`,
+`action_required`) are always deleted, even if recent.
+
+Note that this deletes data on GitHub permanently — releases, deployment
+history, and workflow run logs are gone once removed.
+
+```bash
+rsmultigit gh clean-all              # Keep the 4 most recent of each
+rsmultigit gh clean-all --keep 10    # Keep the 10 most recent of each
+```
+
 ## Utility Commands
 
 ### `rsmultigit version`

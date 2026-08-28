@@ -10,8 +10,8 @@ use anyhow::{Context, Result};
 use clap::Parser;
 
 use cli::{
-    BranchWhat, BuildWhat, CleanWhat, Cli, Commands, CountWhat, ResetWhat, RustWhat, StashWhat,
-    TagWhat, UvWhat,
+    BranchWhat, BuildWhat, CleanWhat, Cli, Commands, CountWhat, GhWhat, ResetWhat, RustWhat,
+    StashWhat, TagWhat, UvWhat,
 };
 use config::AppConfig;
 
@@ -284,6 +284,19 @@ fn main() -> Result<()> {
             )?;
         }
 
+        Commands::Gh { what, keep } => match what {
+            GhWhat::CleanAll => {
+                let keep = *keep;
+                runner::do_for_all_projects_with_check(
+                    &config,
+                    &projects,
+                    commands::gh::check_github,
+                    move |project: &Path| -> anyhow::Result<bool> {
+                        commands::gh::clean_all(project, keep)
+                    },
+                )?;
+            }
+        },
         Commands::Rust { what, release_type } => match what {
             RustWhat::Publish => {
                 let level = release_type.as_str();

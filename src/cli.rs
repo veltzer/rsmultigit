@@ -173,6 +173,15 @@ pub enum Commands {
     Fetch,
     /// Run git garbage collection
     Gc,
+    /// GitHub operations (via the `gh` CLI) on repos with a github.com remote
+    Gh {
+        /// What GitHub operation to perform
+        #[arg(value_enum)]
+        what: GhWhat,
+        /// How many recent non-failed deployments/releases/workflow runs to keep
+        #[arg(long, default_value_t = 4)]
+        keep: usize,
+    },
     /// Grep across all repositories
     Grep {
         /// Regular expression to search for
@@ -260,6 +269,14 @@ pub enum Commands {
     },
     /// Print version information
     Version,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum GhWhat {
+    /// Delete old GitHub deployments, releases, and workflow runs, keeping
+    /// only the --keep most recent non-failed of each (failed ones are
+    /// always deleted)
+    CleanAll,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -622,6 +639,15 @@ mod tests {
         let result = Cli::try_parse_from(["rsmultigit", "uv"]);
         assert!(result.is_err(), "uv without a what should not parse");
 
+        // gh requires a what argument
+        let gh_whats = ["clean-all"];
+        for what in gh_whats {
+            let result = Cli::try_parse_from(["rsmultigit", "gh", what]);
+            assert!(result.is_ok(), "gh {what} should parse");
+        }
+        let result = Cli::try_parse_from(["rsmultigit", "gh"]);
+        assert!(result.is_err(), "gh without a what should not parse");
+
         // complete requires an argument
         let complete_shells = ["bash", "zsh", "fish", "elvish", "powershell"];
         for shell in complete_shells {
@@ -725,6 +751,33 @@ mod tests {
     fn default_jobs_is_one() {
         let cli = parse(&["rsmultigit", "list-repos"]);
         assert_eq!(cli.jobs, 1);
+    }
+
+    #[test]
+    fn parse_gh_clean_all_defaults_to_keep_4() {
+        let cli = parse(&["rsmultigit", "gh", "clean-all"]);
+        match &cli.command {
+            Commands::Gh { what, keep } => {
+                assert!(matches!(what, GhWhat::CleanAll));
+                assert_eq!(*keep, 4);
+            }
+            _ => panic!("expected Gh"),
+        }
+    }
+
+    #[test]
+    fn parse_gh_clean_all_with_keep() {
+        let cli = parse(&["rsmultigit", "gh", "clean-all", "--keep", "10"]);
+        match &cli.command {
+            Commands::Gh { keep, .. } => assert_eq!(*keep, 10),
+            _ => panic!("expected Gh"),
+        }
+    }
+
+    #[test]
+    fn parse_gh_bad_keep_fails() {
+        let result = Cli::try_parse_from(["rsmultigit", "gh", "clean-all", "--keep", "many"]);
+        assert!(result.is_err());
     }
 
     #[test]
