@@ -10,7 +10,8 @@ use anyhow::{Context, Result};
 use clap::Parser;
 
 use cli::{
-    BranchWhat, BuildWhat, CleanWhat, Cli, Commands, CountWhat, ResetWhat, StashWhat, TagWhat,
+    BranchWhat, BuildWhat, CleanWhat, Cli, Commands, CountWhat, ResetWhat, RustWhat, StashWhat,
+    TagWhat,
 };
 use config::AppConfig;
 
@@ -282,6 +283,20 @@ fn main() -> Result<()> {
                 },
             )?;
         }
+
+        Commands::Rust { what, release_type } => match what {
+            RustWhat::Publish => {
+                let level = release_type.as_str();
+                runner::do_for_all_projects_with_check(
+                    &config,
+                    &projects,
+                    commands::build::check_cargo,
+                    move |project: &Path| -> anyhow::Result<bool> {
+                        commands::rust::publish(project, level)
+                    },
+                )?;
+            }
+        },
 
         // ── build commands ──
         Commands::Build { what } => {

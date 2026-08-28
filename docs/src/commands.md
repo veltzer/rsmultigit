@@ -389,6 +389,26 @@ Run `rsconstruct build` on projects that have an `rsconstruct.toml` file. Projec
 rsmultigit build-rsconstruct
 ```
 
+## Rust Commands
+
+These commands operate only on rust projects — repositories that have a
+`Cargo.toml` file. Other repositories (and projects with a `.disable` file)
+are skipped.
+
+### `rsmultigit rust publish [--type <patch|minor|major>]`
+
+Release a new version of each rust project by running
+`cargo release <type> --execute --no-confirm`, which bumps the version in
+`Cargo.toml`, commits, tags, pushes, and publishes to crates.io. The default
+release type is `patch`. Requires [cargo-release](https://crates.io/crates/cargo-release)
+to be installed.
+
+```bash
+rsmultigit rust publish                  # Patch release (default)
+rsmultigit rust publish --type minor     # Minor release
+rsmultigit rust publish --type major     # Major release
+```
+
 ## Utility Commands
 
 ### `rsmultigit version`

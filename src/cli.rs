@@ -221,6 +221,15 @@ pub enum Commands {
         #[arg(required = true, num_args = 1.., trailing_var_arg = true, allow_hyphen_values = true)]
         command: Vec<String>,
     },
+    /// Rust operations on projects that have a Cargo.toml file
+    Rust {
+        /// What rust operation to perform
+        #[arg(value_enum)]
+        what: RustWhat,
+        /// Release type
+        #[arg(long = "type", value_enum, default_value_t = ReleaseType::Patch)]
+        release_type: ReleaseType,
+    },
     /// Show the size of the .git directory per repo
     Size,
     /// Stash operations
@@ -305,6 +314,33 @@ pub enum ResetWhat {
     Soft,
     /// Mixed reset: unstage changes (git reset --mixed HEAD)
     Mixed,
+}
+
+#[derive(Clone, ValueEnum)]
+pub enum RustWhat {
+    /// Release a new version via `cargo release` (bump, commit, tag, push, publish)
+    Publish,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum ReleaseType {
+    /// Bump the patch version (x.y.Z)
+    Patch,
+    /// Bump the minor version (x.Y.0)
+    Minor,
+    /// Bump the major version (X.0.0)
+    Major,
+}
+
+impl ReleaseType {
+    /// The level argument `cargo release` expects.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ReleaseType::Patch => "patch",
+            ReleaseType::Minor => "minor",
+            ReleaseType::Major => "major",
+        }
+    }
 }
 
 #[derive(Clone, ValueEnum)]
@@ -549,6 +585,13 @@ mod tests {
             assert!(result.is_ok(), "build {what} should parse");
         }
 
+        // rust requires a what argument
+        let rust_whats = ["publish"];
+        for what in rust_whats {
+            let result = Cli::try_parse_from(["rsmultigit", "rust", what]);
+            assert!(result.is_ok(), "rust {what} should parse");
+        }
+
         // complete requires an argument
         let complete_shells = ["bash", "zsh", "fish", "elvish", "powershell"];
         for shell in complete_shells {
@@ -652,6 +695,41 @@ mod tests {
     fn default_jobs_is_one() {
         let cli = parse(&["rsmultigit", "list-repos"]);
         assert_eq!(cli.jobs, 1);
+    }
+
+    #[test]
+    fn parse_rust_publish_defaults_to_patch() {
+        let cli = parse(&["rsmultigit", "rust", "publish"]);
+        match &cli.command {
+            Commands::Rust { what, release_type } => {
+                assert!(matches!(what, RustWhat::Publish));
+                assert_eq!(*release_type, ReleaseType::Patch);
+            }
+            _ => panic!("expected Rust"),
+        }
+    }
+
+    #[test]
+    fn parse_rust_publish_with_type() {
+        for (arg, expected) in [
+            ("patch", ReleaseType::Patch),
+            ("minor", ReleaseType::Minor),
+            ("major", ReleaseType::Major),
+        ] {
+            let cli = parse(&["rsmultigit", "rust", "publish", "--type", arg]);
+            match &cli.command {
+                Commands::Rust { release_type, .. } => {
+                    assert_eq!(*release_type, expected);
+                }
+                _ => panic!("expected Rust"),
+            }
+        }
+    }
+
+    #[test]
+    fn parse_rust_publish_bad_type_fails() {
+        let result = Cli::try_parse_from(["rsmultigit", "rust", "publish", "--type", "huge"]);
+        assert!(result.is_err());
     }
 
     #[test]
