@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::subprocess_utils::{check_call, check_call_ve};
+use crate::subprocess_utils::{check_call, check_call_ve, check_call_ve_env};
 
 fn is_build_disabled(project: &Path) -> bool {
     project.join(".disable").exists()
@@ -75,5 +75,10 @@ pub fn build_cargo_publish(project: &Path) -> Result<bool> {
 
 pub fn build_rsconstruct(project: &Path) -> Result<bool> {
     check_call(project, "rsconstruct", &["--quiet", "build"])?;
+    Ok(true)
+}
+
+pub fn build_venv_rsconstruct(project: &Path) -> Result<bool> {
+    check_call_ve_env(project, "rsconstruct", &["--quiet", "build"])?;
     Ok(true)
 }

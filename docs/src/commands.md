@@ -389,6 +389,18 @@ Run `rsconstruct build` on projects that have an `rsconstruct.toml` file. Projec
 rsmultigit build-rsconstruct
 ```
 
+### `rsmultigit build-venv-rsconstruct`
+
+Like `build-rsconstruct`, but with the project's local virtualenv activated
+first: `.venv/bin` is prepended to `PATH` and `VIRTUAL_ENV` points at `.venv`,
+so the tools rsconstruct invokes (pytest, mypy, ruff, ...) resolve from the
+repo's own venv. Projects without a `.venv` build with the ambient environment,
+exactly as `build-rsconstruct` would.
+
+```bash
+rsmultigit build-venv-rsconstruct
+```
+
 ## Rust Commands
 
 These commands operate only on rust projects — repositories that have a

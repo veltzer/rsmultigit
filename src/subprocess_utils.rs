@@ -44,6 +44,30 @@ pub fn check_call_ve(cwd: &Path, args: &[&str]) -> Result<()> {
     run_inheriting_or_capturing(cwd, venv_cmd.to_string_lossy().as_ref(), &args[1..])
 }
 
+/// Run a command in `cwd` with the local virtualenv activated: `.venv/bin` is
+/// prepended to PATH and VIRTUAL_ENV points at `.venv`, so the tools the
+/// command spawns (pytest, mypy, ...) resolve from the repo's own venv. The
+/// command itself still comes from the ambient PATH. When `cwd` has no
+/// `.venv/bin`, the command runs with the environment unchanged.
+pub fn check_call_ve_env(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
+    let venv = cwd.join(".venv");
+    let venv_bin = venv.join("bin");
+    let mut command = Command::new(cmd);
+    command.args(args).current_dir(cwd);
+    if venv_bin.is_dir() {
+        let path = match std::env::var_os("PATH") {
+            Some(path) => {
+                let mut parts = vec![venv_bin];
+                parts.extend(std::env::split_paths(&path));
+                std::env::join_paths(parts)?
+            }
+            None => venv_bin.into_os_string(),
+        };
+        command.env("PATH", path).env("VIRTUAL_ENV", &venv);
+    }
+    run_command(command, cmd)
+}
+
 /// Run a shell command in `cwd`, inheriting stdout/stderr (or routing into the
 /// per-thread capture buffer if active).
 pub fn check_call(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
@@ -51,18 +75,24 @@ pub fn check_call(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
 }
 
 fn run_inheriting_or_capturing(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
+    let mut command = Command::new(cmd);
+    command.args(args).current_dir(cwd);
+    run_command(command, cmd)
+}
+
+fn run_command(mut command: Command, name: &str) -> Result<()> {
     if is_capturing() {
-        let output = Command::new(cmd).args(args).current_dir(cwd).output()?;
+        let output = command.output()?;
         append_to_capture(&output.stdout);
         append_to_capture(&output.stderr);
         if !output.status.success() {
-            bail!("{cmd} failed with {}", output.status);
+            bail!("{name} failed with {}", output.status);
         }
         Ok(())
     } else {
-        let status = Command::new(cmd).args(args).current_dir(cwd).status()?;
+        let status = command.status()?;
         if !status.success() {
-            bail!("{cmd} failed with {status}");
+            bail!("{name} failed with {status}");
         }
         Ok(())
     }
@@ -153,6 +183,29 @@ mod tests {
     #[test]
     fn check_call_ve_empty_args() {
         assert!(check_call_ve(&cwd(), &[]).is_err());
+    }
+
+    #[test]
+    fn check_call_ve_env_prefers_venv_tools() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join(".venv/bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let tool = bin.join("ve-env-probe");
+        std::fs::write(&tool, "#!/bin/sh\necho from-venv\necho \"$VIRTUAL_ENV\"\n").unwrap();
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+        enter_capture();
+        check_call_ve_env(dir.path(), "ve-env-probe", &[]).unwrap();
+        let captured = leave_capture();
+        let text = String::from_utf8_lossy(&captured);
+        assert!(text.contains("from-venv"));
+        assert!(text.contains(".venv"));
+    }
+
+    #[test]
+    fn check_call_ve_env_without_venv_runs_ambient() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(check_call_ve_env(dir.path(), "true", &[]).is_ok());
     }
 
     #[test]

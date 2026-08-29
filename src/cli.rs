@@ -400,6 +400,8 @@ pub enum BuildWhat {
     PydmtBuildVenv,
     /// Run rsconstruct build on projects that have an rsconstruct.toml file
     Rsconstruct,
+    /// Run rsconstruct build with the local .venv activated (PATH + VIRTUAL_ENV) on projects that have an rsconstruct.toml file
+    VenvRsconstruct,
     /// Run cargo build on projects that have a Cargo.toml file
     Cargo,
     /// Run cargo publish on projects that have a Cargo.toml file
@@ -618,6 +620,7 @@ mod tests {
             "venv-pydmt",
             "pydmt-build-venv",
             "rsconstruct",
+            "venv-rsconstruct",
             "cargo",
             "cargo-publish",
         ];

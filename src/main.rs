@@ -340,6 +340,10 @@ fn main() -> Result<()> {
                     commands::build::check_rsconstruct,
                     commands::build::build_rsconstruct,
                 ),
+                BuildWhat::VenvRsconstruct => (
+                    commands::build::check_rsconstruct,
+                    commands::build::build_venv_rsconstruct,
+                ),
                 BuildWhat::Cargo => (commands::build::check_cargo, commands::build::build_cargo),
                 BuildWhat::CargoPublish => (
                     commands::build::check_cargo,
