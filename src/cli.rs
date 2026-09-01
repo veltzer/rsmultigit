@@ -613,13 +613,7 @@ mod tests {
         }
 
         // build requires a what argument
-        let build_whats = [
-            "bootstrap",
-            "make",
-            "rsconstruct",
-            "cargo",
-            "cargo-publish",
-        ];
+        let build_whats = ["bootstrap", "make", "rsconstruct", "cargo", "cargo-publish"];
         for what in build_whats {
             let result = Cli::try_parse_from(["rsmultigit", "build", what]);
             assert!(result.is_ok(), "build {what} should parse");
