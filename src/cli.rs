@@ -399,12 +399,8 @@ impl ReleaseType {
 pub enum BuildWhat {
     /// Run bootstrap across all projects
     Bootstrap,
-    /// Run pydmt build across all projects
-    Pydmt,
     /// Run make across all projects
     Make,
-    /// Run pydmt build_venv across all projects
-    PydmtBuildVenv,
     /// Run rsconstruct build on projects that have an rsconstruct.toml file
     Rsconstruct,
     /// Run cargo build on projects that have a Cargo.toml file
@@ -619,9 +615,7 @@ mod tests {
         // build requires a what argument
         let build_whats = [
             "bootstrap",
-            "pydmt",
             "make",
-            "pydmt-build-venv",
             "rsconstruct",
             "cargo",
             "cargo-publish",
@@ -774,7 +768,6 @@ mod tests {
         // These were folded into the default-on --venv flag.
         assert!(Cli::try_parse_from(["rsmultigit", "build", "venv-rsconstruct"]).is_err());
         assert!(Cli::try_parse_from(["rsmultigit", "build", "venv-make"]).is_err());
-        assert!(Cli::try_parse_from(["rsmultigit", "build", "venv-pydmt"]).is_err());
         assert!(Cli::try_parse_from(["rsmultigit", "uv", "venv-sync"]).is_err());
     }
 

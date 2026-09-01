@@ -369,7 +369,7 @@ By default (the global `--venv` flag), a project that has a local `.venv` gets
 it activated before the build tool runs: `.venv/bin` is prepended to `PATH`
 and `VIRTUAL_ENV` points at `.venv`, so the tools the build spawns (pytest,
 mypy, ruff, ...) resolve from the repo's own venv — including the build tool
-itself (make, pydmt, ...) when the venv provides it. Projects without a
+itself (make, rsconstruct, ...) when the venv provides it. Projects without a
 `.venv` build with the ambient environment. Pass `--no-venv` to disable the
 activation everywhere.
 
@@ -377,17 +377,9 @@ activation everywhere.
 
 Run `python bootstrap.py` in each project.
 
-### `rsmultigit build-pydmt`
-
-Run `pydmt build` in each project.
-
 ### `rsmultigit build-make`
 
 Run `make` in each project.
-
-### `rsmultigit build-pydmt-build-venv`
-
-Run `pydmt build_venv` in each project.
 
 ### `rsmultigit build-rsconstruct`
 

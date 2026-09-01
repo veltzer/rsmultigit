@@ -8,18 +8,10 @@ fn is_build_disabled(project: &Path) -> bool {
     project.join(".disable").exists()
 }
 
-fn has_pydmt_config(project: &Path) -> bool {
-    project.join(".pydmt.config").exists()
-}
-
 // --- Check functions (cheap predicates: should we build this project?) ---
 
 pub fn check_not_disabled(project: &Path) -> Result<bool> {
     Ok(!is_build_disabled(project))
-}
-
-pub fn check_pydmt(project: &Path) -> Result<bool> {
-    Ok(!is_build_disabled(project) && has_pydmt_config(project))
 }
 
 pub fn check_cargo(project: &Path) -> Result<bool> {
@@ -44,18 +36,8 @@ pub fn build_bootstrap(project: &Path, venv: bool) -> Result<bool> {
     Ok(true)
 }
 
-pub fn build_pydmt(project: &Path, venv: bool) -> Result<bool> {
-    check_call_maybe_ve(project, venv, "pydmt", &["build"])?;
-    Ok(true)
-}
-
 pub fn build_make(project: &Path, venv: bool) -> Result<bool> {
     check_call_maybe_ve(project, venv, "make", &[])?;
-    Ok(true)
-}
-
-pub fn build_pydmt_build_venv(project: &Path, venv: bool) -> Result<bool> {
-    check_call_maybe_ve(project, venv, "pydmt", &["build_venv"])?;
     Ok(true)
 }
 

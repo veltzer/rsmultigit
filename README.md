@@ -11,7 +11,7 @@ Full documentation: <https://veltzer.github.io/rsmultigit/>
 - **Batch operations** — pull, diff, grep, clean, and build across all repos at once
 - **Smart discovery** — finds git repos via glob patterns, explicit folder lists, or automatic fallback
 - **Dirty/untracked detection** — uses libgit2 for fast native repo inspection
-- **Build system support** — make, pydmt, rsconstruct, bootstrap, virtualenv workflows
+- **Build system support** — make, rsconstruct, cargo, bootstrap, virtualenv workflows
 - **Selective output** — only prints repos where work was done; use `-v` for all
 - **Flexible filtering** — `--print-not` to invert selection, `--terse` for minimal output, `--stats` for counts
 - **Shell completions** — bash, zsh, fish, elvish, powershell
@@ -138,9 +138,7 @@ rsmultigit complete bash >> ~/.bash_completion
 |---------|-------------|
 | `build make` | Run make across all projects |
 | `build rsconstruct` | Run rsconstruct build on projects with `rsconstruct.toml` |
-| `build pydmt` | Run pydmt build across all projects |
 | `build bootstrap` | Run bootstrap across all projects |
-| `build pydmt-build-venv` | Run pydmt build_venv |
 
 ### Other
 | Command | Description |

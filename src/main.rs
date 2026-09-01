@@ -334,14 +334,9 @@ fn main() -> Result<()> {
                     commands::build::check_not_disabled,
                     commands::build::build_bootstrap,
                 ),
-                BuildWhat::Pydmt => (commands::build::check_pydmt, commands::build::build_pydmt),
                 BuildWhat::Make => (
                     commands::build::check_not_disabled,
                     commands::build::build_make,
-                ),
-                BuildWhat::PydmtBuildVenv => (
-                    commands::build::check_pydmt,
-                    commands::build::build_pydmt_build_venv,
                 ),
                 BuildWhat::Rsconstruct => (
                     commands::build::check_rsconstruct,
