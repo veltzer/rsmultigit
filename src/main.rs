@@ -385,6 +385,14 @@ fn main() -> Result<()> {
                         commands::uv::sync,
                     )?;
                 }
+                UvWhat::VenvSync => {
+                    runner::do_for_all_projects_with_check(
+                        &config,
+                        &projects,
+                        commands::uv::check_pyproject_venv,
+                        commands::uv::venv_sync,
+                    )?;
+                }
             }
         }
 

@@ -291,6 +291,9 @@ pub enum UvWhat {
     Lock,
     /// Sync the project environment from the lockfile (`uv sync`)
     Sync,
+    /// Like `sync`, but only in projects that already have a `.venv`, and with
+    /// that venv activated (PATH + VIRTUAL_ENV) before `uv sync` runs
+    VenvSync,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -637,7 +640,7 @@ mod tests {
         }
 
         // uv requires a what argument; --upgrade parses with lock
-        let uv_whats = ["lock", "sync"];
+        let uv_whats = ["lock", "sync", "venv-sync"];
         for what in uv_whats {
             let result = Cli::try_parse_from(["rsmultigit", "uv", what]);
             assert!(result.is_ok(), "uv {what} should parse");

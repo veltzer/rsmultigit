@@ -456,6 +456,17 @@ lockfile.
 rsmultigit uv sync
 ```
 
+### `rsmultigit uv venv-sync`
+
+Like `uv sync`, but only in Python projects that already have a `.venv`
+directory, and with that venv activated first: `.venv/bin` is prepended to
+`PATH` and `VIRTUAL_ENV` points at `.venv` before `uv sync` runs. Projects
+without a `.venv` are skipped, so no new environments are created.
+
+```bash
+rsmultigit uv venv-sync
+```
+
 ## GitHub Commands
 
 These commands talk to GitHub through the [gh CLI](https://cli.github.com/)
