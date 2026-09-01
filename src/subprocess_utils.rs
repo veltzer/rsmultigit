@@ -4,7 +4,7 @@ use std::process::{Command, Stdio};
 
 use anyhow::{Result, bail};
 
-// Per-thread capture buffer. When present, `check_call` and `check_call_ve`
+// Per-thread capture buffer. When present, `check_call` and `check_call_ve_env`
 // collect subprocess stdout/stderr into it instead of inheriting the parent's
 // streams. This lets the parallel runner replay output in project order.
 thread_local! {
@@ -35,15 +35,6 @@ fn append_to_capture(bytes: &[u8]) {
     });
 }
 
-/// Run a command inside a Python virtualenv (.venv/bin/{cmd}) located in `cwd`.
-pub fn check_call_ve(cwd: &Path, args: &[&str]) -> Result<()> {
-    if args.is_empty() {
-        bail!("check_call_ve requires at least one argument");
-    }
-    let venv_cmd = cwd.join(".venv/bin").join(args[0]);
-    run_inheriting_or_capturing(cwd, venv_cmd.to_string_lossy().as_ref(), &args[1..])
-}
-
 /// Run a command in `cwd` with the local virtualenv activated: `.venv/bin` is
 /// prepended to PATH and VIRTUAL_ENV points at `.venv`, so the tools the
 /// command spawns (pytest, mypy, ...) resolve from the repo's own venv. The
@@ -72,6 +63,18 @@ pub fn check_call_ve_env(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
 /// per-thread capture buffer if active).
 pub fn check_call(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
     run_inheriting_or_capturing(cwd, cmd, args)
+}
+
+/// Run a tool in `cwd`, with the local virtualenv activated first when `venv`
+/// is true (see `check_call_ve_env`; a repo without a `.venv` runs with the
+/// environment unchanged either way). This is the entry point for commands
+/// honouring the global `--venv`/`--no-venv` flag.
+pub fn check_call_maybe_ve(cwd: &Path, venv: bool, cmd: &str, args: &[&str]) -> Result<()> {
+    if venv {
+        check_call_ve_env(cwd, cmd, args)
+    } else {
+        check_call(cwd, cmd, args)
+    }
 }
 
 fn run_inheriting_or_capturing(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
@@ -178,11 +181,6 @@ mod tests {
     #[test]
     fn check_call_fails() {
         assert!(check_call(&cwd(), "false", &[]).is_err());
-    }
-
-    #[test]
-    fn check_call_ve_empty_args() {
-        assert!(check_call_ve(&cwd(), &[]).is_err());
     }
 
     #[test]

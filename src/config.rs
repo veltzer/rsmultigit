@@ -14,6 +14,8 @@ pub struct AppConfig {
     /// Stop at the first negative result rather than evaluating everything.
     pub short_circuit: bool,
     pub jobs: usize,
+    /// Activate each repo's local .venv before running tool subprocesses.
+    pub venv: bool,
 }
 
 impl Default for AppConfig {
@@ -27,6 +29,7 @@ impl Default for AppConfig {
             no_stop: false,
             short_circuit: false,
             jobs: 1,
+            venv: true,
         }
     }
 }
@@ -42,6 +45,7 @@ impl From<&Cli> for AppConfig {
             no_stop: cli.no_stop,
             short_circuit: cli.short_circuit,
             jobs: cli.jobs,
+            venv: cli.venv && !cli.no_venv,
         }
     }
 }

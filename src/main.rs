@@ -164,16 +164,28 @@ fn main() -> Result<()> {
         Commands::Fetch => {
             runner::do_for_all_projects(&config, &projects, commands::fetch::do_fetch)?;
         }
-        Commands::Clean { what } => {
-            let clean_fn: fn(&Path) -> anyhow::Result<bool> = match what {
-                CleanWhat::Hard => commands::clean::clean_hard,
-                CleanWhat::Soft => commands::clean::clean_soft,
-                CleanWhat::Make => commands::clean::clean_make,
-                CleanWhat::Git => commands::clean::clean_git,
-                CleanWhat::Cargo => commands::clean::clean_cargo,
-            };
-            runner::do_for_all_projects(&config, &projects, clean_fn)?;
-        }
+        Commands::Clean { what } => match what {
+            CleanWhat::Make => {
+                let venv = config.venv;
+                runner::do_for_all_projects(
+                    &config,
+                    &projects,
+                    move |project: &Path| -> anyhow::Result<bool> {
+                        commands::clean::clean_make(project, venv)
+                    },
+                )?;
+            }
+            _ => {
+                let clean_fn: fn(&Path) -> anyhow::Result<bool> = match what {
+                    CleanWhat::Hard => commands::clean::clean_hard,
+                    CleanWhat::Soft => commands::clean::clean_soft,
+                    CleanWhat::Git => commands::clean::clean_git,
+                    CleanWhat::Cargo => commands::clean::clean_cargo,
+                    CleanWhat::Make => unreachable!("handled above"),
+                };
+                runner::do_for_all_projects(&config, &projects, clean_fn)?;
+            }
+        },
         Commands::Stash { what } => {
             let stash_fn: fn(&Path) -> anyhow::Result<bool> = match what {
                 StashWhat::Push => commands::stash::stash_push,
@@ -275,11 +287,12 @@ fn main() -> Result<()> {
         }
         Commands::Run { command } => {
             let command = command.clone();
+            let venv = config.venv;
             runner::do_for_all_projects(
                 &config,
                 &projects,
                 move |project: &Path| -> anyhow::Result<bool> {
-                    commands::run::do_run(project, &command)
+                    commands::run::do_run(project, &command, venv)
                 },
             )?;
         }
@@ -313,8 +326,10 @@ fn main() -> Result<()> {
 
         // ── build commands ──
         Commands::Build { what } => {
-            type ProjectFn = fn(&Path) -> anyhow::Result<bool>;
-            let (check_fn, build_fn): (ProjectFn, ProjectFn) = match what {
+            type CheckFn = fn(&Path) -> anyhow::Result<bool>;
+            // All build actions take the effective --venv flag.
+            type BuildFn = fn(&Path, bool) -> anyhow::Result<bool>;
+            let (check_fn, build_fn): (CheckFn, BuildFn) = match what {
                 BuildWhat::Bootstrap => (
                     commands::build::check_not_disabled,
                     commands::build::build_bootstrap,
@@ -324,14 +339,6 @@ fn main() -> Result<()> {
                     commands::build::check_not_disabled,
                     commands::build::build_make,
                 ),
-                BuildWhat::VenvMake => (
-                    commands::build::check_not_disabled,
-                    commands::build::build_venv_make,
-                ),
-                BuildWhat::VenvPydmt => (
-                    commands::build::check_pydmt,
-                    commands::build::build_venv_pydmt,
-                ),
                 BuildWhat::PydmtBuildVenv => (
                     commands::build::check_pydmt,
                     commands::build::build_pydmt_build_venv,
@@ -340,17 +347,19 @@ fn main() -> Result<()> {
                     commands::build::check_rsconstruct,
                     commands::build::build_rsconstruct,
                 ),
-                BuildWhat::VenvRsconstruct => (
-                    commands::build::check_rsconstruct,
-                    commands::build::build_venv_rsconstruct,
-                ),
                 BuildWhat::Cargo => (commands::build::check_cargo, commands::build::build_cargo),
                 BuildWhat::CargoPublish => (
                     commands::build::check_cargo,
                     commands::build::build_cargo_publish,
                 ),
             };
-            runner::do_for_all_projects_with_check(&config, &projects, check_fn, build_fn)?;
+            let venv = config.venv;
+            runner::do_for_all_projects_with_check(
+                &config,
+                &projects,
+                check_fn,
+                move |project: &Path| -> anyhow::Result<bool> { build_fn(project, venv) },
+            )?;
         }
 
         Commands::Uv {
@@ -366,6 +375,7 @@ fn main() -> Result<()> {
             if check && *what != UvWhat::Lock {
                 anyhow::bail!("--check only applies to `uv lock`");
             }
+            let venv = config.venv;
             match what {
                 UvWhat::Lock => {
                     runner::do_for_all_projects_with_check(
@@ -373,7 +383,7 @@ fn main() -> Result<()> {
                         &projects,
                         commands::uv::check_pyproject,
                         move |project: &Path| -> anyhow::Result<bool> {
-                            commands::uv::lock(project, upgrade, check)
+                            commands::uv::lock(project, upgrade, check, venv)
                         },
                     )?;
                 }
@@ -382,15 +392,9 @@ fn main() -> Result<()> {
                         &config,
                         &projects,
                         commands::uv::check_pyproject,
-                        commands::uv::sync,
-                    )?;
-                }
-                UvWhat::VenvSync => {
-                    runner::do_for_all_projects_with_check(
-                        &config,
-                        &projects,
-                        commands::uv::check_pyproject_venv,
-                        commands::uv::venv_sync,
+                        move |project: &Path| -> anyhow::Result<bool> {
+                            commands::uv::sync(project, venv)
+                        },
                     )?;
                 }
             }

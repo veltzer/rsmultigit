@@ -61,6 +61,17 @@ pub struct Cli {
     #[arg(short = 'j', long, global = true, default_value_t = 1)]
     pub jobs: usize,
 
+    /// Activate each repo's local .venv (prepend .venv/bin to PATH, set
+    /// VIRTUAL_ENV) before running tool subprocesses. On by default; honoured
+    /// by `run`, `build`, `uv`, and `clean make`. Repos without a .venv run
+    /// with the environment unchanged. Negate with --no-venv.
+    #[arg(long, global = true, default_value_t = true, overrides_with = "no_venv")]
+    pub venv: bool,
+
+    /// Do not activate repos' local .venv before running tool subprocesses
+    #[arg(long, global = true, default_value_t = false)]
+    pub no_venv: bool,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -291,9 +302,6 @@ pub enum UvWhat {
     Lock,
     /// Sync the project environment from the lockfile (`uv sync`)
     Sync,
-    /// Like `sync`, but only in projects that already have a `.venv`, and with
-    /// that venv activated (PATH + VIRTUAL_ENV) before `uv sync` runs
-    VenvSync,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -395,16 +403,10 @@ pub enum BuildWhat {
     Pydmt,
     /// Run make across all projects
     Make,
-    /// Run make inside a virtualenv across all projects
-    VenvMake,
-    /// Run pydmt inside a virtualenv across all projects
-    VenvPydmt,
     /// Run pydmt build_venv across all projects
     PydmtBuildVenv,
     /// Run rsconstruct build on projects that have an rsconstruct.toml file
     Rsconstruct,
-    /// Run rsconstruct build with the local .venv activated (PATH + VIRTUAL_ENV) on projects that have an rsconstruct.toml file
-    VenvRsconstruct,
     /// Run cargo build on projects that have a Cargo.toml file
     Cargo,
     /// Run cargo publish on projects that have a Cargo.toml file
@@ -619,11 +621,8 @@ mod tests {
             "bootstrap",
             "pydmt",
             "make",
-            "venv-make",
-            "venv-pydmt",
             "pydmt-build-venv",
             "rsconstruct",
-            "venv-rsconstruct",
             "cargo",
             "cargo-publish",
         ];
@@ -640,7 +639,7 @@ mod tests {
         }
 
         // uv requires a what argument; --upgrade parses with lock
-        let uv_whats = ["lock", "sync", "venv-sync"];
+        let uv_whats = ["lock", "sync"];
         for what in uv_whats {
             let result = Cli::try_parse_from(["rsmultigit", "uv", what]);
             assert!(result.is_ok(), "uv {what} should parse");
@@ -744,6 +743,39 @@ mod tests {
         assert!(cli.print_not);
         assert!(cli.no_stop);
         assert!(cli.short_circuit);
+    }
+
+    #[test]
+    fn venv_defaults_to_on() {
+        let cli = parse(&["rsmultigit", "build", "rsconstruct"]);
+        assert!(cli.venv);
+        assert!(!cli.no_venv);
+    }
+
+    #[test]
+    fn parse_no_venv() {
+        let cli = parse(&["rsmultigit", "--no-venv", "build", "rsconstruct"]);
+        assert!(cli.no_venv);
+        // Global flag also parses after the subcommand.
+        let cli = parse(&["rsmultigit", "uv", "sync", "--no-venv"]);
+        assert!(cli.no_venv);
+    }
+
+    #[test]
+    fn parse_venv_overrides_no_venv() {
+        // Last one wins: --no-venv --venv ends up with venv activation on.
+        let cli = parse(&["rsmultigit", "--no-venv", "--venv", "run", "true"]);
+        assert!(cli.venv);
+        assert!(!cli.no_venv);
+    }
+
+    #[test]
+    fn parse_removed_venv_variants_fail() {
+        // These were folded into the default-on --venv flag.
+        assert!(Cli::try_parse_from(["rsmultigit", "build", "venv-rsconstruct"]).is_err());
+        assert!(Cli::try_parse_from(["rsmultigit", "build", "venv-make"]).is_err());
+        assert!(Cli::try_parse_from(["rsmultigit", "build", "venv-pydmt"]).is_err());
+        assert!(Cli::try_parse_from(["rsmultigit", "uv", "venv-sync"]).is_err());
     }
 
     #[test]

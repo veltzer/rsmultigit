@@ -76,7 +76,8 @@ a version string vs humans debugging an install).
 ## Global flags on subcommands
 
 `--terse`, `--no-header`, `--no-output`, `--verbose`, `--print-not`, `--no-stop`,
-`--short-circuit`, `-j/--jobs` are all declared with `global = true` on the top-level `Cli`, so
+`--short-circuit`, `-j/--jobs`, `--venv`/`--no-venv` are all declared with
+`global = true` on the top-level `Cli`, so
 they can appear *before or after* the subcommand:
 
 ```bash

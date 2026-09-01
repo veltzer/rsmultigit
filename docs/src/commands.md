@@ -17,6 +17,8 @@ These flags can be used with any subcommand and must appear before the subcomman
 | `--no-glob` | Disable glob — check immediate subdirectories only |
 | `--folders <LIST>` | Comma-separated list of folders to operate on |
 | `--no-stop` | Do not stop on errors — continue to next project |
+| `--venv` | Activate each repo's local `.venv` before running tool subprocesses. On by default; honoured by `run`, `build`, `uv`, and `clean make` |
+| `--no-venv` | Turn `--venv` off — run tool subprocesses with the ambient environment |
 | `--short-circuit` | Stop at the first negative result. Off by default; honoured by `check-same` |
 | `--no-print-no-projects` | Suppress the "no projects found" message |
 
@@ -345,17 +347,31 @@ rsmultigit grep --files "TODO"               # Only show filenames
 
 ### `rsmultigit run <COMMAND...>` (alias: `rsmultigit exec`)
 
-Run an arbitrary command across all repositories.
+Run an arbitrary command across all repositories. By default (`--venv`), a
+repo that has a local `.venv` gets it activated first — `.venv/bin` is
+prepended to `PATH` and `VIRTUAL_ENV` points at `.venv` — so the command and
+anything it spawns resolve from the repo's own venv. Pass `--no-venv` to run
+with the ambient environment everywhere.
 
 ```bash
 rsmultigit run touch marker.txt
 rsmultigit run "echo hello > greeting.txt"
 rsmultigit exec cargo check
+rsmultigit run pytest                  # each repo's own pytest, via its .venv
+rsmultigit --no-venv run which python  # ambient python everywhere
 ```
 
 ## Build Commands
 
 These commands run build tools in each project directory. Projects with a `.disable` file are skipped.
+
+By default (the global `--venv` flag), a project that has a local `.venv` gets
+it activated before the build tool runs: `.venv/bin` is prepended to `PATH`
+and `VIRTUAL_ENV` points at `.venv`, so the tools the build spawns (pytest,
+mypy, ruff, ...) resolve from the repo's own venv — including the build tool
+itself (make, pydmt, ...) when the venv provides it. Projects without a
+`.venv` build with the ambient environment. Pass `--no-venv` to disable the
+activation everywhere.
 
 ### `rsmultigit build-bootstrap`
 
@@ -369,36 +385,20 @@ Run `pydmt build` in each project.
 
 Run `make` in each project.
 
-### `rsmultigit build-venv-make`
-
-Run `make` inside the project's virtualenv (`.venv/bin/make`).
-
-### `rsmultigit build-venv-pydmt`
-
-Run `pydmt build` inside the project's virtualenv.
-
 ### `rsmultigit build-pydmt-build-venv`
 
 Run `pydmt build_venv` in each project.
 
 ### `rsmultigit build-rsconstruct`
 
-Run `rsconstruct build` on projects that have an `rsconstruct.toml` file. Projects without `rsconstruct.toml` are skipped.
+Run `rsconstruct build` on projects that have an `rsconstruct.toml` file.
+Projects without `rsconstruct.toml` are skipped. As with every build command,
+the project's local `.venv` is activated by default (see above); pass
+`--no-venv` to build with the ambient environment only.
 
 ```bash
 rsmultigit build-rsconstruct
-```
-
-### `rsmultigit build-venv-rsconstruct`
-
-Like `build-rsconstruct`, but with the project's local virtualenv activated
-first: `.venv/bin` is prepended to `PATH` and `VIRTUAL_ENV` points at `.venv`,
-so the tools rsconstruct invokes (pytest, mypy, ruff, ...) resolve from the
-repo's own venv. Projects without a `.venv` build with the ambient environment,
-exactly as `build-rsconstruct` would.
-
-```bash
-rsmultigit build-venv-rsconstruct
+rsmultigit --no-venv build-rsconstruct
 ```
 
 ## Rust Commands
@@ -450,21 +450,15 @@ rsmultigit uv lock --check --no-stop  # Report which lockfiles are stale
 ### `rsmultigit uv sync`
 
 Run `uv sync` in each Python project, syncing its environment from the
-lockfile.
+lockfile. By default (the global `--venv` flag), a project that already has a
+`.venv` gets it activated first — `.venv/bin` is prepended to `PATH` and
+`VIRTUAL_ENV` points at `.venv` before `uv sync` runs; projects without one
+run plain `uv sync`, which creates the environment. Pass `--no-venv` to skip
+the activation. `uv lock` honours the flag the same way.
 
 ```bash
 rsmultigit uv sync
-```
-
-### `rsmultigit uv venv-sync`
-
-Like `uv sync`, but only in Python projects that already have a `.venv`
-directory, and with that venv activated first: `.venv/bin` is prepended to
-`PATH` and `VIRTUAL_ENV` points at `.venv` before `uv sync` runs. Projects
-without a `.venv` are skipped, so no new environments are created.
-
-```bash
-rsmultigit uv venv-sync
+rsmultigit --no-venv uv sync
 ```
 
 ## GitHub Commands

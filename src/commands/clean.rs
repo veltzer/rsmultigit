@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::subprocess_utils::check_call;
+use crate::subprocess_utils::{check_call, check_call_maybe_ve};
 
 /// Hard-clean the repository (git clean -ffxd).
 pub fn clean_hard(project: &Path) -> Result<bool> {
@@ -16,9 +16,11 @@ pub fn clean_soft(project: &Path) -> Result<bool> {
     Ok(true)
 }
 
-/// Run `make clean`.
-pub fn clean_make(project: &Path) -> Result<bool> {
-    check_call(project, "make", &["clean"])?;
+/// Run `make clean`. With `venv` (the global `--venv` flag, default on), an
+/// existing repo `.venv` is activated first so Makefile targets that call
+/// python tools resolve them from the repo's own venv.
+pub fn clean_make(project: &Path, venv: bool) -> Result<bool> {
+    check_call_maybe_ve(project, venv, "make", &["clean"])?;
     Ok(true)
 }
 

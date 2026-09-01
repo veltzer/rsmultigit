@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::Result;
 
-use crate::subprocess_utils::{check_call, check_call_ve, check_call_ve_env};
+use crate::subprocess_utils::check_call_maybe_ve;
 
 fn is_build_disabled(project: &Path) -> bool {
     project.join(".disable").exists()
@@ -31,54 +31,46 @@ pub fn check_rsconstruct(project: &Path) -> Result<bool> {
 }
 
 // --- Action functions (do the actual build, assuming check already passed) ---
+//
+// All actions share the `(project, venv)` signature so main.rs can dispatch
+// them through one fn-pointer table. `venv` comes from the global
+// `--venv`/`--no-venv` flag (default on): the repo's `.venv/bin` is prepended
+// to PATH and VIRTUAL_ENV is set before the tool runs, so the tool itself and
+// whatever it spawns (pytest, mypy, ...) resolve from the repo's own venv.
+// Repos without a `.venv` run with the environment unchanged.
 
-pub fn build_bootstrap(project: &Path) -> Result<bool> {
-    check_call(project, "python", &["bootstrap.py"])?;
+pub fn build_bootstrap(project: &Path, venv: bool) -> Result<bool> {
+    check_call_maybe_ve(project, venv, "python", &["bootstrap.py"])?;
     Ok(true)
 }
 
-pub fn build_pydmt(project: &Path) -> Result<bool> {
-    check_call(project, "pydmt", &["build"])?;
+pub fn build_pydmt(project: &Path, venv: bool) -> Result<bool> {
+    check_call_maybe_ve(project, venv, "pydmt", &["build"])?;
     Ok(true)
 }
 
-pub fn build_make(project: &Path) -> Result<bool> {
-    check_call(project, "make", &[])?;
+pub fn build_make(project: &Path, venv: bool) -> Result<bool> {
+    check_call_maybe_ve(project, venv, "make", &[])?;
     Ok(true)
 }
 
-pub fn build_venv_make(project: &Path) -> Result<bool> {
-    check_call_ve(project, &["make"])?;
+pub fn build_pydmt_build_venv(project: &Path, venv: bool) -> Result<bool> {
+    check_call_maybe_ve(project, venv, "pydmt", &["build_venv"])?;
     Ok(true)
 }
 
-pub fn build_venv_pydmt(project: &Path) -> Result<bool> {
-    check_call_ve(project, &["pydmt", "build"])?;
+pub fn build_cargo(project: &Path, venv: bool) -> Result<bool> {
+    check_call_maybe_ve(project, venv, "cargo", &["build"])?;
+    check_call_maybe_ve(project, venv, "cargo", &["build", "--release"])?;
     Ok(true)
 }
 
-pub fn build_pydmt_build_venv(project: &Path) -> Result<bool> {
-    check_call(project, "pydmt", &["build_venv"])?;
+pub fn build_cargo_publish(project: &Path, venv: bool) -> Result<bool> {
+    check_call_maybe_ve(project, venv, "cargo", &["publish"])?;
     Ok(true)
 }
 
-pub fn build_cargo(project: &Path) -> Result<bool> {
-    check_call(project, "cargo", &["build"])?;
-    check_call(project, "cargo", &["build", "--release"])?;
-    Ok(true)
-}
-
-pub fn build_cargo_publish(project: &Path) -> Result<bool> {
-    check_call(project, "cargo", &["publish"])?;
-    Ok(true)
-}
-
-pub fn build_rsconstruct(project: &Path) -> Result<bool> {
-    check_call(project, "rsconstruct", &["--quiet", "build"])?;
-    Ok(true)
-}
-
-pub fn build_venv_rsconstruct(project: &Path) -> Result<bool> {
-    check_call_ve_env(project, "rsconstruct", &["--quiet", "build"])?;
+pub fn build_rsconstruct(project: &Path, venv: bool) -> Result<bool> {
+    check_call_maybe_ve(project, venv, "rsconstruct", &["--quiet", "build"])?;
     Ok(true)
 }

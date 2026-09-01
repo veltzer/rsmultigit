@@ -140,8 +140,6 @@ rsmultigit complete bash >> ~/.bash_completion
 | `build rsconstruct` | Run rsconstruct build on projects with `rsconstruct.toml` |
 | `build pydmt` | Run pydmt build across all projects |
 | `build bootstrap` | Run bootstrap across all projects |
-| `build venv-make` | Run make inside a virtualenv |
-| `build venv-pydmt` | Run pydmt inside a virtualenv |
 | `build pydmt-build-venv` | Run pydmt build_venv |
 
 ### Other
