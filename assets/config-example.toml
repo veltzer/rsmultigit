@@ -17,6 +17,10 @@
 #   select     — glob over repo names (required)
 #   exclude    — glob of repo names to drop from the selection
 #   marker     — only include repos that contain this file (relative to repo root)
+#   marker_absent — the inverse: drop repos that contain this file. This is how a
+#                repo opts out of an invariant from inside itself (e.g. a `.noci`
+#                file in a repo that deliberately has no CI) instead of being
+#                named in an `exclude` glob that lives far away from it.
 #   path       — file inside each repo to compare (required)
 #   enabled    — bool (default true). Disabled rules are silently skipped, but can
 #                still be forced on with `--checks <name...>` for ad-hoc checks.

@@ -25,6 +25,12 @@ pub struct Rule {
     pub exclude: Option<String>,
     #[serde(default)]
     pub marker: Option<String>,
+    /// Inverse of `marker`: a repo containing this file is dropped from the
+    /// rule's scope. This is how a repo opts out of an invariant from inside
+    /// itself (e.g. `.noci` for a repo that deliberately has no CI), rather
+    /// than by name in an `exclude` glob that lives far from the repo.
+    #[serde(default)]
+    pub marker_absent: Option<String>,
     pub path: String,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
@@ -128,7 +134,8 @@ fn match_glob(pattern: &str, name: &str) -> Result<bool> {
         .with_context(|| format!("invalid glob pattern: {pattern}"))
 }
 
-/// Apply `select`, `exclude`, and `marker` filters to the discovered repo list.
+/// Apply `select`, `exclude`, `marker` and `marker_absent` filters to the
+/// discovered repo list.
 /// `repos` are absolute or relative paths to repo roots.
 fn select_repos(rule: &Rule, repos: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut out = Vec::new();
@@ -147,6 +154,11 @@ fn select_repos(rule: &Rule, repos: &[PathBuf]) -> Result<Vec<PathBuf>> {
         }
         if let Some(marker) = &rule.marker
             && !repo.join(marker).exists()
+        {
+            continue;
+        }
+        if let Some(marker) = &rule.marker_absent
+            && repo.join(marker).exists()
         {
             continue;
         }
@@ -342,6 +354,7 @@ mod tests {
             select: "*".into(),
             exclude: None,
             marker: None,
+            marker_absent: None,
             path: ".gitignore".into(),
             enabled: true,
             must_have: false,
@@ -364,6 +377,7 @@ mod tests {
             select: "*".into(),
             exclude: None,
             marker: None,
+            marker_absent: None,
             path: ".gitignore".into(),
             enabled: true,
             must_have: false,
@@ -388,6 +402,7 @@ mod tests {
             select: "*".into(),
             exclude: None,
             marker: None,
+            marker_absent: None,
             path: ".gitignore".into(),
             enabled: true,
             must_have: false,
@@ -413,6 +428,7 @@ mod tests {
             select: "py*".into(),
             exclude: None,
             marker: None,
+            marker_absent: None,
             path: "Makefile".into(),
             enabled: true,
             must_have: false,
@@ -437,6 +453,7 @@ mod tests {
             select: "py*".into(),
             exclude: Some("pydraft*".into()),
             marker: None,
+            marker_absent: None,
             path: "Makefile".into(),
             enabled: true,
             must_have: false,
@@ -470,6 +487,7 @@ mod tests {
             select: "*".into(),
             exclude: None,
             marker: None,
+            marker_absent: None,
             path: ".gitignore".into(),
             enabled: true,
             must_have: false,
@@ -492,6 +510,7 @@ mod tests {
             select: "*".into(),
             exclude: None,
             marker: None,
+            marker_absent: None,
             path: ".gitignore".into(),
             enabled: true,
             must_have: true,
@@ -515,6 +534,7 @@ mod tests {
             select: "*".into(),
             exclude: None,
             marker: None,
+            marker_absent: None,
             path: ".gitignore".into(),
             enabled: true,
             must_have: true,
@@ -535,6 +555,7 @@ mod tests {
             select: "*".into(),
             exclude: None,
             marker: None,
+            marker_absent: None,
             path: ".gitignore".into(),
             enabled: true,
             must_have: false,
@@ -550,6 +571,7 @@ mod tests {
             select: "*".into(),
             exclude: None,
             marker: None,
+            marker_absent: None,
             path: ".gitignore".into(),
             enabled: true,
         };
@@ -567,12 +589,58 @@ mod tests {
             select: "*".into(),
             exclude: None,
             marker: None,
+            marker_absent: None,
             path: ".gitignore".into(),
             enabled: true,
             must_have: false,
         };
         let result = evaluate_rule(&rule, &repos).unwrap();
         assert!(!result.matched_nothing());
+    }
+
+    #[test]
+    fn marker_absent_filters_out_opted_out_repos() {
+        let tmp = TempDir::new().unwrap();
+        write(&tmp.path().join("a/.gitignore"), "x\n");
+        write(&tmp.path().join("b/.gitignore"), "DIFFERENT\n");
+        write(&tmp.path().join("b/.noci"), "");
+        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        let rule = Rule {
+            name: "gi".into(),
+            select: "*".into(),
+            exclude: None,
+            marker: None,
+            marker_absent: Some(".noci".into()),
+            path: ".gitignore".into(),
+            enabled: true,
+            must_have: false,
+        };
+        let result = evaluate_rule(&rule, &repos).unwrap();
+        // b opted out, so its divergent .gitignore never enters the comparison.
+        assert!(result.is_consistent());
+        assert_eq!(result.total_files, 1);
+    }
+
+    #[test]
+    fn marker_absent_exempts_repo_from_must_have() {
+        let tmp = TempDir::new().unwrap();
+        write(&tmp.path().join("a/build.yml"), "x\n");
+        // b has no build.yml at all, but opts out of the rule.
+        write(&tmp.path().join("b/.noci"), "");
+        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        let rule = Rule {
+            name: "ci".into(),
+            select: "*".into(),
+            exclude: None,
+            marker: None,
+            marker_absent: Some(".noci".into()),
+            path: "build.yml".into(),
+            enabled: true,
+            must_have: true,
+        };
+        let result = evaluate_rule(&rule, &repos).unwrap();
+        assert!(result.must_have_violations.is_empty());
+        assert!(result.is_consistent());
     }
 
     #[test]
@@ -587,6 +655,7 @@ mod tests {
             select: "*".into(),
             exclude: None,
             marker: Some(".tag".into()),
+            marker_absent: None,
             path: ".gitignore".into(),
             enabled: true,
             must_have: false,
