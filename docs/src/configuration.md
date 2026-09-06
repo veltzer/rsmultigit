@@ -31,7 +31,7 @@ RSMultiGit does not use a configuration file. All behavior is controlled via CLI
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--venv` | `true` | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. Honoured by `run`, `build`, `uv`, and `clean make`; repos without a `.venv` run unchanged |
+| `--venv` | `true` | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. Honoured by `run`, `build`, and `clean make`; repos without a `.venv` run unchanged. Not honoured by `uv`, which selects its own environment from the repo directory |
 | `--no-venv` | `false` | Turn the `.venv` activation off |
 
 ## Error handling

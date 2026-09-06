@@ -17,7 +17,7 @@ These flags can be used with any subcommand and must appear before the subcomman
 | `--no-glob` | Disable glob — check immediate subdirectories only |
 | `--folders <LIST>` | Comma-separated list of folders to operate on |
 | `--no-stop` | Do not stop on errors — continue to next project |
-| `--venv` | Activate each repo's local `.venv` before running tool subprocesses. On by default; honoured by `run`, `build`, `uv`, and `clean make` |
+| `--venv` | Activate each repo's local `.venv` before running tool subprocesses. On by default; honoured by `run`, `build`, and `clean make` (not by `uv`) |
 | `--no-venv` | Turn `--venv` off — run tool subprocesses with the ambient environment |
 | `--short-circuit` | Stop at the first negative result. Off by default; honoured by `check-same` |
 | `--no-print-no-projects` | Suppress the "no projects found" message |
@@ -442,15 +442,20 @@ rsmultigit uv lock --check --no-stop  # Report which lockfiles are stale
 ### `rsmultigit uv sync`
 
 Run `uv sync` in each Python project, syncing its environment from the
-lockfile. By default (the global `--venv` flag), a project that already has a
-`.venv` gets it activated first — `.venv/bin` is prepended to `PATH` and
-`VIRTUAL_ENV` points at `.venv` before `uv sync` runs; projects without one
-run plain `uv sync`, which creates the environment. Pass `--no-venv` to skip
-the activation. `uv lock` honours the flag the same way.
+lockfile. Projects without a `.venv` get one created.
+
+`uv` selects its own target environment from the project directory, so
+rsmultigit runs it with `VIRTUAL_ENV` (and `UV_PROJECT_ENVIRONMENT`) unset
+and leaves the choice to `uv`. This matters when you invoke rsmultigit from
+an activated shell: the inherited `VIRTUAL_ENV` names *your* venv, never the
+repo being synced, and passing it through makes `uv sync` warn
+(`does not match the project environment path` — the value is then ignored)
+while the `uv pip` interface would silently target the wrong environment.
+The global `--venv`/`--no-venv` flag therefore does not apply to `uv`;
+`uv lock` behaves the same way.
 
 ```bash
 rsmultigit uv sync
-rsmultigit --no-venv uv sync
 ```
 
 ## GitHub Commands

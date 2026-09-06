@@ -65,6 +65,27 @@ pub fn check_call(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
     run_inheriting_or_capturing(cwd, cmd, args)
 }
 
+/// Run a command in `cwd` with any inherited virtualenv selection removed:
+/// `VIRTUAL_ENV` and `UV_PROJECT_ENVIRONMENT` are unset, so a tool that picks
+/// its target environment itself sees only `cwd`.
+///
+/// This is what `uv` wants. uv locates the environment from the working
+/// directory — the project's `.venv` for `uv sync`/`uv lock`, `./.venv` for
+/// the `uv pip` interface — and an inherited `VIRTUAL_ENV` only overrides that
+/// with the venv the *caller's shell* happened to be in. For `uv sync` that
+/// earns a "does not match the project environment" warning; for `uv pip` it
+/// silently redirects the install into the wrong venv. Neither is wanted when
+/// running across a fleet of repos, where the repo dir is the whole point.
+pub fn check_call_clean_env(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
+    let mut command = Command::new(cmd);
+    command
+        .args(args)
+        .current_dir(cwd)
+        .env_remove("VIRTUAL_ENV")
+        .env_remove("UV_PROJECT_ENVIRONMENT");
+    run_command(command, cmd)
+}
+
 /// Run a tool in `cwd`, with the local virtualenv activated first when `venv`
 /// is true (see `check_call_ve_env`; a repo without a `.venv` runs with the
 /// environment unchanged either way). This is the entry point for commands
@@ -198,6 +219,57 @@ mod tests {
         let text = String::from_utf8_lossy(&captured);
         assert!(text.contains("from-venv"));
         assert!(text.contains(".venv"));
+    }
+
+    #[test]
+    fn check_call_clean_env_unsets_virtual_env() {
+        // SAFETY: single-threaded test process (nextest runs each test in its
+        // own process), and the var is removed again before returning.
+        unsafe {
+            std::env::set_var("VIRTUAL_ENV", "/somewhere/else/.venv");
+            std::env::set_var("UV_PROJECT_ENVIRONMENT", "/somewhere/else/env");
+        }
+        enter_capture();
+        check_call(
+            &cwd(),
+            "sh",
+            &["-c", "echo ambient=[${VIRTUAL_ENV-unset}]"],
+        )
+        .unwrap();
+        let ambient = String::from_utf8_lossy(&leave_capture()).into_owned();
+        enter_capture();
+        check_call_clean_env(
+            &cwd(),
+            "sh",
+            &[
+                "-c",
+                "echo ve=[${VIRTUAL_ENV-unset}] upe=[${UV_PROJECT_ENVIRONMENT-unset}]",
+            ],
+        )
+        .unwrap();
+        let cleaned = String::from_utf8_lossy(&leave_capture()).into_owned();
+        unsafe {
+            std::env::remove_var("VIRTUAL_ENV");
+            std::env::remove_var("UV_PROJECT_ENVIRONMENT");
+        }
+        // check_call passes the ambient value through; check_call_clean_env does not.
+        assert!(
+            ambient.contains("ambient=[/somewhere/else/.venv]"),
+            "expected ambient VIRTUAL_ENV to be inherited, got {ambient:?}"
+        );
+        assert!(
+            cleaned.contains("ve=[unset]"),
+            "expected VIRTUAL_ENV to be unset, got {cleaned:?}"
+        );
+        assert!(
+            cleaned.contains("upe=[unset]"),
+            "expected UV_PROJECT_ENVIRONMENT to be unset, got {cleaned:?}"
+        );
+    }
+
+    #[test]
+    fn check_call_clean_env_propagates_failure() {
+        assert!(check_call_clean_env(&cwd(), "false", &[]).is_err());
     }
 
     #[test]

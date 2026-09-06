@@ -63,8 +63,11 @@ pub struct Cli {
 
     /// Activate each repo's local .venv (prepend .venv/bin to PATH, set
     /// VIRTUAL_ENV) before running tool subprocesses. On by default; honoured
-    /// by `run`, `build`, `uv`, and `clean make`. Repos without a .venv run
+    /// by `run`, `build`, and `clean make`. Repos without a .venv run
     /// with the environment unchanged. Negate with --no-venv.
+    ///
+    /// Not honoured by `uv`, which selects its own target environment from
+    /// the repo directory and is always run with VIRTUAL_ENV unset.
     #[arg(long, global = true, default_value_t = true, overrides_with = "no_venv")]
     pub venv: bool,
 

@@ -370,7 +370,8 @@ fn main() -> Result<()> {
             if check && *what != UvWhat::Lock {
                 anyhow::bail!("--check only applies to `uv lock`");
             }
-            let venv = config.venv;
+            // uv picks its target environment from the repo dir itself, so the
+            // global --venv flag deliberately does not reach these calls.
             match what {
                 UvWhat::Lock => {
                     runner::do_for_all_projects_with_check(
@@ -378,7 +379,7 @@ fn main() -> Result<()> {
                         &projects,
                         commands::uv::check_pyproject,
                         move |project: &Path| -> anyhow::Result<bool> {
-                            commands::uv::lock(project, upgrade, check, venv)
+                            commands::uv::lock(project, upgrade, check)
                         },
                     )?;
                 }
@@ -387,9 +388,7 @@ fn main() -> Result<()> {
                         &config,
                         &projects,
                         commands::uv::check_pyproject,
-                        move |project: &Path| -> anyhow::Result<bool> {
-                            commands::uv::sync(project, venv)
-                        },
+                        commands::uv::sync,
                     )?;
                 }
             }

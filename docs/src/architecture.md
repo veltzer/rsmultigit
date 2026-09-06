@@ -84,6 +84,67 @@ skips the process machinery around the scan.
 - Output parity with git porcelain formats is close but not byte-perfect
   (submodule state, unusual ignore rules).
 
+## Subprocess environments — venv activation vs. clean env
+
+**Policy: tools that resolve from `PATH` get the repo's `.venv` activated.
+Tools that select their own target environment get a clean env instead, and
+choose from the working directory. Never pass the caller's `VIRTUAL_ENV`
+through to either.**
+
+Three helpers in `subprocess_utils.rs` implement this:
+
+| Helper | Environment | Used by |
+|---|---|---|
+| `check_call` | inherited, unchanged | plain commands with no venv stake |
+| `check_call_ve_env` | `.venv/bin` prepended to `PATH`, `VIRTUAL_ENV` set | `run`, `build`, `clean make` |
+| `check_call_clean_env` | `VIRTUAL_ENV` and `UV_PROJECT_ENVIRONMENT` removed | `uv` |
+
+Commands honouring `--venv` do not call the first two directly: they call
+`check_call_maybe_ve`, which dispatches to `check_call_ve_env` when the flag
+is on and `check_call` when it is off. A repo with no `.venv` runs with the
+environment unchanged either way.
+
+### Why activation is right for `run`/`build`
+
+These run tools *from* the environment — `pytest`, `mypy`, `ruff`. The tool
+name resolves through `PATH`, so activation is what makes the repo's own
+pinned version win over whatever `~/.venv` happens to provide. This mirrors
+the global rule that builds happen inside an already-entered environment;
+`--venv` is rsmultigit entering it on your behalf, once per repo.
+
+### Why activation is wrong for `uv`
+
+`uv` is not run *from* an environment, it *manages* one. It already locates
+the target from the working directory — the project's `.venv` for `uv sync`
+and `uv lock`, `./.venv` for the `uv pip` interface — and since rsmultigit
+sets the working directory per repo, that discovery is already correct.
+
+An inherited `VIRTUAL_ENV` can then only make it wrong, because it names the
+venv the *calling shell* was in, never the repo being operated on. The two
+uv interfaces fail differently on it, and the quiet one is the dangerous one:
+
+| Invocation | Inherited `VIRTUAL_ENV` | Result |
+|---|---|---|
+| `uv sync` / `uv lock` | `~/.venv` | Warns `does not match the project environment path .venv and will be ignored`, then does the right thing |
+| `uv pip install` | `~/.venv` | **Installs into `~/.venv`**, silently, once per repo |
+
+The first is the visible annoyance that prompted the change. The second is
+the reason the fix is a clean environment rather than a suppressed warning:
+`uv pip` treats an active venv as a perfectly legitimate target, so there is
+nothing to warn about, and a fleet-wide run would quietly write into the
+shared toolbox hundreds of times.
+
+Setting `VIRTUAL_ENV` explicitly to the repo's own `.venv` would also be
+*correct* for both — it agrees with what uv discovers anyway — but it still
+trips the `uv sync` warning, because uv compares the absolute path it was
+given against the project's relative `.venv`. Unsetting is the only option
+that is both correct and quiet, and it extends to uv subcommands not yet
+wired up: anything added to `commands/uv.rs` gets the right behaviour by
+calling `check_call_clean_env`.
+
+Consequently the global `--venv`/`--no-venv` flag does not apply to `uv`.
+It still parses there (it is a global flag) but has no effect.
+
 ## Error handling
 
 All functions return `anyhow::Result`. The `--no-stop` flag controls whether errors in individual projects are fatal (default) or logged and skipped.
