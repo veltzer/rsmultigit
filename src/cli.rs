@@ -147,6 +147,39 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         fix_missing: bool,
     },
+    /// Check that files declared as `[[exists]]` in ~/.config/rsmultigit/config.toml
+    /// are present in every repo they apply to. Content is never compared, so this
+    /// is the rule type for files that must exist but legitimately differ per repo.
+    CheckExists {
+        /// Run only the listed exists rules (space- or repeat-separated).
+        /// Listed names override `enabled = false`. Unknown names are a hard error.
+        #[arg(long, num_args = 1.., value_delimiter = ' ')]
+        checks: Vec<String>,
+        /// Run only exists rules whose name matches one of the given regular
+        /// expressions (unanchored, like grep; use ^...$ to match a full name).
+        /// Combines with --checks. Matched rules override `enabled = false`.
+        /// A pattern matching no rule name is a hard error.
+        #[arg(long, num_args = 1.., value_delimiter = ' ')]
+        checks_re: Vec<String>,
+        /// Print only failing rules, suppressing the `ok` lines that passing
+        /// rules print by default. (--terse implies this.)
+        #[arg(long, default_value_t = false)]
+        only_failed: bool,
+        /// Treat a rule that selects no repos at all as passing.
+        /// By default such a rule fails: selecting 0 repos almost always means
+        /// a stale `select`, not a healthy check.
+        #[arg(long, default_value_t = false)]
+        allow_empty: bool,
+    },
+    /// Run both check-same and check-exists. Exits non-zero if either fails.
+    CheckAll {
+        /// Print only failing rules from both checks.
+        #[arg(long, default_value_t = false)]
+        only_failed: bool,
+        /// Treat rules that match nothing as passing, in both checks.
+        #[arg(long, default_value_t = false)]
+        allow_empty: bool,
+    },
     /// Clean repositories
     Clean {
         /// What kind of clean to perform

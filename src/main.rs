@@ -79,6 +79,65 @@ fn main() -> Result<()> {
         std::process::exit(exit_code);
     }
 
+    if let Commands::CheckExists {
+        checks,
+        checks_re,
+        only_failed,
+        allow_empty,
+    } = &cli.command
+    {
+        let exit_code = run_check_exists(
+            &config,
+            &file_config,
+            &projects,
+            &CheckExistsOpts {
+                requested: checks,
+                requested_re: checks_re,
+                only_failed: *only_failed,
+                allow_empty: *allow_empty,
+            },
+        )?;
+        std::process::exit(exit_code);
+    }
+
+    if let Commands::CheckAll {
+        only_failed,
+        allow_empty,
+    } = &cli.command
+    {
+        // Both halves always run: the point of check-all is one verdict over
+        // every invariant, so a failure in the first must not hide the state of
+        // the second. An empty-rule bail in either half still propagates as an
+        // error, since that is a config bug rather than drift.
+        let empty: Vec<String> = Vec::new();
+        let same = run_check_same(
+            &config,
+            &file_config,
+            &projects,
+            &CheckSameOpts {
+                requested: &empty,
+                requested_re: &empty,
+                only_failed: *only_failed,
+                show_diff: false,
+                do_copy: false,
+                allow_empty: *allow_empty,
+                do_fix_missing: false,
+            },
+        )?;
+        let exists = run_check_exists(
+            &config,
+            &file_config,
+            &projects,
+            &CheckExistsOpts {
+                requested: &empty,
+                requested_re: &empty,
+                only_failed: *only_failed,
+                allow_empty: *allow_empty,
+            },
+        )?;
+        std::process::exit(if same != 0 || exists != 0 { 1 } else { 0 });
+    }
+
     match &cli.command {
         // ── do_count ──
         Commands::Count { what } => {
@@ -395,6 +454,8 @@ fn main() -> Result<()> {
         }
 
         Commands::CheckSame { .. } => unreachable!("handled above"),
+        Commands::CheckExists { .. } => unreachable!("handled above"),
+        Commands::CheckAll { .. } => unreachable!("handled above"),
         Commands::Complete { .. } => unreachable!("handled above"),
         Commands::ConfigExample => unreachable!("handled above"),
         Commands::Version => unreachable!("handled above"),
@@ -663,6 +724,166 @@ fn run_check_same(
     } else {
         Ok(if any_mismatch { 1 } else { 0 })
     }
+}
+
+/// The check-exists flag set, mirroring `CheckSameOpts`.
+struct CheckExistsOpts<'a> {
+    requested: &'a [String],
+    requested_re: &'a [String],
+    only_failed: bool,
+    allow_empty: bool,
+}
+
+/// Run the `[[exists]]` rules: assert presence, never compare content.
+///
+/// Output and flag handling deliberately mirror `run_check_same` so the two
+/// commands read the same way — `--terse` prints bare failing rule names,
+/// `--only-failed` drops the `ok` lines, `--short-circuit` stops at the first
+/// failure, and an empty rule is a hard error unless `--allow-empty`.
+fn run_check_exists(
+    app: &AppConfig,
+    file_config: &commands::check::CheckConfig,
+    projects: &[std::path::PathBuf],
+    opts: &CheckExistsOpts<'_>,
+) -> Result<i32> {
+    use commands::check as check;
+
+    let CheckExistsOpts {
+        requested,
+        requested_re,
+        only_failed,
+        allow_empty,
+    } = *opts;
+
+    let rules: Vec<&check::ExistsRule> = if requested.is_empty() && requested_re.is_empty() {
+        file_config.exists.iter().filter(|r| r.enabled).collect()
+    } else {
+        let known: std::collections::HashSet<&str> =
+            file_config.exists.iter().map(|r| r.name.as_str()).collect();
+        let unknown: Vec<&String> = requested
+            .iter()
+            .filter(|name| !known.contains(name.as_str()))
+            .collect();
+        if !unknown.is_empty() {
+            let joined = unknown
+                .iter()
+                .map(|s| format!("{s:?}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            anyhow::bail!("unknown exists rule name(s): {joined}");
+        }
+        let mut selected: Vec<&check::ExistsRule> = requested
+            .iter()
+            .filter_map(|name| file_config.exists.iter().find(|r| &r.name == name))
+            .collect();
+        for pattern in requested_re {
+            let re = regex_lite::Regex::new(pattern)
+                .with_context(|| format!("invalid exists regex {pattern:?}"))?;
+            let mut matched_any = false;
+            for rule in &file_config.exists {
+                if re.is_match(&rule.name) {
+                    matched_any = true;
+                    if !selected.iter().any(|r| r.name == rule.name) {
+                        selected.push(rule);
+                    }
+                }
+            }
+            if !matched_any {
+                anyhow::bail!("exists regex {pattern:?} matches no rule name");
+            }
+        }
+        selected
+    };
+
+    if rules.is_empty() {
+        if app.verbose {
+            println!("no exists rules to check");
+        }
+        return Ok(0);
+    }
+
+    let mut any_missing = false;
+    let mut empty_rules: Vec<String> = Vec::new();
+
+    for rule in rules {
+        let result = check::evaluate_exists_rule(rule, projects)?;
+
+        if result.matched_nothing() && !allow_empty {
+            any_missing = true;
+            empty_rules.push(result.name.clone());
+            if app.terse {
+                println!("{}", result.name);
+            } else {
+                if !app.no_header {
+                    println!("[{}]", result.name);
+                }
+                println!("no repos selected");
+            }
+            if app.short_circuit {
+                break;
+            }
+            continue;
+        }
+
+        if result.is_satisfied() {
+            if !only_failed && !app.terse {
+                if !app.no_header {
+                    println!("[{}]", result.name);
+                }
+                println!("ok ({} repos)", result.total_repos());
+            }
+            continue;
+        }
+
+        any_missing = true;
+
+        if app.terse {
+            println!("{}", result.name);
+            if app.short_circuit {
+                break;
+            }
+            continue;
+        }
+
+        if !app.no_header {
+            println!("[{}]", result.name);
+        }
+        println!(
+            "{} repos, {} missing {}",
+            result.total_repos(),
+            result.missing.len(),
+            result.path,
+        );
+        if !app.no_output {
+            println!("  missing in:");
+            for repo in &result.missing {
+                println!("    {}", repo.display());
+            }
+        }
+
+        if app.short_circuit {
+            break;
+        }
+    }
+
+    if !empty_rules.is_empty() {
+        let joined = empty_rules
+            .iter()
+            .map(|name| format!("{name:?}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let noun = if empty_rules.len() == 1 {
+            "rule"
+        } else {
+            "rules"
+        };
+        anyhow::bail!(
+            "check-exists: {} {noun} selected no repos: {joined} (stale select? pass --allow-empty to accept)",
+            empty_rules.len(),
+        );
+    }
+
+    Ok(if any_missing { 1 } else { 0 })
 }
 
 #[derive(Debug, PartialEq, Eq)]

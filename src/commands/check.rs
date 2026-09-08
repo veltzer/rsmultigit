@@ -15,6 +15,61 @@ pub struct CheckConfig {
     pub repos: Vec<String>,
     #[serde(default)]
     pub check: Vec<Rule>,
+    /// Presence-only rules, consumed by `check-exists`. Unlike `[[check]]`,
+    /// these never compare content: they assert that every in-scope repo has
+    /// the file, whatever it contains. This is the right rule type for files
+    /// that must exist but legitimately differ per repo (README.md, LICENSE
+    /// where the year varies, and so on).
+    #[serde(default)]
+    pub exists: Vec<ExistsRule>,
+}
+
+/// A presence-only rule. Shares the selection vocabulary of [`Rule`] —
+/// `select`/`exclude`/`marker`/`marker_absent`/`enabled` mean exactly the same
+/// thing — but has no content dimension, so no `must_have` field either:
+/// requiring the file *is* the whole rule.
+#[derive(Debug, Deserialize)]
+pub struct ExistsRule {
+    pub name: String,
+    pub select: String,
+    #[serde(default)]
+    pub exclude: Option<String>,
+    #[serde(default)]
+    pub marker: Option<String>,
+    #[serde(default)]
+    pub marker_absent: Option<String>,
+    pub path: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+/// Outcome of evaluating a single presence rule.
+pub struct ExistsResult {
+    pub name: String,
+    /// The file each in-scope repo was required to contain (the rule's `path`).
+    pub path: String,
+    /// Repos that were in scope and had the file.
+    pub present: Vec<PathBuf>,
+    /// Repos that were in scope and did not. These are the violations.
+    pub missing: Vec<PathBuf>,
+}
+
+impl ExistsResult {
+    pub fn is_satisfied(&self) -> bool {
+        self.missing.is_empty()
+    }
+
+    /// Number of repos the rule actually examined.
+    pub fn total_repos(&self) -> usize {
+        self.present.len() + self.missing.len()
+    }
+
+    /// True when the rule selected no repos at all — almost always a stale
+    /// `select`, so `check-exists` treats it as a failure unless
+    /// `--allow-empty` is passed. Mirrors [`RuleResult::matched_nothing`].
+    pub fn matched_nothing(&self) -> bool {
+        self.total_repos() == 0
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -134,30 +189,61 @@ fn match_glob(pattern: &str, name: &str) -> Result<bool> {
         .with_context(|| format!("invalid glob pattern: {pattern}"))
 }
 
+/// The selection fields shared by `[[check]]` and `[[exists]]` rules, borrowed
+/// so one filter implementation serves both.
+struct Selection<'a> {
+    select: &'a str,
+    exclude: Option<&'a str>,
+    marker: Option<&'a str>,
+    marker_absent: Option<&'a str>,
+}
+
+impl Rule {
+    fn selection(&self) -> Selection<'_> {
+        Selection {
+            select: &self.select,
+            exclude: self.exclude.as_deref(),
+            marker: self.marker.as_deref(),
+            marker_absent: self.marker_absent.as_deref(),
+        }
+    }
+}
+
+impl ExistsRule {
+    fn selection(&self) -> Selection<'_> {
+        Selection {
+            select: &self.select,
+            exclude: self.exclude.as_deref(),
+            marker: self.marker.as_deref(),
+            marker_absent: self.marker_absent.as_deref(),
+        }
+    }
+}
+
 /// Apply `select`, `exclude`, `marker` and `marker_absent` filters to the
 /// discovered repo list.
 /// `repos` are absolute or relative paths to repo roots.
-fn select_repos(rule: &Rule, repos: &[PathBuf]) -> Result<Vec<PathBuf>> {
+fn select_repos(rule: &Selection<'_>, repos: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     for repo in repos {
         let name = match repo.file_name() {
             Some(n) => n.to_string_lossy().into_owned(),
             None => continue,
         };
-        if !match_glob(&rule.select, &name)? {
+        if !match_glob(rule.select, &name)? {
             continue;
         }
-        if let Some(ex) = &rule.exclude
+        if let Some(ex) = rule.exclude
             && match_glob(ex, &name)?
         {
             continue;
         }
-        if let Some(marker) = &rule.marker
+        if let Some(marker) = rule.marker
             && !repo.join(marker).exists()
         {
             continue;
         }
-        if let Some(marker) = &rule.marker_absent
+        if let Some(marker) = rule.marker_absent
             && repo.join(marker).exists()
         {
             continue;
@@ -186,7 +272,7 @@ fn hash_file(path: &Path) -> Result<[u8; 32]> {
 
 /// Evaluate a single rule against the set of discovered repos.
 pub fn evaluate_rule(rule: &Rule, repos: &[PathBuf]) -> Result<RuleResult> {
-    let candidates = select_repos(rule, repos)?;
+    let candidates = select_repos(&rule.selection(), repos)?;
 
     let mut files: Vec<PathBuf> = Vec::new();
     let mut missing: Vec<PathBuf> = Vec::new();
@@ -221,6 +307,32 @@ pub fn evaluate_rule(rule: &Rule, repos: &[PathBuf]) -> Result<RuleResult> {
         total_files: files.len(),
         skipped,
         must_have_violations,
+    })
+}
+
+/// Evaluate a single presence rule against the set of discovered repos.
+///
+/// No content is read: the rule passes when every selected repo contains
+/// `path`. A directory at `path` does not count — the rule asserts a file,
+/// matching `evaluate_rule`'s `is_file()` test.
+pub fn evaluate_exists_rule(rule: &ExistsRule, repos: &[PathBuf]) -> Result<ExistsResult> {
+    let candidates = select_repos(&rule.selection(), repos)?;
+
+    let mut present: Vec<PathBuf> = Vec::new();
+    let mut missing: Vec<PathBuf> = Vec::new();
+    for repo in candidates {
+        if repo.join(&rule.path).is_file() {
+            present.push(repo);
+        } else {
+            missing.push(repo);
+        }
+    }
+
+    Ok(ExistsResult {
+        name: rule.name.clone(),
+        path: rule.path.clone(),
+        present,
+        missing,
     })
 }
 
@@ -282,6 +394,7 @@ mod tests {
         let cfg = CheckConfig {
             repos: vec![],
             check: vec![],
+            exists: vec![],
         };
         assert!(resolve_repos(&cfg).is_err());
     }
@@ -297,6 +410,7 @@ mod tests {
         let cfg = CheckConfig {
             repos: vec![format!("{}/*", tmp.path().display())],
             check: vec![],
+            exists: vec![],
         };
         let repos = resolve_repos(&cfg).unwrap();
         assert_eq!(repos.len(), 2);
@@ -314,6 +428,7 @@ mod tests {
                 format!("{}/*", tmp.path().display()),
             ],
             check: vec![],
+            exists: vec![],
         };
         let repos = resolve_repos(&cfg).unwrap();
         assert_eq!(repos.len(), 1);
@@ -325,6 +440,7 @@ mod tests {
         let cfg = CheckConfig {
             repos: vec![format!("{}/nonexistent*", tmp.path().display())],
             check: vec![],
+            exists: vec![],
         };
         assert!(resolve_repos(&cfg).is_err());
     }
@@ -663,5 +779,157 @@ mod tests {
         let result = evaluate_rule(&rule, &repos).unwrap();
         assert!(result.is_consistent());
         assert_eq!(result.total_files, 1);
+    }
+
+    fn exists_rule(path: &str, select: &str) -> ExistsRule {
+        ExistsRule {
+            name: "r".into(),
+            select: select.into(),
+            exclude: None,
+            marker: None,
+            marker_absent: None,
+            path: path.into(),
+            enabled: true,
+        }
+    }
+
+    #[test]
+    fn exists_config_parses() {
+        let toml = r#"
+            [[exists]]
+            name = "readme"
+            select = "*"
+            path = "README.md"
+        "#;
+        let config: CheckConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.exists.len(), 1);
+        assert_eq!(config.exists[0].name, "readme");
+        assert!(config.exists[0].enabled);
+        // [[check]] and [[exists]] are independent lists.
+        assert!(config.check.is_empty());
+    }
+
+    #[test]
+    fn exists_and_check_rules_coexist() {
+        let toml = r#"
+            [[check]]
+            name = "gi"
+            select = "*"
+            path = ".gitignore"
+
+            [[exists]]
+            name = "readme"
+            select = "*"
+            path = "README.md"
+        "#;
+        let config: CheckConfig = toml::from_str(toml).unwrap();
+        assert_eq!(config.check.len(), 1);
+        assert_eq!(config.exists.len(), 1);
+    }
+
+    #[test]
+    fn exists_passes_when_all_present_despite_differing_content() {
+        let tmp = TempDir::new().unwrap();
+        // Deliberately different content in every repo: presence is the point.
+        write(&tmp.path().join("a/README.md"), "# a\n");
+        write(&tmp.path().join("b/README.md"), "# b, entirely different\n");
+        write(&tmp.path().join("c/README.md"), "");
+        let repos: Vec<PathBuf> = ["a", "b", "c"].iter().map(|r| tmp.path().join(r)).collect();
+        let result = evaluate_exists_rule(&exists_rule("README.md", "*"), &repos).unwrap();
+        assert!(result.is_satisfied());
+        assert_eq!(result.present.len(), 3);
+        assert!(result.missing.is_empty());
+        assert_eq!(result.total_repos(), 3);
+    }
+
+    #[test]
+    fn exists_flags_the_repo_that_lacks_the_file() {
+        let tmp = TempDir::new().unwrap();
+        write(&tmp.path().join("a/README.md"), "# a\n");
+        fs::create_dir_all(tmp.path().join("b")).unwrap();
+        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        let result = evaluate_exists_rule(&exists_rule("README.md", "*"), &repos).unwrap();
+        assert!(!result.is_satisfied());
+        assert_eq!(result.missing.len(), 1);
+        assert!(result.missing[0].ends_with("b"));
+        assert_eq!(result.present.len(), 1);
+    }
+
+    #[test]
+    fn exists_does_not_accept_a_directory() {
+        let tmp = TempDir::new().unwrap();
+        write(&tmp.path().join("a/README.md"), "x\n");
+        // b has a *directory* named README.md, which must not satisfy the rule.
+        fs::create_dir_all(tmp.path().join("b/README.md")).unwrap();
+        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        let result = evaluate_exists_rule(&exists_rule("README.md", "*"), &repos).unwrap();
+        assert!(!result.is_satisfied());
+        assert_eq!(result.missing.len(), 1);
+    }
+
+    #[test]
+    fn exists_honours_select_and_exclude() {
+        let tmp = TempDir::new().unwrap();
+        write(&tmp.path().join("pyalpha/README.md"), "x\n");
+        fs::create_dir_all(tmp.path().join("pydraft")).unwrap();
+        fs::create_dir_all(tmp.path().join("go-proj")).unwrap();
+        let repos: Vec<PathBuf> = ["pyalpha", "pydraft", "go-proj"]
+            .iter()
+            .map(|r| tmp.path().join(r))
+            .collect();
+        let mut rule = exists_rule("README.md", "py*");
+        rule.exclude = Some("pydraft*".into());
+        let result = evaluate_exists_rule(&rule, &repos).unwrap();
+        // go-proj is out of select, pydraft is excluded: only pyalpha is judged.
+        assert!(result.is_satisfied());
+        assert_eq!(result.total_repos(), 1);
+    }
+
+    #[test]
+    fn exists_marker_absent_exempts_opted_out_repo() {
+        let tmp = TempDir::new().unwrap();
+        write(&tmp.path().join("a/README.md"), "x\n");
+        // b has no README but opts out from inside itself.
+        write(&tmp.path().join("b/.noreadme"), "");
+        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        let mut rule = exists_rule("README.md", "*");
+        rule.marker_absent = Some(".noreadme".into());
+        let result = evaluate_exists_rule(&rule, &repos).unwrap();
+        assert!(result.is_satisfied());
+        assert_eq!(result.total_repos(), 1);
+    }
+
+    #[test]
+    fn exists_marker_limits_scope_to_tagged_repos() {
+        let tmp = TempDir::new().unwrap();
+        write(&tmp.path().join("a/.tag"), "");
+        fs::create_dir_all(tmp.path().join("b")).unwrap();
+        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        let mut rule = exists_rule("README.md", "*");
+        rule.marker = Some(".tag".into());
+        let result = evaluate_exists_rule(&rule, &repos).unwrap();
+        // Only a is in scope, and it lacks the README, so the rule fails on it.
+        assert_eq!(result.total_repos(), 1);
+        assert_eq!(result.missing.len(), 1);
+    }
+
+    #[test]
+    fn exists_selecting_no_repos_reports_matched_nothing() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("a")).unwrap();
+        let repos = vec![tmp.path().join("a")];
+        let result = evaluate_exists_rule(&exists_rule("README.md", "zz*"), &repos).unwrap();
+        assert!(result.matched_nothing());
+        assert!(result.is_satisfied());
+    }
+
+    #[test]
+    fn exists_with_a_missing_file_is_not_matched_nothing() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("a")).unwrap();
+        let repos = vec![tmp.path().join("a")];
+        let result = evaluate_exists_rule(&exists_rule("README.md", "*"), &repos).unwrap();
+        assert!(!result.matched_nothing());
+        assert!(!result.is_satisfied());
     }
 }

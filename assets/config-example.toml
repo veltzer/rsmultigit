@@ -208,3 +208,21 @@ name = "rs-release-toml"
 select = "rs*"
 path = "release.toml"
 must_have = true
+
+# ── presence-only rules, consumed by `check-exists` ───────────────────────────
+#
+# An [[exists]] rule asserts that every repo it selects contains `path`, and
+# never looks at the content. Use it for files that must exist but legitimately
+# differ per repo — a README describes its own project, so byte-identity is the
+# wrong invariant while presence is the right one.
+#
+# Selection works exactly as it does for [[check]]: select, exclude, marker,
+# marker_absent and enabled all mean the same thing. There is no `must_have`
+# field, because requiring the file is the whole rule.
+#
+# `rsmultigit check-all` runs the [[check]] and [[exists]] rules together.
+
+[[exists]]
+name = "readme-present"
+select = "*"
+path = "README.md"
