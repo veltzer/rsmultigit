@@ -230,12 +230,7 @@ mod tests {
             std::env::set_var("UV_PROJECT_ENVIRONMENT", "/somewhere/else/env");
         }
         enter_capture();
-        check_call(
-            &cwd(),
-            "sh",
-            &["-c", "echo ambient=[${VIRTUAL_ENV-unset}]"],
-        )
-        .unwrap();
+        check_call(&cwd(), "sh", &["-c", "echo ambient=[${VIRTUAL_ENV-unset}]"]).unwrap();
         let ambient = String::from_utf8_lossy(&leave_capture()).into_owned();
         enter_capture();
         check_call_clean_env(

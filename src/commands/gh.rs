@@ -10,9 +10,14 @@ pub fn check_github(project: &Path) -> Result<bool> {
     let remotes = repo
         .remotes()
         .with_context(|| format!("failed to list remotes for {}", project.display()))?;
-    for name in remotes.iter().flatten() {
+    for name in remotes.iter() {
+        // Err is a non-UTF-8 remote name, Ok(None) a null entry: neither can
+        // be looked up, so skip both.
+        let Ok(Some(name)) = name else {
+            continue;
+        };
         if let Ok(remote) = repo.find_remote(name)
-            && let Some(url) = remote.url()
+            && let Ok(url) = remote.url()
             && url.contains("github.com")
         {
             return Ok(true);
@@ -77,7 +82,10 @@ fn select_deletions(items: &[(u64, bool)], keep: usize) -> Vec<u64> {
 fn clean_deployments(project: &Path, repo: &str, keep: usize) -> Result<()> {
     let ids: Vec<u64> = api_lines(project, &format!("repos/{repo}/deployments"), ".[].id")?
         .iter()
-        .map(|l| l.parse().with_context(|| format!("bad deployment id {l:?}")))
+        .map(|l| {
+            l.parse()
+                .with_context(|| format!("bad deployment id {l:?}"))
+        })
         .collect::<Result<_>>()?;
 
     // A deployment counts as failed when its most recent status is
@@ -122,7 +130,12 @@ fn clean_deployments(project: &Path, repo: &str, keep: usize) -> Result<()> {
         capture_output(
             project,
             "gh",
-            &["api", &format!("repos/{repo}/deployments/{id}"), "-X", "DELETE"],
+            &[
+                "api",
+                &format!("repos/{repo}/deployments/{id}"),
+                "-X",
+                "DELETE",
+            ],
         )?;
         println!("  deleted deployment {id}");
     }
@@ -145,7 +158,12 @@ fn clean_releases(project: &Path, repo: &str, keep: usize) -> Result<()> {
         capture_output(
             project,
             "gh",
-            &["api", &format!("repos/{repo}/releases/{id}"), "-X", "DELETE"],
+            &[
+                "api",
+                &format!("repos/{repo}/releases/{id}"),
+                "-X",
+                "DELETE",
+            ],
         )?;
         println!("  deleted release {id}");
     }
@@ -177,7 +195,12 @@ fn clean_workflows(project: &Path, repo: &str, keep: usize) -> Result<()> {
         capture_output(
             project,
             "gh",
-            &["api", &format!("repos/{repo}/actions/runs/{id}"), "-X", "DELETE"],
+            &[
+                "api",
+                &format!("repos/{repo}/actions/runs/{id}"),
+                "-X",
+                "DELETE",
+            ],
         )?;
         println!("  deleted workflow run {id}");
     }

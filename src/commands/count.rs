@@ -68,8 +68,8 @@ pub fn ahead_behind(project: &Path) -> Result<Option<(usize, usize)>> {
     };
 
     let branch_name = match head.shorthand() {
-        Some(name) => name.to_string(),
-        None => return Ok(None),
+        Ok(name) => name.to_string(),
+        Err(_) => return Ok(None),
     };
 
     let upstream_ref = format!("refs/remotes/origin/{branch_name}");

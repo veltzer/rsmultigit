@@ -13,7 +13,7 @@ clap_complete = "4.5"
 # vendored-openssl unconditionally: the canonical ci.yml builds every target
 # with a plain `cargo build --release`, and the aarch64 cross build cannot
 # link the runner's x86_64 libssl.
-git2 = { version = "0.20", features = ["vendored-openssl"] }
+git2 = { version = "0.21", features = ["vendored-openssl"] }
 glob = "0.3"
 anyhow = "1"
 regex-lite = "0.1"

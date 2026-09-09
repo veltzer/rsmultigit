@@ -68,7 +68,12 @@ pub struct Cli {
     ///
     /// Not honoured by `uv`, which selects its own target environment from
     /// the repo directory and is always run with VIRTUAL_ENV unset.
-    #[arg(long, global = true, default_value_t = true, overrides_with = "no_venv")]
+    #[arg(
+        long,
+        global = true,
+        default_value_t = true,
+        overrides_with = "no_venv"
+    )]
     pub venv: bool,
 
     /// Do not activate repos' local .venv before running tool subprocesses

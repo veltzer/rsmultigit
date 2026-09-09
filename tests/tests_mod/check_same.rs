@@ -1694,7 +1694,11 @@ path = "README"
 "#,
     );
 
-    let output = run(tmp.path(), &cfg, &["check-same", "--terse", "--short-circuit"]);
+    let output = run(
+        tmp.path(),
+        &cfg,
+        &["check-same", "--terse", "--short-circuit"],
+    );
     assert!(!output.status.success());
     assert_eq!(stdout_str(&output), "gi");
 }

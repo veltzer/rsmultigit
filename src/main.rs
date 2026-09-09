@@ -746,7 +746,7 @@ fn run_check_exists(
     projects: &[std::path::PathBuf],
     opts: &CheckExistsOpts<'_>,
 ) -> Result<i32> {
-    use commands::check as check;
+    use commands::check;
 
     let CheckExistsOpts {
         requested,
