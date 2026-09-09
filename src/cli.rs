@@ -353,8 +353,8 @@ pub enum UvWhat {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum CargoWhat {
-    /// Upgrade dependencies (`cargo upgrade` from cargo-edit)
-    Upgrade,
+    /// Update dependencies (`cargo update`)
+    Update,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -702,7 +702,7 @@ mod tests {
         assert!(result.is_err(), "gh without a what should not parse");
 
         // cargo requires a what argument
-        let cargo_whats = ["upgrade"];
+        let cargo_whats = ["update"];
         for what in cargo_whats {
             let result = Cli::try_parse_from(["rsmultigit", "cargo", what]);
             assert!(result.is_ok(), "cargo {what} should parse");

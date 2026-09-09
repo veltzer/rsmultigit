@@ -456,13 +456,13 @@ fn main() -> Result<()> {
         Commands::Cargo { what } => {
             let venv = config.venv;
             match what {
-                CargoWhat::Upgrade => {
+                CargoWhat::Update => {
                     runner::do_for_all_projects_with_check(
                         &config,
                         &projects,
                         commands::build::check_cargo,
                         move |project: &Path| -> anyhow::Result<bool> {
-                            commands::cargo::upgrade(project, venv)
+                            commands::cargo::update(project, venv)
                         },
                     )?;
                 }
