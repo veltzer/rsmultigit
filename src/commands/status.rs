@@ -143,16 +143,33 @@ mod tests {
     fn clean_repo_has_no_summary() {
         let tmp = TempDir::new().unwrap();
         init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
-        assert_eq!(do_status_summary(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap(), None);
+        assert_eq!(
+            do_status_summary(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap(),
+            None
+        );
     }
 
     #[test]
     fn summary_counts_modified_and_untracked() {
         let tmp = TempDir::new().unwrap();
         init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
-        fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("tracked.txt"), "changed").unwrap();
-        fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("new.txt"), "new").unwrap();
-        let summary = do_status_summary(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap().unwrap();
+        fs::write(
+            camino::Utf8Path::from_path(tmp.path())
+                .unwrap()
+                .join("tracked.txt"),
+            "changed",
+        )
+        .unwrap();
+        fs::write(
+            camino::Utf8Path::from_path(tmp.path())
+                .unwrap()
+                .join("new.txt"),
+            "new",
+        )
+        .unwrap();
+        let summary = do_status_summary(camino::Utf8Path::from_path(tmp.path()).unwrap())
+            .unwrap()
+            .unwrap();
         assert_eq!(summary, "1 modified, 1 untracked");
     }
 
@@ -160,14 +177,27 @@ mod tests {
     fn summary_counts_staged_and_deleted() {
         let tmp = TempDir::new().unwrap();
         let repo = init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
-        fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("added.txt"), "added").unwrap();
+        fs::write(
+            camino::Utf8Path::from_path(tmp.path())
+                .unwrap()
+                .join("added.txt"),
+            "added",
+        )
+        .unwrap();
         {
             let mut index = repo.index().unwrap();
             index.add_path(std::path::Path::new("added.txt")).unwrap();
             index.write().unwrap();
         }
-        fs::remove_file(camino::Utf8Path::from_path(tmp.path()).unwrap().join("tracked.txt")).unwrap();
-        let summary = do_status_summary(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap().unwrap();
+        fs::remove_file(
+            camino::Utf8Path::from_path(tmp.path())
+                .unwrap()
+                .join("tracked.txt"),
+        )
+        .unwrap();
+        let summary = do_status_summary(camino::Utf8Path::from_path(tmp.path()).unwrap())
+            .unwrap()
+            .unwrap();
         assert_eq!(summary, "1 staged, 1 deleted");
     }
 
@@ -193,7 +223,9 @@ mod tests {
         repo.commit(Some("HEAD"), &sig, &sig, "local only", &tree, &[&parent])
             .unwrap();
 
-        let summary = do_status_summary(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap().unwrap();
+        let summary = do_status_summary(camino::Utf8Path::from_path(tmp.path()).unwrap())
+            .unwrap()
+            .unwrap();
         assert_eq!(summary, "ahead 1");
     }
 }

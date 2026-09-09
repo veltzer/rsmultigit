@@ -1,5 +1,5 @@
-use std::io::{self, Write};
 use camino::{Utf8Path, Utf8PathBuf};
+use std::io::{self, Write};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
@@ -107,17 +107,17 @@ where
                 let result = buffer[next_emit].take().unwrap();
                 if let Some(pb) = &pb {
                     pb.suspend(|| {
-                        if let Err(e) = on_result(&projects[next_emit], result) {
-                            if first_err.is_none() {
-                                first_err = Some(e);
-                            }
+                        if let Err(e) = on_result(&projects[next_emit], result)
+                            && first_err.is_none()
+                        {
+                            first_err = Some(e);
                         }
                     });
                 } else {
-                    if let Err(e) = on_result(&projects[next_emit], result) {
-                        if first_err.is_none() {
-                            first_err = Some(e);
-                        }
+                    if let Err(e) = on_result(&projects[next_emit], result)
+                        && first_err.is_none()
+                    {
+                        first_err = Some(e);
                     }
                 }
                 next_emit += 1;
@@ -148,9 +148,7 @@ where
     for_each_project_ordered(
         jobs,
         projects,
-        |project| {
-            test_fn(project).with_context(|| format!("error testing project {}", project))
-        },
+        |project| test_fn(project).with_context(|| format!("error testing project {}", project)),
         |project, result| {
             let matches = match result {
                 Ok(m) => m,
@@ -197,7 +195,10 @@ where
     C: Fn(&Utf8Path) -> Result<bool> + Sync,
     F: Fn(&Utf8Path) -> Result<bool> + Sync,
 {
-    let base = camino::Utf8PathBuf::from_path_buf(std::env::current_dir().context("failed to get current directory")?).unwrap();
+    let base = camino::Utf8PathBuf::from_path_buf(
+        std::env::current_dir().context("failed to get current directory")?,
+    )
+    .unwrap();
     let jobs = resolve_jobs(config);
 
     // Serial fast path: action writes live to inherited stdout/stderr.
@@ -210,18 +211,17 @@ where
                 print_project_header(project);
             }
 
-            let passed = match check(&abs)
-                .with_context(|| format!("error checking project {}", project))
-            {
-                Ok(p) => p,
-                Err(e) => {
-                    if config.no_stop {
-                        eprintln!("error in {}: {e:#}", project);
-                        continue;
+            let passed =
+                match check(&abs).with_context(|| format!("error checking project {}", project)) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        if config.no_stop {
+                            eprintln!("error in {}: {e:#}", project);
+                            continue;
+                        }
+                        return Err(e);
                     }
-                    return Err(e);
-                }
-            };
+                };
             if !passed {
                 continue;
             }
@@ -230,9 +230,7 @@ where
                 print_project_header(project);
             }
 
-            if let Err(e) =
-                action(&abs).with_context(|| format!("error in project {}", project))
-            {
+            if let Err(e) = action(&abs).with_context(|| format!("error in project {}", project)) {
                 if config.no_stop {
                     eprintln!("error in {}: {e:#}", project);
                 } else {
@@ -255,8 +253,8 @@ where
             // Capture output on this worker thread for the duration of check+action.
             crate::subprocess_utils::enter_capture();
             let r: Result<bool> = (|| -> Result<bool> {
-                let passed = check(&abs)
-                    .with_context(|| format!("error checking project {}", project))?;
+                let passed =
+                    check(&abs).with_context(|| format!("error checking project {}", project))?;
                 if !passed {
                     return Ok(false);
                 }
@@ -305,7 +303,10 @@ pub fn print_if_data<F>(config: &AppConfig, projects: &[Utf8PathBuf], data_fn: F
 where
     F: Fn(&Utf8Path) -> Result<Option<String>> + Sync,
 {
-    let base = camino::Utf8PathBuf::from_path_buf(std::env::current_dir().context("failed to get current directory")?).unwrap();
+    let base = camino::Utf8PathBuf::from_path_buf(
+        std::env::current_dir().context("failed to get current directory")?,
+    )
+    .unwrap();
     let jobs = resolve_jobs(config);
     let projects_vec: Vec<Utf8PathBuf> = projects.to_vec();
 
@@ -383,7 +384,10 @@ mod tests {
     #[test]
     fn do_count_counts_matching() {
         let tmp = TempDir::new().unwrap();
-        let projects = make_dirs(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["a", "b", "c"]);
+        let projects = make_dirs(
+            camino::Utf8Path::from_path(tmp.path()).unwrap(),
+            &["a", "b", "c"],
+        );
         let config = default_config();
 
         let result = do_count(&config, &projects, |p| {
@@ -396,7 +400,10 @@ mod tests {
     #[test]
     fn do_count_print_not_inverts() {
         let tmp = TempDir::new().unwrap();
-        let projects = make_dirs(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["a", "b"]);
+        let projects = make_dirs(
+            camino::Utf8Path::from_path(tmp.path()).unwrap(),
+            &["a", "b"],
+        );
         let mut config = default_config();
         config.print_not = true;
         config.terse = true;
@@ -425,7 +432,10 @@ mod tests {
     #[test]
     fn do_count_parallel() {
         let tmp = TempDir::new().unwrap();
-        let projects = make_dirs(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["a", "b", "c", "d"]);
+        let projects = make_dirs(
+            camino::Utf8Path::from_path(tmp.path()).unwrap(),
+            &["a", "b", "c", "d"],
+        );
         let mut config = default_config();
         config.jobs = 4;
 
@@ -436,7 +446,10 @@ mod tests {
     #[test]
     fn do_for_all_visits_every_project() {
         let tmp = TempDir::new().unwrap();
-        let projects = make_dirs(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["x", "y", "z"]);
+        let projects = make_dirs(
+            camino::Utf8Path::from_path(tmp.path()).unwrap(),
+            &["x", "y", "z"],
+        );
         let config = default_config();
 
         let counter = AtomicU32::new(0);
@@ -451,7 +464,10 @@ mod tests {
     #[test]
     fn do_for_all_stops_on_error_by_default() {
         let tmp = TempDir::new().unwrap();
-        let projects = make_dirs(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["a", "b"]);
+        let projects = make_dirs(
+            camino::Utf8Path::from_path(tmp.path()).unwrap(),
+            &["a", "b"],
+        );
         let config = default_config();
 
         let counter = AtomicU32::new(0);
@@ -466,7 +482,10 @@ mod tests {
     #[test]
     fn do_for_all_continues_with_no_stop() {
         let tmp = TempDir::new().unwrap();
-        let projects = make_dirs(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["a", "b", "c"]);
+        let projects = make_dirs(
+            camino::Utf8Path::from_path(tmp.path()).unwrap(),
+            &["a", "b", "c"],
+        );
         let mut config = default_config();
         config.no_stop = true;
 
@@ -482,7 +501,10 @@ mod tests {
     #[test]
     fn do_for_all_parallel_visits_every_project() {
         let tmp = TempDir::new().unwrap();
-        let projects = make_dirs(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["a", "b", "c", "d"]);
+        let projects = make_dirs(
+            camino::Utf8Path::from_path(tmp.path()).unwrap(),
+            &["a", "b", "c", "d"],
+        );
         let mut config = default_config();
         config.jobs = 2;
 
@@ -498,7 +520,10 @@ mod tests {
     #[test]
     fn print_if_data_runs_ok_with_some() {
         let tmp = TempDir::new().unwrap();
-        let projects = make_dirs(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["a", "b"]);
+        let projects = make_dirs(
+            camino::Utf8Path::from_path(tmp.path()).unwrap(),
+            &["a", "b"],
+        );
         let config = default_config();
 
         let result = print_if_data(&config, &projects, |_| Ok(Some("data".to_string())));
@@ -518,7 +543,10 @@ mod tests {
     #[test]
     fn print_if_data_no_stop_continues() {
         let tmp = TempDir::new().unwrap();
-        let projects = make_dirs(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["a", "b"]);
+        let projects = make_dirs(
+            camino::Utf8Path::from_path(tmp.path()).unwrap(),
+            &["a", "b"],
+        );
         let mut config = default_config();
         config.no_stop = true;
 
@@ -534,7 +562,10 @@ mod tests {
     #[test]
     fn print_if_data_parallel() {
         let tmp = TempDir::new().unwrap();
-        let projects = make_dirs(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["a", "b", "c"]);
+        let projects = make_dirs(
+            camino::Utf8Path::from_path(tmp.path()).unwrap(),
+            &["a", "b", "c"],
+        );
         let mut config = default_config();
         config.jobs = 3;
 

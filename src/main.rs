@@ -982,7 +982,7 @@ fn emit_pair_diff<W: std::io::Write>(
         "{}",
         diff.unified_diff()
             .context_radius(3)
-            .header(&a.to_string(), &b.to_string())
+            .header(a.as_str(), b.as_str())
     );
 }
 
@@ -1023,12 +1023,7 @@ fn run_copy<R: std::io::BufRead, W: std::io::Write>(
 
     for dst in dst_group {
         if let Err(e) = copy_preserving_mode(src, dst) {
-            let _ = writeln!(
-                writer,
-                "  error: {} -> {}: {e}",
-                src,
-                dst
-            );
+            let _ = writeln!(writer, "  error: {} -> {}: {e}", src, dst);
         } else {
             let _ = writeln!(writer, "  copied -> {}", dst);
         }
@@ -1042,8 +1037,7 @@ fn copy_preserving_mode(src: &camino::Utf8Path, dst: &camino::Utf8Path) -> Resul
     let original_mode = std::fs::metadata(dst)
         .with_context(|| format!("failed to stat {}", dst))?
         .permissions();
-    std::fs::copy(src, dst)
-        .with_context(|| format!("failed to copy {} -> {}", src, dst))?;
+    std::fs::copy(src, dst).with_context(|| format!("failed to copy {} -> {}", src, dst))?;
     std::fs::set_permissions(dst, original_mode)
         .with_context(|| format!("failed to restore permissions on {}", dst))?;
     Ok(())
@@ -1114,12 +1108,7 @@ fn run_fix_missing<R: std::io::BufRead, W: std::io::Write>(
                 let _ = writeln!(writer, "  created -> {}", dst);
             }
             Err(e) => {
-                let _ = writeln!(
-                    writer,
-                    "  error: {} -> {}: {e}",
-                    src,
-                    dst
-                );
+                let _ = writeln!(writer, "  error: {} -> {}: {e}", src, dst);
             }
         }
     }

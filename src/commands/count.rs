@@ -4,8 +4,7 @@ use anyhow::{Context, Result};
 use git2::Repository;
 
 pub(crate) fn open_repo(project: &Utf8Path) -> Result<Repository> {
-    Repository::open(project)
-        .with_context(|| format!("failed to open repo at {}", project))
+    Repository::open(project).with_context(|| format!("failed to open repo at {}", project))
 }
 
 /// Returns true if there are any dirty changes (modified, staged, or new in index)
@@ -134,7 +133,9 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let repo = init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
 
-        let file_path = camino::Utf8Path::from_path(tmp.path()).unwrap().join("hello.txt");
+        let file_path = camino::Utf8Path::from_path(tmp.path())
+            .unwrap()
+            .join("hello.txt");
         fs::write(&file_path, "hello").unwrap();
         let mut index = repo.index().unwrap();
         index.add_path(std::path::Path::new("hello.txt")).unwrap();
@@ -155,7 +156,13 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let repo = init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
 
-        fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("new.txt"), "new").unwrap();
+        fs::write(
+            camino::Utf8Path::from_path(tmp.path())
+                .unwrap()
+                .join("new.txt"),
+            "new",
+        )
+        .unwrap();
         let mut index = repo.index().unwrap();
         index.add_path(std::path::Path::new("new.txt")).unwrap();
         index.write().unwrap();
@@ -174,7 +181,13 @@ mod tests {
     fn repo_with_new_file_has_untracked() {
         let tmp = TempDir::new().unwrap();
         init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
-        fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("untracked.txt"), "data").unwrap();
+        fs::write(
+            camino::Utf8Path::from_path(tmp.path())
+                .unwrap()
+                .join("untracked.txt"),
+            "data",
+        )
+        .unwrap();
         assert!(has_untracked(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap());
     }
 
@@ -182,8 +195,15 @@ mod tests {
     fn has_changes_detects_both() {
         let tmp = TempDir::new().unwrap();
         init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
-        fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("untracked.txt"), "data").unwrap();
-        let (dirty, untracked) = has_changes(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap();
+        fs::write(
+            camino::Utf8Path::from_path(tmp.path())
+                .unwrap()
+                .join("untracked.txt"),
+            "data",
+        )
+        .unwrap();
+        let (dirty, untracked) =
+            has_changes(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap();
         assert!(!dirty);
         assert!(untracked);
     }

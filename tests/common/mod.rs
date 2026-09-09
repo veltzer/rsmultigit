@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
+use camino::{Utf8Path, Utf8PathBuf};
 use std::fs;
 use std::io::Write;
-use camino::{Utf8Path, Utf8PathBuf};
 use std::process::{Command, Output, Stdio};
 use tempfile::TempDir;
 

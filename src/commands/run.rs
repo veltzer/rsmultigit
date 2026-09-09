@@ -61,7 +61,14 @@ mod tests {
     #[test]
     fn do_run_empty_string_fails() {
         let tmp = cwd();
-        assert!(do_run(camino::Utf8Path::from_path(tmp.path()).unwrap(), &[String::from("  ")], true).is_err());
+        assert!(
+            do_run(
+                camino::Utf8Path::from_path(tmp.path()).unwrap(),
+                &[String::from("  ")],
+                true
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -82,14 +89,23 @@ mod tests {
     fn do_run_without_venv() {
         let tmp = cwd();
         let cmd = vec!["echo".to_string(), "hello".to_string()];
-        assert!(do_run(camino::Utf8Path::from_path(tmp.path()).unwrap(), &cmd, false).is_ok());
+        assert!(
+            do_run(
+                camino::Utf8Path::from_path(tmp.path()).unwrap(),
+                &cmd,
+                false
+            )
+            .is_ok()
+        );
     }
 
     #[test]
     fn do_run_venv_activates_local_venv() {
         use std::os::unix::fs::PermissionsExt;
         let tmp = cwd();
-        let bin = camino::Utf8Path::from_path(tmp.path()).unwrap().join(".venv/bin");
+        let bin = camino::Utf8Path::from_path(tmp.path())
+            .unwrap()
+            .join(".venv/bin");
         std::fs::create_dir_all(&bin).unwrap();
         let tool = bin.join("run-venv-probe");
         std::fs::write(&tool, "#!/bin/sh\nexit 0\n").unwrap();
@@ -98,7 +114,14 @@ mod tests {
         let cmd = vec!["run-venv-probe".to_string()];
         assert!(do_run(camino::Utf8Path::from_path(tmp.path()).unwrap(), &cmd, true).is_ok());
         // ...and not with --no-venv.
-        assert!(do_run(camino::Utf8Path::from_path(tmp.path()).unwrap(), &cmd, false).is_err());
+        assert!(
+            do_run(
+                camino::Utf8Path::from_path(tmp.path()).unwrap(),
+                &cmd,
+                false
+            )
+            .is_err()
+        );
     }
 
     #[test]

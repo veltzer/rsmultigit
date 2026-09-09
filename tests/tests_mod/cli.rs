@@ -3,7 +3,10 @@ use crate::common::{run_rsmultigit, stderr_str, stdout_str};
 #[test]
 fn help_flag_shows_usage() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["--help"]);
+    let output = run_rsmultigit(
+        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        &["--help"],
+    );
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -19,7 +22,10 @@ fn help_flag_shows_usage() {
 #[test]
 fn unknown_subcommand_fails() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["nonexistent"]);
+    let output = run_rsmultigit(
+        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        &["nonexistent"],
+    );
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(

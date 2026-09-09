@@ -1,5 +1,5 @@
-use std::cell::RefCell;
 use camino::Utf8Path;
+use std::cell::RefCell;
 use std::process::{Command, Stdio};
 
 use anyhow::{Result, bail};
@@ -49,7 +49,10 @@ pub fn check_call_ve_env(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<()>
         let path = match std::env::var_os("PATH") {
             Some(path) => {
                 let mut parts = vec![venv_bin];
-                parts.extend(std::env::split_paths(&path).filter_map(|p| camino::Utf8PathBuf::from_path_buf(p).ok()));
+                parts.extend(
+                    std::env::split_paths(&path)
+                        .filter_map(|p| camino::Utf8PathBuf::from_path_buf(p).ok()),
+                );
                 std::env::join_paths(parts)?
             }
             None => venv_bin.into_os_string(),
@@ -208,13 +211,20 @@ mod tests {
     fn check_call_ve_env_prefers_venv_tools() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
-        let bin = camino::Utf8Path::from_path(dir.path()).unwrap().join(".venv/bin");
+        let bin = camino::Utf8Path::from_path(dir.path())
+            .unwrap()
+            .join(".venv/bin");
         std::fs::create_dir_all(&bin).unwrap();
         let tool = bin.join("ve-env-probe");
         std::fs::write(&tool, "#!/bin/sh\necho from-venv\necho \"$VIRTUAL_ENV\"\n").unwrap();
         std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
         enter_capture();
-        check_call_ve_env(camino::Utf8Path::from_path(dir.path()).unwrap(), "ve-env-probe", &[]).unwrap();
+        check_call_ve_env(
+            camino::Utf8Path::from_path(dir.path()).unwrap(),
+            "ve-env-probe",
+            &[],
+        )
+        .unwrap();
         let captured = leave_capture();
         let text = String::from_utf8_lossy(&captured);
         assert!(text.contains("from-venv"));
@@ -270,7 +280,14 @@ mod tests {
     #[test]
     fn check_call_ve_env_without_venv_runs_ambient() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(check_call_ve_env(camino::Utf8Path::from_path(dir.path()).unwrap(), "true", &[]).is_ok());
+        assert!(
+            check_call_ve_env(
+                camino::Utf8Path::from_path(dir.path()).unwrap(),
+                "true",
+                &[]
+            )
+            .is_ok()
+        );
     }
 
     #[test]

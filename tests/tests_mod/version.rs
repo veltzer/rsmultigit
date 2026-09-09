@@ -4,7 +4,10 @@ use tempfile::TempDir;
 #[test]
 fn version_subcommand_prints_info() {
     let tmp = TempDir::new().unwrap();
-    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["version"]);
+    let output = run_rsmultigit(
+        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        &["version"],
+    );
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -28,7 +31,10 @@ fn version_subcommand_prints_info() {
 #[test]
 fn version_flag_prints_short_version() {
     let tmp = TempDir::new().unwrap();
-    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["--version"]);
+    let output = run_rsmultigit(
+        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        &["--version"],
+    );
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
