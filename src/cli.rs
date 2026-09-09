@@ -324,6 +324,12 @@ pub enum Commands {
         #[arg(long, default_value_t = false, conflicts_with = "upgrade")]
         check: bool,
     },
+    /// Run cargo operations on projects that have a Cargo.toml file
+    Cargo {
+        /// What cargo operation to perform
+        #[arg(value_enum)]
+        what: CargoWhat,
+    },
     /// Print version information
     Version,
 }
@@ -343,6 +349,12 @@ pub enum UvWhat {
     Lock,
     /// Sync the project environment from the lockfile (`uv sync`)
     Sync,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum CargoWhat {
+    /// Upgrade dependencies (`cargo upgrade` from cargo-edit)
+    Upgrade,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -688,6 +700,15 @@ mod tests {
         }
         let result = Cli::try_parse_from(["rsmultigit", "gh"]);
         assert!(result.is_err(), "gh without a what should not parse");
+
+        // cargo requires a what argument
+        let cargo_whats = ["upgrade"];
+        for what in cargo_whats {
+            let result = Cli::try_parse_from(["rsmultigit", "cargo", what]);
+            assert!(result.is_ok(), "cargo {what} should parse");
+        }
+        let result = Cli::try_parse_from(["rsmultigit", "cargo"]);
+        assert!(result.is_err(), "cargo without a what should not parse");
 
         // complete requires an argument
         let complete_shells = ["bash", "zsh", "fish", "elvish", "powershell"];

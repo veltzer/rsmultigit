@@ -10,8 +10,8 @@ use anyhow::{Context, Result};
 use clap::Parser;
 
 use cli::{
-    BranchWhat, BuildWhat, CleanWhat, Cli, Commands, CountWhat, GhWhat, ResetWhat, RustWhat,
-    StashWhat, TagWhat, UvWhat,
+    BranchWhat, BuildWhat, CargoWhat, CleanWhat, Cli, Commands, CountWhat, GhWhat, ResetWhat,
+    RustWhat, StashWhat, TagWhat, UvWhat,
 };
 use config::AppConfig;
 
@@ -448,6 +448,22 @@ fn main() -> Result<()> {
                         &projects,
                         commands::uv::check_pyproject,
                         commands::uv::sync,
+                    )?;
+                }
+            }
+        }
+
+        Commands::Cargo { what } => {
+            let venv = config.venv;
+            match what {
+                CargoWhat::Upgrade => {
+                    runner::do_for_all_projects_with_check(
+                        &config,
+                        &projects,
+                        commands::build::check_cargo,
+                        move |project: &Path| -> anyhow::Result<bool> {
+                            commands::cargo::upgrade(project, venv)
+                        },
                     )?;
                 }
             }
