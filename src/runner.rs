@@ -63,6 +63,17 @@ where
     let next = AtomicUsize::new(0);
     let (tx, rx) = mpsc::channel::<(usize, Result<T>)>();
 
+    let pb = {
+        use std::io::IsTerminal;
+        if projects.len() > 1 && io::stderr().is_terminal() {
+            let pb = indicatif::ProgressBar::new(projects.len() as u64);
+            pb.set_style(indicatif::ProgressStyle::default_bar().template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}").unwrap().progress_chars("#>-"));
+            Some(pb)
+        } else {
+            None
+        }
+    };
+
     std::thread::scope(|scope| -> Result<()> {
         for _ in 0..jobs.min(projects.len()) {
             let tx = tx.clone();
@@ -89,15 +100,32 @@ where
 
         for (idx, result) in rx {
             buffer[idx] = Some(result);
+            if let Some(pb) = &pb {
+                pb.inc(1);
+            }
             while next_emit < projects.len() && buffer[next_emit].is_some() {
                 let result = buffer[next_emit].take().unwrap();
-                if let Err(e) = on_result(&projects[next_emit], result)
-                    && first_err.is_none()
-                {
-                    first_err = Some(e);
+                if let Some(pb) = &pb {
+                    pb.suspend(|| {
+                        if let Err(e) = on_result(&projects[next_emit], result) {
+                            if first_err.is_none() {
+                                first_err = Some(e);
+                            }
+                        }
+                    });
+                } else {
+                    if let Err(e) = on_result(&projects[next_emit], result) {
+                        if first_err.is_none() {
+                            first_err = Some(e);
+                        }
+                    }
                 }
                 next_emit += 1;
             }
+        }
+
+        if let Some(pb) = &pb {
+            pb.finish_and_clear();
         }
 
         match first_err {
