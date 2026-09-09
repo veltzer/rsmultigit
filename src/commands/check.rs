@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufReader, Read};
-use std::path::{Path, PathBuf};
+use camino::{Utf8Path, Utf8PathBuf};
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -49,9 +49,9 @@ pub struct ExistsResult {
     /// The file each in-scope repo was required to contain (the rule's `path`).
     pub path: String,
     /// Repos that were in scope and had the file.
-    pub present: Vec<PathBuf>,
+    pub present: Vec<Utf8PathBuf>,
     /// Repos that were in scope and did not. These are the violations.
-    pub missing: Vec<PathBuf>,
+    pub missing: Vec<Utf8PathBuf>,
 }
 
 impl ExistsResult {
@@ -107,15 +107,15 @@ pub struct RuleResult {
     pub path: String,
     /// Files grouped by SHA-256 digest, ordered by group size descending
     /// (largest group first — the presumed "canonical" version).
-    pub groups: Vec<Vec<PathBuf>>,
+    pub groups: Vec<Vec<Utf8PathBuf>>,
     /// Total number of files considered.
     pub total_files: usize,
     /// Repos that matched selection but lacked `path`. When the rule has
     /// `must_have = false`, they're treated as "skipped" (not a violation).
-    pub skipped: Vec<PathBuf>,
+    pub skipped: Vec<Utf8PathBuf>,
     /// Repos that matched selection but lacked `path` *and* the rule has
     /// `must_have = true`. These are rule violations.
-    pub must_have_violations: Vec<PathBuf>,
+    pub must_have_violations: Vec<Utf8PathBuf>,
 }
 
 impl RuleResult {
@@ -135,32 +135,32 @@ impl RuleResult {
 pub const CONFIG_PATH_ENV: &str = "RSMULTIGIT_CONFIG";
 
 /// Resolve the path of the config file. Tests can override via `RSMULTIGIT_CONFIG`.
-pub fn default_config_path() -> Result<PathBuf> {
+pub fn default_config_path() -> Result<Utf8PathBuf> {
     if let Ok(p) = std::env::var(CONFIG_PATH_ENV) {
-        return Ok(PathBuf::from(p));
+        return Ok(Utf8PathBuf::from(p));
     }
     let expanded = shellexpand::full("~/.config/rsmultigit/config.toml")
         .context("failed to expand default config path")?;
-    Ok(PathBuf::from(expanded.into_owned()))
+    Ok(Utf8PathBuf::from(expanded.into_owned()))
 }
 
 /// Parse a config file from disk.
-pub fn load_config(path: &Path) -> Result<CheckConfig> {
+pub fn load_config(path: &Utf8Path) -> Result<CheckConfig> {
     let text = std::fs::read_to_string(path)
-        .with_context(|| format!("failed to read config file {}", path.display()))?;
+        .with_context(|| format!("failed to read config file {}", path))?;
     let config: CheckConfig = toml::from_str(&text)
-        .with_context(|| format!("failed to parse config file {}", path.display()))?;
+        .with_context(|| format!("failed to parse config file {}", path))?;
     Ok(config)
 }
 
 /// Expand globs in `config.repos`, filter to directories containing `.git/`,
 /// dedupe, and sort. Returns an error if `repos` is empty or no matches exist.
-pub fn resolve_repos(config: &CheckConfig) -> Result<Vec<PathBuf>> {
+pub fn resolve_repos(config: &CheckConfig) -> Result<Vec<Utf8PathBuf>> {
     if config.repos.is_empty() {
         anyhow::bail!("config must set `repos = [...]` with at least one entry");
     }
 
-    let mut out: Vec<PathBuf> = Vec::new();
+    let mut out: Vec<Utf8PathBuf> = Vec::new();
     for entry in &config.repos {
         let expanded = shellexpand::full(entry)
             .with_context(|| format!("failed to expand `{entry}` in repos"))?;
@@ -169,7 +169,7 @@ pub fn resolve_repos(config: &CheckConfig) -> Result<Vec<PathBuf>> {
         for m in matches {
             let path = m.with_context(|| format!("error iterating glob `{entry}`"))?;
             if path.is_dir() && path.join(".git").is_dir() {
-                out.push(path);
+                out.push(camino::Utf8PathBuf::from_path_buf(path).unwrap());
             }
         }
     }
@@ -223,11 +223,11 @@ impl ExistsRule {
 /// Apply `select`, `exclude`, `marker` and `marker_absent` filters to the
 /// discovered repo list.
 /// `repos` are absolute or relative paths to repo roots.
-fn select_repos(rule: &Selection<'_>, repos: &[PathBuf]) -> Result<Vec<PathBuf>> {
+fn select_repos(rule: &Selection<'_>, repos: &[Utf8PathBuf]) -> Result<Vec<Utf8PathBuf>> {
     let mut out = Vec::new();
     for repo in repos {
         let name = match repo.file_name() {
-            Some(n) => n.to_string_lossy().into_owned(),
+            Some(n) => n.to_string(),
             None => continue,
         };
         if !match_glob(rule.select, &name)? {
@@ -253,15 +253,15 @@ fn select_repos(rule: &Selection<'_>, repos: &[PathBuf]) -> Result<Vec<PathBuf>>
     Ok(out)
 }
 
-fn hash_file(path: &Path) -> Result<[u8; 32]> {
-    let file = File::open(path).with_context(|| format!("failed to open {}", path.display()))?;
+fn hash_file(path: &Utf8Path) -> Result<[u8; 32]> {
+    let file = File::open(path).with_context(|| format!("failed to open {}", path))?;
     let mut reader = BufReader::with_capacity(64 * 1024, file);
     let mut hasher = Sha256::new();
     let mut buf = [0u8; 64 * 1024];
     loop {
         let n = reader
             .read(&mut buf)
-            .with_context(|| format!("failed to read {}", path.display()))?;
+            .with_context(|| format!("failed to read {}", path))?;
         if n == 0 {
             break;
         }
@@ -271,11 +271,11 @@ fn hash_file(path: &Path) -> Result<[u8; 32]> {
 }
 
 /// Evaluate a single rule against the set of discovered repos.
-pub fn evaluate_rule(rule: &Rule, repos: &[PathBuf]) -> Result<RuleResult> {
+pub fn evaluate_rule(rule: &Rule, repos: &[Utf8PathBuf]) -> Result<RuleResult> {
     let candidates = select_repos(&rule.selection(), repos)?;
 
-    let mut files: Vec<PathBuf> = Vec::new();
-    let mut missing: Vec<PathBuf> = Vec::new();
+    let mut files: Vec<Utf8PathBuf> = Vec::new();
+    let mut missing: Vec<Utf8PathBuf> = Vec::new();
     for repo in candidates {
         let target = repo.join(&rule.path);
         if target.is_file() {
@@ -285,13 +285,13 @@ pub fn evaluate_rule(rule: &Rule, repos: &[PathBuf]) -> Result<RuleResult> {
         }
     }
 
-    let mut buckets: BTreeMap<[u8; 32], Vec<PathBuf>> = BTreeMap::new();
+    let mut buckets: BTreeMap<[u8; 32], Vec<Utf8PathBuf>> = BTreeMap::new();
     for file in &files {
         let digest = hash_file(file)?;
         buckets.entry(digest).or_default().push(file.clone());
     }
 
-    let mut groups: Vec<Vec<PathBuf>> = buckets.into_values().collect();
+    let mut groups: Vec<Vec<Utf8PathBuf>> = buckets.into_values().collect();
     groups.sort_by_key(|g| std::cmp::Reverse(g.len()));
 
     let (skipped, must_have_violations) = if rule.must_have {
@@ -315,11 +315,11 @@ pub fn evaluate_rule(rule: &Rule, repos: &[PathBuf]) -> Result<RuleResult> {
 /// No content is read: the rule passes when every selected repo contains
 /// `path`. A directory at `path` does not count — the rule asserts a file,
 /// matching `evaluate_rule`'s `is_file()` test.
-pub fn evaluate_exists_rule(rule: &ExistsRule, repos: &[PathBuf]) -> Result<ExistsResult> {
+pub fn evaluate_exists_rule(rule: &ExistsRule, repos: &[Utf8PathBuf]) -> Result<ExistsResult> {
     let candidates = select_repos(&rule.selection(), repos)?;
 
-    let mut present: Vec<PathBuf> = Vec::new();
-    let mut missing: Vec<PathBuf> = Vec::new();
+    let mut present: Vec<Utf8PathBuf> = Vec::new();
+    let mut missing: Vec<Utf8PathBuf> = Vec::new();
     for repo in candidates {
         if repo.join(&rule.path).is_file() {
             present.push(repo);
@@ -342,7 +342,7 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn write(path: &Path, content: &str) {
+    fn write(path: &Utf8Path, content: &str) {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).unwrap();
         }
@@ -403,12 +403,12 @@ mod tests {
     fn resolve_repos_filters_to_git_dirs() {
         let tmp = TempDir::new().unwrap();
         // Two git repos, one plain dir.
-        fs::create_dir_all(tmp.path().join("a/.git")).unwrap();
-        fs::create_dir_all(tmp.path().join("b/.git")).unwrap();
-        fs::create_dir_all(tmp.path().join("c")).unwrap();
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/.git")).unwrap();
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("b/.git")).unwrap();
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("c")).unwrap();
 
         let cfg = CheckConfig {
-            repos: vec![format!("{}/*", tmp.path().display())],
+            repos: vec![format!("{}/*", camino::Utf8Path::from_path(tmp.path()).unwrap())],
             check: vec![],
             exists: vec![],
         };
@@ -420,12 +420,12 @@ mod tests {
     #[test]
     fn resolve_repos_dedupes() {
         let tmp = TempDir::new().unwrap();
-        fs::create_dir_all(tmp.path().join("a/.git")).unwrap();
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/.git")).unwrap();
 
         let cfg = CheckConfig {
             repos: vec![
-                format!("{}/a", tmp.path().display()),
-                format!("{}/*", tmp.path().display()),
+                format!("{}/a", camino::Utf8Path::from_path(tmp.path()).unwrap()),
+                format!("{}/*", camino::Utf8Path::from_path(tmp.path()).unwrap()),
             ],
             check: vec![],
             exists: vec![],
@@ -438,7 +438,7 @@ mod tests {
     fn resolve_repos_no_matches_errors() {
         let tmp = TempDir::new().unwrap();
         let cfg = CheckConfig {
-            repos: vec![format!("{}/nonexistent*", tmp.path().display())],
+            repos: vec![format!("{}/nonexistent*", camino::Utf8Path::from_path(tmp.path()).unwrap())],
             check: vec![],
             exists: vec![],
         };
@@ -462,9 +462,9 @@ mod tests {
     fn identical_files_form_one_group() {
         let tmp = TempDir::new().unwrap();
         for r in ["a", "b", "c"] {
-            write(&tmp.path().join(r).join(".gitignore"), "target\n");
+            write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join(r).join(".gitignore"), "target\n");
         }
-        let repos: Vec<PathBuf> = ["a", "b", "c"].iter().map(|r| tmp.path().join(r)).collect();
+        let repos: Vec<Utf8PathBuf> = ["a", "b", "c"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let rule = Rule {
             name: "gi".into(),
             select: "*".into(),
@@ -484,10 +484,10 @@ mod tests {
     #[test]
     fn divergent_files_form_multiple_groups() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("a/.gitignore"), "x\n");
-        write(&tmp.path().join("b/.gitignore"), "x\n");
-        write(&tmp.path().join("c/.gitignore"), "y\n");
-        let repos: Vec<PathBuf> = ["a", "b", "c"].iter().map(|r| tmp.path().join(r)).collect();
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/.gitignore"), "x\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("b/.gitignore"), "x\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("c/.gitignore"), "y\n");
+        let repos: Vec<Utf8PathBuf> = ["a", "b", "c"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let rule = Rule {
             name: "gi".into(),
             select: "*".into(),
@@ -509,10 +509,10 @@ mod tests {
     #[test]
     fn missing_files_are_skipped_not_flagged() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("a/.gitignore"), "x\n");
-        write(&tmp.path().join("b/.gitignore"), "x\n");
-        fs::create_dir_all(tmp.path().join("c")).unwrap();
-        let repos: Vec<PathBuf> = ["a", "b", "c"].iter().map(|r| tmp.path().join(r)).collect();
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/.gitignore"), "x\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("b/.gitignore"), "x\n");
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("c")).unwrap();
+        let repos: Vec<Utf8PathBuf> = ["a", "b", "c"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let rule = Rule {
             name: "gi".into(),
             select: "*".into(),
@@ -532,12 +532,12 @@ mod tests {
     #[test]
     fn select_filters_by_repo_name_glob() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("pyalpha/Makefile"), "PY\n");
-        write(&tmp.path().join("pybeta/Makefile"), "PY\n");
-        write(&tmp.path().join("go-proj/Makefile"), "GO\n");
-        let repos: Vec<PathBuf> = ["pyalpha", "pybeta", "go-proj"]
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("pyalpha/Makefile"), "PY\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("pybeta/Makefile"), "PY\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("go-proj/Makefile"), "GO\n");
+        let repos: Vec<Utf8PathBuf> = ["pyalpha", "pybeta", "go-proj"]
             .iter()
-            .map(|r| tmp.path().join(r))
+            .map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r))
             .collect();
         let rule = Rule {
             name: "py-make".into(),
@@ -557,12 +557,12 @@ mod tests {
     #[test]
     fn exclude_drops_matching_repos() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("pyalpha/Makefile"), "A\n");
-        write(&tmp.path().join("pybeta/Makefile"), "A\n");
-        write(&tmp.path().join("pydraft/Makefile"), "B\n");
-        let repos: Vec<PathBuf> = ["pyalpha", "pybeta", "pydraft"]
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("pyalpha/Makefile"), "A\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("pybeta/Makefile"), "A\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("pydraft/Makefile"), "B\n");
+        let repos: Vec<Utf8PathBuf> = ["pyalpha", "pybeta", "pydraft"]
             .iter()
-            .map(|r| tmp.path().join(r))
+            .map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r))
             .collect();
         let rule = Rule {
             name: "py-make".into(),
@@ -594,10 +594,10 @@ mod tests {
     #[test]
     fn must_have_false_keeps_missing_in_skipped() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("a/.gitignore"), "x\n");
-        write(&tmp.path().join("b/.gitignore"), "x\n");
-        fs::create_dir_all(tmp.path().join("c")).unwrap();
-        let repos: Vec<PathBuf> = ["a", "b", "c"].iter().map(|r| tmp.path().join(r)).collect();
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/.gitignore"), "x\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("b/.gitignore"), "x\n");
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("c")).unwrap();
+        let repos: Vec<Utf8PathBuf> = ["a", "b", "c"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let rule = Rule {
             name: "gi".into(),
             select: "*".into(),
@@ -617,10 +617,10 @@ mod tests {
     #[test]
     fn must_have_true_moves_missing_to_violations() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("a/.gitignore"), "x\n");
-        write(&tmp.path().join("b/.gitignore"), "x\n");
-        fs::create_dir_all(tmp.path().join("c")).unwrap();
-        let repos: Vec<PathBuf> = ["a", "b", "c"].iter().map(|r| tmp.path().join(r)).collect();
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/.gitignore"), "x\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("b/.gitignore"), "x\n");
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("c")).unwrap();
+        let repos: Vec<Utf8PathBuf> = ["a", "b", "c"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let rule = Rule {
             name: "gi".into(),
             select: "*".into(),
@@ -642,9 +642,9 @@ mod tests {
     fn must_have_true_all_present_is_consistent() {
         let tmp = TempDir::new().unwrap();
         for r in ["a", "b", "c"] {
-            write(&tmp.path().join(r).join(".gitignore"), "same\n");
+            write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join(r).join(".gitignore"), "same\n");
         }
-        let repos: Vec<PathBuf> = ["a", "b", "c"].iter().map(|r| tmp.path().join(r)).collect();
+        let repos: Vec<Utf8PathBuf> = ["a", "b", "c"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let rule = Rule {
             name: "gi".into(),
             select: "*".into(),
@@ -663,9 +663,9 @@ mod tests {
     #[test]
     fn rule_matching_no_files_reports_matched_nothing() {
         let tmp = TempDir::new().unwrap();
-        fs::create_dir_all(tmp.path().join("a")).unwrap();
-        fs::create_dir_all(tmp.path().join("b")).unwrap();
-        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("a")).unwrap();
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("b")).unwrap();
+        let repos: Vec<Utf8PathBuf> = ["a", "b"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let rule = Rule {
             name: "gi".into(),
             select: "*".into(),
@@ -698,8 +698,8 @@ mod tests {
     #[test]
     fn rule_with_files_is_not_matched_nothing() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("a/.gitignore"), "x\n");
-        let repos = vec![tmp.path().join("a")];
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/.gitignore"), "x\n");
+        let repos = vec![camino::Utf8Path::from_path(tmp.path()).unwrap().join("a")];
         let rule = Rule {
             name: "gi".into(),
             select: "*".into(),
@@ -717,10 +717,10 @@ mod tests {
     #[test]
     fn marker_absent_filters_out_opted_out_repos() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("a/.gitignore"), "x\n");
-        write(&tmp.path().join("b/.gitignore"), "DIFFERENT\n");
-        write(&tmp.path().join("b/.noci"), "");
-        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/.gitignore"), "x\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("b/.gitignore"), "DIFFERENT\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("b/.noci"), "");
+        let repos: Vec<Utf8PathBuf> = ["a", "b"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let rule = Rule {
             name: "gi".into(),
             select: "*".into(),
@@ -740,10 +740,10 @@ mod tests {
     #[test]
     fn marker_absent_exempts_repo_from_must_have() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("a/build.yml"), "x\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/build.yml"), "x\n");
         // b has no build.yml at all, but opts out of the rule.
-        write(&tmp.path().join("b/.noci"), "");
-        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("b/.noci"), "");
+        let repos: Vec<Utf8PathBuf> = ["a", "b"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let rule = Rule {
             name: "ci".into(),
             select: "*".into(),
@@ -762,10 +762,10 @@ mod tests {
     #[test]
     fn marker_filters_by_presence() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("a/.tag"), "");
-        write(&tmp.path().join("a/.gitignore"), "x\n");
-        write(&tmp.path().join("b/.gitignore"), "y\n");
-        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/.tag"), "");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/.gitignore"), "x\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("b/.gitignore"), "y\n");
+        let repos: Vec<Utf8PathBuf> = ["a", "b"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let rule = Rule {
             name: "gi".into(),
             select: "*".into(),
@@ -831,10 +831,10 @@ mod tests {
     fn exists_passes_when_all_present_despite_differing_content() {
         let tmp = TempDir::new().unwrap();
         // Deliberately different content in every repo: presence is the point.
-        write(&tmp.path().join("a/README.md"), "# a\n");
-        write(&tmp.path().join("b/README.md"), "# b, entirely different\n");
-        write(&tmp.path().join("c/README.md"), "");
-        let repos: Vec<PathBuf> = ["a", "b", "c"].iter().map(|r| tmp.path().join(r)).collect();
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/README.md"), "# a\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("b/README.md"), "# b, entirely different\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("c/README.md"), "");
+        let repos: Vec<Utf8PathBuf> = ["a", "b", "c"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let result = evaluate_exists_rule(&exists_rule("README.md", "*"), &repos).unwrap();
         assert!(result.is_satisfied());
         assert_eq!(result.present.len(), 3);
@@ -845,9 +845,9 @@ mod tests {
     #[test]
     fn exists_flags_the_repo_that_lacks_the_file() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("a/README.md"), "# a\n");
-        fs::create_dir_all(tmp.path().join("b")).unwrap();
-        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/README.md"), "# a\n");
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("b")).unwrap();
+        let repos: Vec<Utf8PathBuf> = ["a", "b"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let result = evaluate_exists_rule(&exists_rule("README.md", "*"), &repos).unwrap();
         assert!(!result.is_satisfied());
         assert_eq!(result.missing.len(), 1);
@@ -858,10 +858,10 @@ mod tests {
     #[test]
     fn exists_does_not_accept_a_directory() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("a/README.md"), "x\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/README.md"), "x\n");
         // b has a *directory* named README.md, which must not satisfy the rule.
-        fs::create_dir_all(tmp.path().join("b/README.md")).unwrap();
-        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("b/README.md")).unwrap();
+        let repos: Vec<Utf8PathBuf> = ["a", "b"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let result = evaluate_exists_rule(&exists_rule("README.md", "*"), &repos).unwrap();
         assert!(!result.is_satisfied());
         assert_eq!(result.missing.len(), 1);
@@ -870,12 +870,12 @@ mod tests {
     #[test]
     fn exists_honours_select_and_exclude() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("pyalpha/README.md"), "x\n");
-        fs::create_dir_all(tmp.path().join("pydraft")).unwrap();
-        fs::create_dir_all(tmp.path().join("go-proj")).unwrap();
-        let repos: Vec<PathBuf> = ["pyalpha", "pydraft", "go-proj"]
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("pyalpha/README.md"), "x\n");
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("pydraft")).unwrap();
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("go-proj")).unwrap();
+        let repos: Vec<Utf8PathBuf> = ["pyalpha", "pydraft", "go-proj"]
             .iter()
-            .map(|r| tmp.path().join(r))
+            .map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r))
             .collect();
         let mut rule = exists_rule("README.md", "py*");
         rule.exclude = Some("pydraft*".into());
@@ -888,10 +888,10 @@ mod tests {
     #[test]
     fn exists_marker_absent_exempts_opted_out_repo() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("a/README.md"), "x\n");
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/README.md"), "x\n");
         // b has no README but opts out from inside itself.
-        write(&tmp.path().join("b/.noreadme"), "");
-        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("b/.noreadme"), "");
+        let repos: Vec<Utf8PathBuf> = ["a", "b"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let mut rule = exists_rule("README.md", "*");
         rule.marker_absent = Some(".noreadme".into());
         let result = evaluate_exists_rule(&rule, &repos).unwrap();
@@ -902,9 +902,9 @@ mod tests {
     #[test]
     fn exists_marker_limits_scope_to_tagged_repos() {
         let tmp = TempDir::new().unwrap();
-        write(&tmp.path().join("a/.tag"), "");
-        fs::create_dir_all(tmp.path().join("b")).unwrap();
-        let repos: Vec<PathBuf> = ["a", "b"].iter().map(|r| tmp.path().join(r)).collect();
+        write(&camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/.tag"), "");
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("b")).unwrap();
+        let repos: Vec<Utf8PathBuf> = ["a", "b"].iter().map(|r| camino::Utf8Path::from_path(tmp.path()).unwrap().join(r)).collect();
         let mut rule = exists_rule("README.md", "*");
         rule.marker = Some(".tag".into());
         let result = evaluate_exists_rule(&rule, &repos).unwrap();
@@ -916,8 +916,8 @@ mod tests {
     #[test]
     fn exists_selecting_no_repos_reports_matched_nothing() {
         let tmp = TempDir::new().unwrap();
-        fs::create_dir_all(tmp.path().join("a")).unwrap();
-        let repos = vec![tmp.path().join("a")];
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("a")).unwrap();
+        let repos = vec![camino::Utf8Path::from_path(tmp.path()).unwrap().join("a")];
         let result = evaluate_exists_rule(&exists_rule("README.md", "zz*"), &repos).unwrap();
         assert!(result.matched_nothing());
         assert!(result.is_satisfied());
@@ -926,8 +926,8 @@ mod tests {
     #[test]
     fn exists_with_a_missing_file_is_not_matched_nothing() {
         let tmp = TempDir::new().unwrap();
-        fs::create_dir_all(tmp.path().join("a")).unwrap();
-        let repos = vec![tmp.path().join("a")];
+        fs::create_dir_all(camino::Utf8Path::from_path(tmp.path()).unwrap().join("a")).unwrap();
+        let repos = vec![camino::Utf8Path::from_path(tmp.path()).unwrap().join("a")];
         let result = evaluate_exists_rule(&exists_rule("README.md", "*"), &repos).unwrap();
         assert!(!result.matched_nothing());
         assert!(!result.is_satisfied());

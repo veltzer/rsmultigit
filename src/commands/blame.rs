@@ -1,11 +1,11 @@
-use std::path::Path;
+use camino::Utf8Path;
 
 use anyhow::Result;
 
 use crate::subprocess_utils::check_call;
 
 /// Run git blame on a file. Skips repos where the file does not exist.
-pub fn do_blame(project: &Path, file: &str) -> Result<bool> {
+pub fn do_blame(project: &Utf8Path, file: &str) -> Result<bool> {
     if !project.join(file).exists() {
         return Ok(false);
     }

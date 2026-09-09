@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::path::Path;
+use camino::Utf8Path;
 use std::process::{Command, Stdio};
 
 use anyhow::{Result, bail};
@@ -40,7 +40,7 @@ fn append_to_capture(bytes: &[u8]) {
 /// command spawns (pytest, mypy, ...) resolve from the repo's own venv. The
 /// command itself still comes from the ambient PATH. When `cwd` has no
 /// `.venv/bin`, the command runs with the environment unchanged.
-pub fn check_call_ve_env(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
+pub fn check_call_ve_env(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<()> {
     let venv = cwd.join(".venv");
     let venv_bin = venv.join("bin");
     let mut command = Command::new(cmd);
@@ -49,7 +49,7 @@ pub fn check_call_ve_env(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
         let path = match std::env::var_os("PATH") {
             Some(path) => {
                 let mut parts = vec![venv_bin];
-                parts.extend(std::env::split_paths(&path));
+                parts.extend(std::env::split_paths(&path).filter_map(|p| camino::Utf8PathBuf::from_path_buf(p).ok()));
                 std::env::join_paths(parts)?
             }
             None => venv_bin.into_os_string(),
@@ -61,7 +61,7 @@ pub fn check_call_ve_env(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
 
 /// Run a shell command in `cwd`, inheriting stdout/stderr (or routing into the
 /// per-thread capture buffer if active).
-pub fn check_call(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
+pub fn check_call(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<()> {
     run_inheriting_or_capturing(cwd, cmd, args)
 }
 
@@ -76,7 +76,7 @@ pub fn check_call(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
 /// earns a "does not match the project environment" warning; for `uv pip` it
 /// silently redirects the install into the wrong venv. Neither is wanted when
 /// running across a fleet of repos, where the repo dir is the whole point.
-pub fn check_call_clean_env(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
+pub fn check_call_clean_env(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<()> {
     let mut command = Command::new(cmd);
     command
         .args(args)
@@ -90,7 +90,7 @@ pub fn check_call_clean_env(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> 
 /// is true (see `check_call_ve_env`; a repo without a `.venv` runs with the
 /// environment unchanged either way). This is the entry point for commands
 /// honouring the global `--venv`/`--no-venv` flag.
-pub fn check_call_maybe_ve(cwd: &Path, venv: bool, cmd: &str, args: &[&str]) -> Result<()> {
+pub fn check_call_maybe_ve(cwd: &Utf8Path, venv: bool, cmd: &str, args: &[&str]) -> Result<()> {
     if venv {
         check_call_ve_env(cwd, cmd, args)
     } else {
@@ -98,7 +98,7 @@ pub fn check_call_maybe_ve(cwd: &Path, venv: bool, cmd: &str, args: &[&str]) -> 
     }
 }
 
-fn run_inheriting_or_capturing(cwd: &Path, cmd: &str, args: &[&str]) -> Result<()> {
+fn run_inheriting_or_capturing(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<()> {
     let mut command = Command::new(cmd);
     command.args(args).current_dir(cwd);
     run_command(command, cmd)
@@ -124,7 +124,7 @@ fn run_command(mut command: Command, name: &str) -> Result<()> {
 
 /// Run a shell command in `cwd` and return its stdout as a String (trimmed).
 /// Fails if the command exits non-zero.
-pub fn capture_output(cwd: &Path, cmd: &str, args: &[&str]) -> Result<String> {
+pub fn capture_output(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<String> {
     let output = Command::new(cmd)
         .args(args)
         .current_dir(cwd)
@@ -141,7 +141,7 @@ pub fn capture_output(cwd: &Path, cmd: &str, args: &[&str]) -> Result<String> {
 /// on non-zero exit. Useful for commands where non-zero is a meaningful signal
 /// (e.g. `git grep` returns 1 for "no match").
 pub fn capture_output_allow_failure(
-    cwd: &Path,
+    cwd: &Utf8Path,
     cmd: &str,
     args: &[&str],
 ) -> Result<(i32, String, String)> {
@@ -160,8 +160,8 @@ pub fn capture_output_allow_failure(
 mod tests {
     use super::*;
 
-    fn cwd() -> std::path::PathBuf {
-        std::env::current_dir().unwrap()
+    fn cwd() -> camino::Utf8PathBuf {
+        camino::Utf8PathBuf::from_path_buf(std::env::current_dir().unwrap()).unwrap()
     }
 
     #[test]
@@ -208,13 +208,13 @@ mod tests {
     fn check_call_ve_env_prefers_venv_tools() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
-        let bin = dir.path().join(".venv/bin");
+        let bin = camino::Utf8Path::from_path(dir.path()).unwrap().join(".venv/bin");
         std::fs::create_dir_all(&bin).unwrap();
         let tool = bin.join("ve-env-probe");
         std::fs::write(&tool, "#!/bin/sh\necho from-venv\necho \"$VIRTUAL_ENV\"\n").unwrap();
         std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
         enter_capture();
-        check_call_ve_env(dir.path(), "ve-env-probe", &[]).unwrap();
+        check_call_ve_env(camino::Utf8Path::from_path(dir.path()).unwrap(), "ve-env-probe", &[]).unwrap();
         let captured = leave_capture();
         let text = String::from_utf8_lossy(&captured);
         assert!(text.contains("from-venv"));
@@ -270,7 +270,7 @@ mod tests {
     #[test]
     fn check_call_ve_env_without_venv_runs_ambient() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(check_call_ve_env(dir.path(), "true", &[]).is_ok());
+        assert!(check_call_ve_env(camino::Utf8Path::from_path(dir.path()).unwrap(), "true", &[]).is_ok());
     }
 
     #[test]

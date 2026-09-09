@@ -84,6 +84,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "camino"
+version = "1.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb1307f12aa967b5a58416e87b3653360e0fd614a016b6e970db08fecbb1b80d"
+
+[[package]]
 name = "cc"
 version = "1.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -555,6 +561,7 @@ name = "rsmultigit"
 version = "0.1.33"
 dependencies = [
  "anyhow",
+ "camino",
  "clap",
  "clap_complete",
  "git2",

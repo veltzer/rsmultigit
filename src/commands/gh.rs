@@ -1,15 +1,15 @@
-use std::path::Path;
+use camino::Utf8Path;
 
 use anyhow::{Context, Result};
 
 use crate::subprocess_utils::capture_output;
 
 /// Repos the gh commands can operate on: those with a remote on github.com.
-pub fn check_github(project: &Path) -> Result<bool> {
+pub fn check_github(project: &Utf8Path) -> Result<bool> {
     let repo = crate::commands::count::open_repo(project)?;
     let remotes = repo
         .remotes()
-        .with_context(|| format!("failed to list remotes for {}", project.display()))?;
+        .with_context(|| format!("failed to list remotes for {}", project))?;
     for name in remotes.iter() {
         // Err is a non-UTF-8 remote name, Ok(None) a null entry: neither can
         // be looked up, so skip both.
@@ -28,7 +28,7 @@ pub fn check_github(project: &Path) -> Result<bool> {
 
 /// Clean up GitHub deployments, releases, and workflow runs for a repository,
 /// keeping only the `keep` most recent non-failed of each and deleting the rest.
-pub fn clean_all(project: &Path, keep: usize) -> Result<bool> {
+pub fn clean_all(project: &Utf8Path, keep: usize) -> Result<bool> {
     let repo = repo_name_with_owner(project)?;
     clean_deployments(project, &repo, keep)?;
     clean_releases(project, &repo, keep)?;
@@ -37,7 +37,7 @@ pub fn clean_all(project: &Path, keep: usize) -> Result<bool> {
 }
 
 /// The repo's `owner/name` as GitHub knows it (resolved by gh from the remote).
-fn repo_name_with_owner(project: &Path) -> Result<String> {
+fn repo_name_with_owner(project: &Utf8Path) -> Result<String> {
     capture_output(
         project,
         "gh",
@@ -54,7 +54,7 @@ fn repo_name_with_owner(project: &Path) -> Result<String> {
 
 /// Run `gh api <endpoint> --paginate --jq <jq>` and return the non-empty
 /// output lines.
-fn api_lines(project: &Path, endpoint: &str, jq: &str) -> Result<Vec<String>> {
+fn api_lines(project: &Utf8Path, endpoint: &str, jq: &str) -> Result<Vec<String>> {
     let out = capture_output(project, "gh", &["api", endpoint, "--paginate", "--jq", jq])?;
     Ok(out
         .lines()
@@ -79,7 +79,7 @@ fn select_deletions(items: &[(u64, bool)], keep: usize) -> Vec<u64> {
     to_delete
 }
 
-fn clean_deployments(project: &Path, repo: &str, keep: usize) -> Result<()> {
+fn clean_deployments(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> {
     let ids: Vec<u64> = api_lines(project, &format!("repos/{repo}/deployments"), ".[].id")?
         .iter()
         .map(|l| {
@@ -142,7 +142,7 @@ fn clean_deployments(project: &Path, repo: &str, keep: usize) -> Result<()> {
     Ok(())
 }
 
-fn clean_releases(project: &Path, repo: &str, keep: usize) -> Result<()> {
+fn clean_releases(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> {
     let ids: Vec<u64> = api_lines(project, &format!("repos/{repo}/releases"), ".[].id")?
         .iter()
         .map(|l| l.parse().with_context(|| format!("bad release id {l:?}")))
@@ -170,7 +170,7 @@ fn clean_releases(project: &Path, repo: &str, keep: usize) -> Result<()> {
     Ok(())
 }
 
-fn clean_workflows(project: &Path, repo: &str, keep: usize) -> Result<()> {
+fn clean_workflows(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> {
     let lines = api_lines(
         project,
         &format!("repos/{repo}/actions/runs"),

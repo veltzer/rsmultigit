@@ -1,20 +1,20 @@
-use std::path::Path;
+use camino::Utf8Path;
 
 use anyhow::{Context, Result};
 use git2::Repository;
 
-pub(crate) fn open_repo(project: &Path) -> Result<Repository> {
+pub(crate) fn open_repo(project: &Utf8Path) -> Result<Repository> {
     Repository::open(project)
-        .with_context(|| format!("failed to open repo at {}", project.display()))
+        .with_context(|| format!("failed to open repo at {}", project))
 }
 
 /// Returns true if there are any dirty changes (modified, staged, or new in index)
 /// OR any untracked files. One status scan serves both questions.
-pub fn has_changes(project: &Path) -> Result<(bool, bool)> {
+pub fn has_changes(project: &Utf8Path) -> Result<(bool, bool)> {
     let repo = open_repo(project)?;
     let statuses = repo
         .statuses(None)
-        .with_context(|| format!("failed to get statuses for {}", project.display()))?;
+        .with_context(|| format!("failed to get statuses for {}", project))?;
     let mut dirty = false;
     let mut untracked = false;
     for entry in statuses.iter() {
@@ -43,18 +43,18 @@ pub fn has_changes(project: &Path) -> Result<(bool, bool)> {
 }
 
 /// Returns true if the repository has modified (dirty) files in its working directory.
-pub fn is_dirty(project: &Path) -> Result<bool> {
+pub fn is_dirty(project: &Utf8Path) -> Result<bool> {
     Ok(has_changes(project)?.0)
 }
 
 /// Returns true if the repository has untracked files.
-pub fn has_untracked(project: &Path) -> Result<bool> {
+pub fn has_untracked(project: &Utf8Path) -> Result<bool> {
     Ok(has_changes(project)?.1)
 }
 
 /// Returns `Some((ahead, behind))` relative to `refs/remotes/origin/<current_branch>`,
 /// or `None` when the repo has no HEAD, no branch, or no upstream ref.
-pub fn ahead_behind(project: &Path) -> Result<Option<(usize, usize)>> {
+pub fn ahead_behind(project: &Utf8Path) -> Result<Option<(usize, usize)>> {
     let repo = open_repo(project)?;
 
     let head = match repo.head() {
@@ -84,7 +84,7 @@ pub fn ahead_behind(project: &Path) -> Result<Option<(usize, usize)>> {
 
 /// Returns true if the local branch is NOT synchronized with its upstream.
 /// A repo with no upstream is considered non-synchronized.
-pub fn non_synchronized(project: &Path) -> Result<bool> {
+pub fn non_synchronized(project: &Utf8Path) -> Result<bool> {
     match ahead_behind(project)? {
         Some((ahead, behind)) => Ok(ahead != 0 || behind != 0),
         None => Ok(true),
@@ -93,7 +93,7 @@ pub fn non_synchronized(project: &Path) -> Result<bool> {
 
 /// Returns true if the local branch has commits ahead of its upstream.
 /// Repos without an upstream have nothing to push to, so return false.
-pub fn is_ahead(project: &Path) -> Result<bool> {
+pub fn is_ahead(project: &Utf8Path) -> Result<bool> {
     match ahead_behind(project)? {
         Some((ahead, _)) => Ok(ahead != 0),
         None => Ok(false),
@@ -107,7 +107,7 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn init_repo_with_commit(dir: &std::path::Path) -> Repository {
+    fn init_repo_with_commit(dir: &camino::Utf8Path) -> Repository {
         let repo = Repository::init(dir).unwrap();
         let sig = Signature::now("Test", "test@test.com").unwrap();
         let tree_id = {
@@ -125,16 +125,16 @@ mod tests {
     #[test]
     fn clean_repo_is_not_dirty() {
         let tmp = TempDir::new().unwrap();
-        init_repo_with_commit(tmp.path());
-        assert!(!is_dirty(tmp.path()).unwrap());
+        init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
+        assert!(!is_dirty(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap());
     }
 
     #[test]
     fn modified_file_is_dirty() {
         let tmp = TempDir::new().unwrap();
-        let repo = init_repo_with_commit(tmp.path());
+        let repo = init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
 
-        let file_path = tmp.path().join("hello.txt");
+        let file_path = camino::Utf8Path::from_path(tmp.path()).unwrap().join("hello.txt");
         fs::write(&file_path, "hello").unwrap();
         let mut index = repo.index().unwrap();
         index.add_path(std::path::Path::new("hello.txt")).unwrap();
@@ -147,43 +147,43 @@ mod tests {
             .unwrap();
 
         fs::write(&file_path, "changed").unwrap();
-        assert!(is_dirty(tmp.path()).unwrap());
+        assert!(is_dirty(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap());
     }
 
     #[test]
     fn staged_file_is_dirty() {
         let tmp = TempDir::new().unwrap();
-        let repo = init_repo_with_commit(tmp.path());
+        let repo = init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
 
-        fs::write(tmp.path().join("new.txt"), "new").unwrap();
+        fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("new.txt"), "new").unwrap();
         let mut index = repo.index().unwrap();
         index.add_path(std::path::Path::new("new.txt")).unwrap();
         index.write().unwrap();
 
-        assert!(is_dirty(tmp.path()).unwrap());
+        assert!(is_dirty(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap());
     }
 
     #[test]
     fn clean_repo_has_no_untracked() {
         let tmp = TempDir::new().unwrap();
-        init_repo_with_commit(tmp.path());
-        assert!(!has_untracked(tmp.path()).unwrap());
+        init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
+        assert!(!has_untracked(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap());
     }
 
     #[test]
     fn repo_with_new_file_has_untracked() {
         let tmp = TempDir::new().unwrap();
-        init_repo_with_commit(tmp.path());
-        fs::write(tmp.path().join("untracked.txt"), "data").unwrap();
-        assert!(has_untracked(tmp.path()).unwrap());
+        init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
+        fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("untracked.txt"), "data").unwrap();
+        assert!(has_untracked(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap());
     }
 
     #[test]
     fn has_changes_detects_both() {
         let tmp = TempDir::new().unwrap();
-        init_repo_with_commit(tmp.path());
-        fs::write(tmp.path().join("untracked.txt"), "data").unwrap();
-        let (dirty, untracked) = has_changes(tmp.path()).unwrap();
+        init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
+        fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("untracked.txt"), "data").unwrap();
+        let (dirty, untracked) = has_changes(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap();
         assert!(!dirty);
         assert!(untracked);
     }
@@ -191,21 +191,21 @@ mod tests {
     #[test]
     fn repo_without_upstream_is_non_synchronized() {
         let tmp = TempDir::new().unwrap();
-        init_repo_with_commit(tmp.path());
-        assert!(non_synchronized(tmp.path()).unwrap());
+        init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
+        assert!(non_synchronized(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap());
     }
 
     #[test]
     fn repo_without_upstream_is_not_ahead() {
         let tmp = TempDir::new().unwrap();
-        init_repo_with_commit(tmp.path());
-        assert!(!is_ahead(tmp.path()).unwrap());
+        init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
+        assert!(!is_ahead(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap());
     }
 
     #[test]
     fn non_repo_errors() {
         let tmp = TempDir::new().unwrap();
-        assert!(is_dirty(tmp.path()).is_err());
-        assert!(has_untracked(tmp.path()).is_err());
+        assert!(is_dirty(camino::Utf8Path::from_path(tmp.path()).unwrap()).is_err());
+        assert!(has_untracked(camino::Utf8Path::from_path(tmp.path()).unwrap()).is_err());
     }
 }

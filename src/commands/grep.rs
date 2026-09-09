@@ -1,4 +1,4 @@
-use std::path::Path;
+use camino::Utf8Path;
 
 use anyhow::Result;
 
@@ -6,7 +6,7 @@ use crate::subprocess_utils::capture_output_allow_failure;
 
 /// Grep across the repository. Prefix output lines with the project name.
 /// `git grep` exit codes: 0 = match, 1 = no match, >=2 = error.
-pub fn do_grep(project: &Path, regexp: &str, files_only: bool) -> Result<bool> {
+pub fn do_grep(project: &Utf8Path, regexp: &str, files_only: bool) -> Result<bool> {
     let mut args = vec!["grep", "-n"];
     if files_only {
         args.push("-l");
@@ -19,7 +19,7 @@ pub fn do_grep(project: &Path, regexp: &str, files_only: bool) -> Result<bool> {
         0 => {
             let project_name = project
                 .file_name()
-                .map(|n| n.to_string_lossy().to_string())
+                .map(|n| n.to_string())
                 .unwrap_or_default();
 
             for line in stdout.lines() {

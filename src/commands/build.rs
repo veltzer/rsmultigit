@@ -1,24 +1,24 @@
-use std::path::Path;
+use camino::Utf8Path;
 
 use anyhow::Result;
 
 use crate::subprocess_utils::check_call_maybe_ve;
 
-fn is_build_disabled(project: &Path) -> bool {
+fn is_build_disabled(project: &Utf8Path) -> bool {
     project.join(".disable").exists()
 }
 
 // --- Check functions (cheap predicates: should we build this project?) ---
 
-pub fn check_not_disabled(project: &Path) -> Result<bool> {
+pub fn check_not_disabled(project: &Utf8Path) -> Result<bool> {
     Ok(!is_build_disabled(project))
 }
 
-pub fn check_cargo(project: &Path) -> Result<bool> {
+pub fn check_cargo(project: &Utf8Path) -> Result<bool> {
     Ok(!is_build_disabled(project) && project.join("Cargo.toml").exists())
 }
 
-pub fn check_rsconstruct(project: &Path) -> Result<bool> {
+pub fn check_rsconstruct(project: &Utf8Path) -> Result<bool> {
     Ok(!is_build_disabled(project) && project.join("rsconstruct.toml").exists())
 }
 
@@ -31,28 +31,28 @@ pub fn check_rsconstruct(project: &Path) -> Result<bool> {
 // whatever it spawns (pytest, mypy, ...) resolve from the repo's own venv.
 // Repos without a `.venv` run with the environment unchanged.
 
-pub fn build_bootstrap(project: &Path, venv: bool) -> Result<bool> {
+pub fn build_bootstrap(project: &Utf8Path, venv: bool) -> Result<bool> {
     check_call_maybe_ve(project, venv, "python", &["bootstrap.py"])?;
     Ok(true)
 }
 
-pub fn build_make(project: &Path, venv: bool) -> Result<bool> {
+pub fn build_make(project: &Utf8Path, venv: bool) -> Result<bool> {
     check_call_maybe_ve(project, venv, "make", &[])?;
     Ok(true)
 }
 
-pub fn build_cargo(project: &Path, venv: bool) -> Result<bool> {
+pub fn build_cargo(project: &Utf8Path, venv: bool) -> Result<bool> {
     check_call_maybe_ve(project, venv, "cargo", &["build"])?;
     check_call_maybe_ve(project, venv, "cargo", &["build", "--release"])?;
     Ok(true)
 }
 
-pub fn build_cargo_publish(project: &Path, venv: bool) -> Result<bool> {
+pub fn build_cargo_publish(project: &Utf8Path, venv: bool) -> Result<bool> {
     check_call_maybe_ve(project, venv, "cargo", &["publish"])?;
     Ok(true)
 }
 
-pub fn build_rsconstruct(project: &Path, venv: bool) -> Result<bool> {
+pub fn build_rsconstruct(project: &Utf8Path, venv: bool) -> Result<bool> {
     check_call_maybe_ve(project, venv, "rsconstruct", &["--quiet", "build"])?;
     Ok(true)
 }

@@ -1,4 +1,4 @@
-use std::path::Path;
+use camino::Utf8Path;
 
 use anyhow::Result;
 
@@ -7,7 +7,7 @@ use crate::subprocess_utils::check_call;
 
 /// Commit all staged and unstaged changes with a message.
 /// Skips repos that have no changes.
-pub fn do_commit(project: &Path, message: &str) -> Result<bool> {
+pub fn do_commit(project: &Utf8Path, message: &str) -> Result<bool> {
     let (dirty, untracked) = has_changes(project)?;
     if !dirty && !untracked {
         return Ok(false);

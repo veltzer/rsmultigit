@@ -1,9 +1,9 @@
-use std::path::Path;
+use camino::Utf8Path;
 
 use anyhow::Result;
 
 /// Show the size of the .git directory.
-pub fn do_size(project: &Path) -> Result<Option<String>> {
+pub fn do_size(project: &Utf8Path) -> Result<Option<String>> {
     let git_dir = project.join(".git");
     if !git_dir.is_dir() {
         return Ok(None);
@@ -14,7 +14,7 @@ pub fn do_size(project: &Path) -> Result<Option<String>> {
 
 /// Recursively sum file sizes under `path`, skipping symlinks so we don't
 /// follow links out of the tree or into cycles.
-fn dir_size(path: &Path) -> Result<u64> {
+fn dir_size(path: &Utf8Path) -> Result<u64> {
     let mut total = 0u64;
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
@@ -23,7 +23,7 @@ fn dir_size(path: &Path) -> Result<u64> {
             continue;
         }
         if metadata.is_dir() {
-            total += dir_size(&entry.path())?;
+            total += dir_size(camino::Utf8Path::from_path(&entry.path()).unwrap())?;
         } else {
             total += metadata.len();
         }

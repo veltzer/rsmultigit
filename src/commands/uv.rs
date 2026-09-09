@@ -1,11 +1,11 @@
-use std::path::Path;
+use camino::Utf8Path;
 
 use anyhow::Result;
 
 use crate::subprocess_utils::check_call_clean_env;
 
 /// Repos uv can operate on: those with a pyproject.toml at the root.
-pub fn check_pyproject(project: &Path) -> Result<bool> {
+pub fn check_pyproject(project: &Utf8Path) -> Result<bool> {
     Ok(project.join("pyproject.toml").exists())
 }
 
@@ -14,7 +14,7 @@ pub fn check_pyproject(project: &Path) -> Result<bool> {
 /// Runs with a clean environment (see `check_call_clean_env`): uv resolves the
 /// project and its `.venv` from the repo dir itself, so the global
 /// `--venv`/`--no-venv` flag does not apply to uv.
-pub fn sync(project: &Path) -> Result<bool> {
+pub fn sync(project: &Utf8Path) -> Result<bool> {
     check_call_clean_env(project, "uv", &["sync"])?;
     Ok(true)
 }
@@ -24,7 +24,7 @@ pub fn sync(project: &Path) -> Result<bool> {
 /// `--check` to only assert the lockfile is up to date (stale lockfile =
 /// non-zero exit = error). The two flags are mutually exclusive (enforced
 /// by clap). Runs with a clean environment, as `sync` does.
-pub fn lock(project: &Path, upgrade: bool, check: bool) -> Result<bool> {
+pub fn lock(project: &Utf8Path, upgrade: bool, check: bool) -> Result<bool> {
     let args: &[&str] = match (upgrade, check) {
         (true, _) => &["lock", "--upgrade"],
         (_, true) => &["lock", "--check"],

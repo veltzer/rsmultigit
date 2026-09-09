@@ -4,7 +4,7 @@ use std::fs;
 #[test]
 fn status_clean_repos_no_output() {
     let tmp = setup_git_repos(&["a", "b"]);
-    let output = run_rsmultigit(tmp.path(), &["status"]);
+    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["status"]);
     assert!(output.status.success());
     // Clean repos have no status output, so nothing should be printed
     let stdout = stdout_str(&output);
@@ -17,7 +17,7 @@ fn status_clean_repos_no_output() {
 #[test]
 fn status_shows_dirty_repo() {
     let tmp = setup_git_repos(&["clean", "dirty"]);
-    let dirty_path = tmp.path().join("dirty");
+    let dirty_path = camino::Utf8Path::from_path(tmp.path()).unwrap().join("dirty");
     let file = dirty_path.join("file.txt");
     fs::write(&file, "original").unwrap();
     std::process::Command::new("git")
@@ -32,7 +32,7 @@ fn status_shows_dirty_repo() {
         .unwrap();
     fs::write(&file, "modified").unwrap();
 
-    let output = run_rsmultigit(tmp.path(), &["status"]);
+    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["status"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -48,7 +48,7 @@ fn status_shows_dirty_repo() {
         "default status is a summary: should not include per-file git output: {stdout}"
     );
 
-    let output = run_rsmultigit(tmp.path(), &["--verbose", "status"]);
+    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["--verbose", "status"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -64,7 +64,7 @@ fn status_shows_dirty_repo() {
 #[test]
 fn status_shows_repo_with_unpushed_commits() {
     let tmp = setup_git_repos(&["insync", "ahead"]);
-    let repo_path = tmp.path().join("ahead");
+    let repo_path = camino::Utf8Path::from_path(tmp.path()).unwrap().join("ahead");
 
     // Mark the current commit as the upstream tip, then commit past it so the
     // repo is ahead of origin with a clean working tree.
@@ -93,7 +93,7 @@ fn status_shows_repo_with_unpushed_commits() {
         .status()
         .unwrap();
 
-    let output = run_rsmultigit(tmp.path(), &["status"]);
+    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["status"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -105,7 +105,7 @@ fn status_shows_repo_with_unpushed_commits() {
         "repo without upstream and no changes should not be listed: {stdout}"
     );
 
-    let output = run_rsmultigit(tmp.path(), &["--verbose", "status"]);
+    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["--verbose", "status"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -117,7 +117,7 @@ fn status_shows_repo_with_unpushed_commits() {
 #[test]
 fn dirty_subcommand_shows_diff_stat() {
     let tmp = setup_git_repos(&["repo"]);
-    let repo_path = tmp.path().join("repo");
+    let repo_path = camino::Utf8Path::from_path(tmp.path()).unwrap().join("repo");
     let file = repo_path.join("hello.txt");
     fs::write(&file, "hello").unwrap();
     std::process::Command::new("git")
@@ -132,7 +132,7 @@ fn dirty_subcommand_shows_diff_stat() {
         .unwrap();
     fs::write(&file, "changed").unwrap();
 
-    let output = run_rsmultigit(tmp.path(), &["dirty"]);
+    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["dirty"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(

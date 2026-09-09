@@ -4,7 +4,7 @@ use std::fs;
 #[test]
 fn count_dirty_clean_repos() {
     let tmp = setup_git_repos(&["a", "b"]);
-    let output = run_rsmultigit(tmp.path(), &["count", "dirty"]);
+    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["count", "dirty"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -17,7 +17,7 @@ fn count_dirty_clean_repos() {
 fn count_dirty_with_modified_file() {
     let tmp = setup_git_repos(&["clean", "dirty"]);
     // Create and commit a file in dirty, then modify it
-    let dirty_path = tmp.path().join("dirty");
+    let dirty_path = camino::Utf8Path::from_path(tmp.path()).unwrap().join("dirty");
     let file = dirty_path.join("file.txt");
     fs::write(&file, "original").unwrap();
     std::process::Command::new("git")
@@ -32,7 +32,7 @@ fn count_dirty_with_modified_file() {
         .unwrap();
     fs::write(&file, "modified").unwrap();
 
-    let output = run_rsmultigit(tmp.path(), &["count", "dirty"]);
+    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["count", "dirty"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -44,9 +44,9 @@ fn count_dirty_with_modified_file() {
 #[test]
 fn untracked_detects_new_files() {
     let tmp = setup_git_repos(&["clean", "has_new"]);
-    fs::write(tmp.path().join("has_new/untracked.txt"), "data").unwrap();
+    fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("has_new/untracked.txt"), "data").unwrap();
 
-    let output = run_rsmultigit(tmp.path(), &["count", "untracked"]);
+    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["count", "untracked"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -58,10 +58,10 @@ fn untracked_detects_new_files() {
 #[test]
 fn count_dirty_terse_suppresses_names() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(tmp.path().join("a/untracked.txt"), "x").unwrap();
+    fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/untracked.txt"), "x").unwrap();
 
     // With --terse, project names are suppressed; only the count line remains.
-    let output = run_rsmultigit(tmp.path(), &["--terse", "count", "untracked"]);
+    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["--terse", "count", "untracked"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert_eq!(stdout, "1/2");
@@ -70,10 +70,10 @@ fn count_dirty_terse_suppresses_names() {
 #[test]
 fn print_not_inverts_selection() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(tmp.path().join("a/untracked.txt"), "x").unwrap();
+    fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("a/untracked.txt"), "x").unwrap();
 
     // --print-not should show "b" (the one WITHOUT untracked)
-    let output = run_rsmultigit(tmp.path(), &["--print-not", "count", "untracked"]);
+    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["--print-not", "count", "untracked"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(

@@ -1,4 +1,4 @@
-use std::path::Path;
+use camino::Utf8Path;
 
 use anyhow::{Context, Result};
 
@@ -9,7 +9,7 @@ use crate::subprocess_utils::capture_output;
 /// working-tree changes, or the branch is ahead of / behind its upstream
 /// (commits not yet pushed or not yet merged). A repo with no upstream is
 /// reported by working-tree state only.
-pub fn do_status(project: &Path) -> Result<Option<String>> {
+pub fn do_status(project: &Utf8Path) -> Result<Option<String>> {
     let mut output = capture_output(project, "git", &["status", "-s"])?;
     if let Some((ahead, behind)) = ahead_behind(project)? {
         for (count, direction) in [(ahead, "ahead of"), (behind, "behind")] {
@@ -33,11 +33,11 @@ pub fn do_status(project: &Path) -> Result<Option<String>> {
 /// single line describing the situation, e.g. `2 modified, 1 untracked, ahead 3`.
 /// Counted via git2 (no subprocess). Returns `None` for a clean, in-sync repo;
 /// a repo with no upstream is reported by working-tree state only.
-pub fn do_status_summary(project: &Path) -> Result<Option<String>> {
+pub fn do_status_summary(project: &Utf8Path) -> Result<Option<String>> {
     let repo = open_repo(project)?;
     let statuses = repo
         .statuses(None)
-        .with_context(|| format!("failed to get statuses for {}", project.display()))?;
+        .with_context(|| format!("failed to get statuses for {}", project))?;
 
     let mut staged = 0u32;
     let mut modified = 0u32;
@@ -100,7 +100,7 @@ pub fn do_status_summary(project: &Path) -> Result<Option<String>> {
 
 /// Returns `Some(output)` if there are dirty (modified/staged) changes.
 /// Uses `git diff --stat` to detect modifications.
-pub fn do_dirty(project: &Path) -> Result<Option<String>> {
+pub fn do_dirty(project: &Utf8Path) -> Result<Option<String>> {
     let output = capture_output(project, "git", &["diff", "--stat"])?;
     if output.is_empty() {
         let staged = capture_output(project, "git", &["diff", "--cached", "--stat"])?;
@@ -121,13 +121,13 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn init_repo_with_commit(dir: &Path) -> Repository {
+    fn init_repo_with_commit(dir: &Utf8Path) -> Repository {
         let repo = Repository::init(dir).unwrap();
         let sig = Signature::now("Test", "test@test.com").unwrap();
         fs::write(dir.join("tracked.txt"), "original").unwrap();
         let tree_id = {
             let mut index = repo.index().unwrap();
-            index.add_path(Path::new("tracked.txt")).unwrap();
+            index.add_path(std::path::Path::new("tracked.txt")).unwrap();
             index.write().unwrap();
             index.write_tree().unwrap()
         };
@@ -142,39 +142,39 @@ mod tests {
     #[test]
     fn clean_repo_has_no_summary() {
         let tmp = TempDir::new().unwrap();
-        init_repo_with_commit(tmp.path());
-        assert_eq!(do_status_summary(tmp.path()).unwrap(), None);
+        init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
+        assert_eq!(do_status_summary(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap(), None);
     }
 
     #[test]
     fn summary_counts_modified_and_untracked() {
         let tmp = TempDir::new().unwrap();
-        init_repo_with_commit(tmp.path());
-        fs::write(tmp.path().join("tracked.txt"), "changed").unwrap();
-        fs::write(tmp.path().join("new.txt"), "new").unwrap();
-        let summary = do_status_summary(tmp.path()).unwrap().unwrap();
+        init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
+        fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("tracked.txt"), "changed").unwrap();
+        fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("new.txt"), "new").unwrap();
+        let summary = do_status_summary(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap().unwrap();
         assert_eq!(summary, "1 modified, 1 untracked");
     }
 
     #[test]
     fn summary_counts_staged_and_deleted() {
         let tmp = TempDir::new().unwrap();
-        let repo = init_repo_with_commit(tmp.path());
-        fs::write(tmp.path().join("added.txt"), "added").unwrap();
+        let repo = init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
+        fs::write(camino::Utf8Path::from_path(tmp.path()).unwrap().join("added.txt"), "added").unwrap();
         {
             let mut index = repo.index().unwrap();
-            index.add_path(Path::new("added.txt")).unwrap();
+            index.add_path(std::path::Path::new("added.txt")).unwrap();
             index.write().unwrap();
         }
-        fs::remove_file(tmp.path().join("tracked.txt")).unwrap();
-        let summary = do_status_summary(tmp.path()).unwrap().unwrap();
+        fs::remove_file(camino::Utf8Path::from_path(tmp.path()).unwrap().join("tracked.txt")).unwrap();
+        let summary = do_status_summary(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap().unwrap();
         assert_eq!(summary, "1 staged, 1 deleted");
     }
 
     #[test]
     fn summary_reports_ahead_of_upstream() {
         let tmp = TempDir::new().unwrap();
-        let repo = init_repo_with_commit(tmp.path());
+        let repo = init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
 
         // Mark the current commit as the upstream tip, then commit past it.
         let head = repo.head().unwrap();
@@ -193,7 +193,7 @@ mod tests {
         repo.commit(Some("HEAD"), &sig, &sig, "local only", &tree, &[&parent])
             .unwrap();
 
-        let summary = do_status_summary(tmp.path()).unwrap().unwrap();
+        let summary = do_status_summary(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap().unwrap();
         assert_eq!(summary, "ahead 1");
     }
 }

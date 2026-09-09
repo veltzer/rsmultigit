@@ -4,7 +4,7 @@ mod config;
 mod runner;
 mod subprocess_utils;
 
-use std::path::Path;
+use camino::Utf8Path;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -141,7 +141,7 @@ fn main() -> Result<()> {
     match &cli.command {
         // ── do_count ──
         Commands::Count { what } => {
-            let test_fn: fn(&Path) -> anyhow::Result<bool> = match what {
+            let test_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
                 CountWhat::Dirty => commands::count::is_dirty,
                 CountWhat::Untracked => commands::count::has_untracked,
                 CountWhat::Synchronized => commands::count::non_synchronized,
@@ -174,9 +174,9 @@ fn main() -> Result<()> {
             // standard [project]\n<data> format for consistency with other commands.
             for project in &projects {
                 if config.verbose && !config.terse && !config.no_header {
-                    println!("[{}]", project.display());
+                    println!("[{}]", project);
                 }
-                println!("{}", project.display());
+                println!("{}", project);
             }
         }
         Commands::Age => {
@@ -187,7 +187,7 @@ fn main() -> Result<()> {
         }
         Commands::Config { key } => {
             let key = key.clone();
-            runner::print_if_data(&config, &projects, move |project: &Path| {
+            runner::print_if_data(&config, &projects, move |project: &Utf8Path| {
                 commands::config::do_config(project, &key)
             })?;
         }
@@ -200,7 +200,7 @@ fn main() -> Result<()> {
 
         // ── do_for_all_projects ──
         Commands::Branch { what } => {
-            let branch_fn: fn(&Path) -> anyhow::Result<bool> = match what {
+            let branch_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
                 BranchWhat::Local => commands::branch::branch_local,
                 BranchWhat::Remote => commands::branch::branch_remote,
                 BranchWhat::Github => commands::branch::branch_github,
@@ -212,7 +212,7 @@ fn main() -> Result<()> {
             runner::do_for_all_projects(
                 &config,
                 &projects,
-                move |project: &Path| -> anyhow::Result<bool> {
+                move |project: &Utf8Path| -> anyhow::Result<bool> {
                     commands::pull::do_pull(project, quiet)
                 },
             )?;
@@ -229,13 +229,13 @@ fn main() -> Result<()> {
                 runner::do_for_all_projects(
                     &config,
                     &projects,
-                    move |project: &Path| -> anyhow::Result<bool> {
+                    move |project: &Utf8Path| -> anyhow::Result<bool> {
                         commands::clean::clean_make(project, venv)
                     },
                 )?;
             }
             _ => {
-                let clean_fn: fn(&Path) -> anyhow::Result<bool> = match what {
+                let clean_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
                     CleanWhat::Hard => commands::clean::clean_hard,
                     CleanWhat::Soft => commands::clean::clean_soft,
                     CleanWhat::Git => commands::clean::clean_git,
@@ -246,14 +246,14 @@ fn main() -> Result<()> {
             }
         },
         Commands::Stash { what } => {
-            let stash_fn: fn(&Path) -> anyhow::Result<bool> = match what {
+            let stash_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
                 StashWhat::Push => commands::stash::stash_push,
                 StashWhat::Pop => commands::stash::stash_pop,
             };
             runner::do_for_all_projects(&config, &projects, stash_fn)?;
         }
         Commands::Reset { what } => {
-            let reset_fn: fn(&Path) -> anyhow::Result<bool> = match what {
+            let reset_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
                 ResetWhat::Hard => commands::reset::reset_hard,
                 ResetWhat::Soft => commands::reset::reset_soft,
                 ResetWhat::Mixed => commands::reset::reset_mixed,
@@ -268,14 +268,14 @@ fn main() -> Result<()> {
             runner::do_for_all_projects(
                 &config,
                 &projects,
-                move |project: &Path| -> anyhow::Result<bool> {
+                move |project: &Utf8Path| -> anyhow::Result<bool> {
                     commands::log::do_log(project, count)
                 },
             )?;
         }
         Commands::Tag { what } => match what {
             TagWhat::Local | TagWhat::Remote => {
-                let tag_fn: fn(&Path) -> anyhow::Result<bool> = match what {
+                let tag_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
                     TagWhat::Local => commands::tag::tag_local,
                     TagWhat::Remote => commands::tag::tag_remote,
                     _ => unreachable!(),
@@ -283,7 +283,7 @@ fn main() -> Result<()> {
                 runner::do_for_all_projects(&config, &projects, tag_fn)?;
             }
             TagWhat::HasLocal | TagWhat::HasRemote => {
-                let test_fn: fn(&Path) -> anyhow::Result<bool> = match what {
+                let test_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
                     TagWhat::HasLocal => commands::tag::tag_has_local,
                     TagWhat::HasRemote => commands::tag::tag_has_remote,
                     _ => unreachable!(),
@@ -305,7 +305,7 @@ fn main() -> Result<()> {
             runner::do_for_all_projects(
                 &config,
                 &projects,
-                move |project: &Path| -> anyhow::Result<bool> {
+                move |project: &Utf8Path| -> anyhow::Result<bool> {
                     commands::checkout::do_checkout(project, &branch)
                 },
             )?;
@@ -315,7 +315,7 @@ fn main() -> Result<()> {
             runner::do_for_all_projects(
                 &config,
                 &projects,
-                move |project: &Path| -> anyhow::Result<bool> {
+                move |project: &Utf8Path| -> anyhow::Result<bool> {
                     commands::commit::do_commit(project, &message)
                 },
             )?;
@@ -328,7 +328,7 @@ fn main() -> Result<()> {
             runner::do_for_all_projects(
                 &config,
                 &projects,
-                move |project: &Path| -> anyhow::Result<bool> {
+                move |project: &Utf8Path| -> anyhow::Result<bool> {
                     commands::blame::do_blame(project, &file)
                 },
             )?;
@@ -339,7 +339,7 @@ fn main() -> Result<()> {
             runner::do_for_all_projects(
                 &config,
                 &projects,
-                move |project: &Path| -> anyhow::Result<bool> {
+                move |project: &Utf8Path| -> anyhow::Result<bool> {
                     commands::grep::do_grep(project, &regexp, files)
                 },
             )?;
@@ -350,7 +350,7 @@ fn main() -> Result<()> {
             runner::do_for_all_projects(
                 &config,
                 &projects,
-                move |project: &Path| -> anyhow::Result<bool> {
+                move |project: &Utf8Path| -> anyhow::Result<bool> {
                     commands::run::do_run(project, &command, venv)
                 },
             )?;
@@ -363,7 +363,7 @@ fn main() -> Result<()> {
                     &config,
                     &projects,
                     commands::gh::check_github,
-                    move |project: &Path| -> anyhow::Result<bool> {
+                    move |project: &Utf8Path| -> anyhow::Result<bool> {
                         commands::gh::clean_all(project, keep)
                     },
                 )?;
@@ -376,7 +376,7 @@ fn main() -> Result<()> {
                     &config,
                     &projects,
                     commands::build::check_cargo,
-                    move |project: &Path| -> anyhow::Result<bool> {
+                    move |project: &Utf8Path| -> anyhow::Result<bool> {
                         commands::rust::publish(project, level)
                     },
                 )?;
@@ -385,9 +385,9 @@ fn main() -> Result<()> {
 
         // ── build commands ──
         Commands::Build { what } => {
-            type CheckFn = fn(&Path) -> anyhow::Result<bool>;
+            type CheckFn = fn(&Utf8Path) -> anyhow::Result<bool>;
             // All build actions take the effective --venv flag.
-            type BuildFn = fn(&Path, bool) -> anyhow::Result<bool>;
+            type BuildFn = fn(&Utf8Path, bool) -> anyhow::Result<bool>;
             let (check_fn, build_fn): (CheckFn, BuildFn) = match what {
                 BuildWhat::Bootstrap => (
                     commands::build::check_not_disabled,
@@ -412,7 +412,7 @@ fn main() -> Result<()> {
                 &config,
                 &projects,
                 check_fn,
-                move |project: &Path| -> anyhow::Result<bool> { build_fn(project, venv) },
+                move |project: &Utf8Path| -> anyhow::Result<bool> { build_fn(project, venv) },
             )?;
         }
 
@@ -437,7 +437,7 @@ fn main() -> Result<()> {
                         &config,
                         &projects,
                         commands::uv::check_pyproject,
-                        move |project: &Path| -> anyhow::Result<bool> {
+                        move |project: &Utf8Path| -> anyhow::Result<bool> {
                             commands::uv::lock(project, upgrade, check)
                         },
                     )?;
@@ -461,7 +461,7 @@ fn main() -> Result<()> {
                         &config,
                         &projects,
                         commands::build::check_cargo,
-                        move |project: &Path| -> anyhow::Result<bool> {
+                        move |project: &Utf8Path| -> anyhow::Result<bool> {
                             commands::cargo::update(project, venv)
                         },
                     )?;
@@ -518,7 +518,7 @@ struct CheckSameOpts<'a> {
 fn run_check_same(
     app: &AppConfig,
     file_config: &commands::check::CheckConfig,
-    projects: &[std::path::PathBuf],
+    projects: &[camino::Utf8PathBuf],
     opts: &CheckSameOpts<'_>,
 ) -> Result<i32> {
     use commands::check;
@@ -667,14 +667,14 @@ fn run_check_same(
                 let label = interactive::group_label(i);
                 println!("  group {label} ({} files):", group.len());
                 for file in group {
-                    println!("    {}", file.display());
+                    println!("    {}", file);
                 }
             }
 
             if !result.must_have_violations.is_empty() {
                 println!("  missing in:");
                 for repo in &result.must_have_violations {
-                    println!("    {}", repo.display());
+                    println!("    {}", repo);
                 }
             }
 
@@ -759,7 +759,7 @@ struct CheckExistsOpts<'a> {
 fn run_check_exists(
     app: &AppConfig,
     file_config: &commands::check::CheckConfig,
-    projects: &[std::path::PathBuf],
+    projects: &[camino::Utf8PathBuf],
     opts: &CheckExistsOpts<'_>,
 ) -> Result<i32> {
     use commands::check;
@@ -873,7 +873,7 @@ fn run_check_exists(
         if !app.no_output {
             println!("  missing in:");
             for repo in &result.missing {
-                println!("    {}", repo.display());
+                println!("    {}", repo);
             }
         }
 
@@ -957,14 +957,14 @@ fn emit_pair_diff<W: std::io::Write>(
     let a_bytes = match std::fs::read(a) {
         Ok(b) => b,
         Err(e) => {
-            let _ = writeln!(writer, "  (could not read {}: {e})", a.display());
+            let _ = writeln!(writer, "  (could not read {}: {e})", a);
             return;
         }
     };
     let b_bytes = match std::fs::read(b) {
         Ok(b) => b,
         Err(e) => {
-            let _ = writeln!(writer, "  (could not read {}: {e})", b.display());
+            let _ = writeln!(writer, "  (could not read {}: {e})", b);
             return;
         }
     };
@@ -982,7 +982,7 @@ fn emit_pair_diff<W: std::io::Write>(
         "{}",
         diff.unified_diff()
             .context_radius(3)
-            .header(&a.display().to_string(), &b.display().to_string())
+            .header(&a.to_string(), &b.to_string())
     );
 }
 
@@ -1014,7 +1014,7 @@ fn run_copy<R: std::io::BufRead, W: std::io::Write>(
         "overwrite {} file(s) in group {} with content from {}?",
         dst_group.len(),
         group_label(to),
-        src.display()
+        src
     );
     if !confirm(&mut *reader, &mut *writer, &prompt)? {
         let _ = writeln!(writer, "  (skipped)");
@@ -1026,11 +1026,11 @@ fn run_copy<R: std::io::BufRead, W: std::io::Write>(
             let _ = writeln!(
                 writer,
                 "  error: {} -> {}: {e}",
-                src.display(),
-                dst.display()
+                src,
+                dst
             );
         } else {
-            let _ = writeln!(writer, "  copied -> {}", dst.display());
+            let _ = writeln!(writer, "  copied -> {}", dst);
         }
     }
     Ok(FlowControl::Continue)
@@ -1038,14 +1038,14 @@ fn run_copy<R: std::io::BufRead, W: std::io::Write>(
 
 /// `fs::copy` replaces the destination's permissions with the source's. We want
 /// the opposite — overwrite the *content* but keep the destination's mode.
-fn copy_preserving_mode(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+fn copy_preserving_mode(src: &camino::Utf8Path, dst: &camino::Utf8Path) -> Result<()> {
     let original_mode = std::fs::metadata(dst)
-        .with_context(|| format!("failed to stat {}", dst.display()))?
+        .with_context(|| format!("failed to stat {}", dst))?
         .permissions();
     std::fs::copy(src, dst)
-        .with_context(|| format!("failed to copy {} -> {}", src.display(), dst.display()))?;
+        .with_context(|| format!("failed to copy {} -> {}", src, dst))?;
     std::fs::set_permissions(dst, original_mode)
-        .with_context(|| format!("failed to restore permissions on {}", dst.display()))?;
+        .with_context(|| format!("failed to restore permissions on {}", dst))?;
     Ok(())
 }
 
@@ -1090,7 +1090,7 @@ fn run_fix_missing<R: std::io::BufRead, W: std::io::Write>(
     let prompt = format!(
         "create {} file(s) using content from {}?",
         violators.len(),
-        src.display()
+        src
     );
     if !confirm(&mut *reader, &mut *writer, &prompt)? {
         let _ = writeln!(writer, "  (skipped)");
@@ -1105,20 +1105,20 @@ fn run_fix_missing<R: std::io::BufRead, W: std::io::Write>(
             let _ = writeln!(
                 writer,
                 "  error: failed to create directory {}: {e}",
-                parent.display()
+                parent
             );
             continue;
         }
         match std::fs::copy(src, &dst) {
             Ok(_) => {
-                let _ = writeln!(writer, "  created -> {}", dst.display());
+                let _ = writeln!(writer, "  created -> {}", dst);
             }
             Err(e) => {
                 let _ = writeln!(
                     writer,
                     "  error: {} -> {}: {e}",
-                    src.display(),
-                    dst.display()
+                    src,
+                    dst
                 );
             }
         }
