@@ -64,4 +64,18 @@ Other commands accept the flag (it is global) but currently ignore it.
 
 ## Build command skipping
 
-Build commands (`build-*`) automatically skip projects that contain a `.disable` file in their root directory. The `build-rsconstruct` command additionally skips projects that do not have an `rsconstruct.toml` file.
+`rsmultigit build <method>` automatically skips projects that contain a `.disable` file in their root directory. `build rsconstruct` and `build cargo` additionally skip projects that do not have an `rsconstruct.toml` or `Cargo.toml` file respectively.
+
+## Default build method
+
+`default_build_method` in `~/.config/rsmultigit/config.toml` names the method a
+bare `rsmultigit build` runs when none is given on the command line:
+
+```toml
+default_build_method = "rsconstruct"
+```
+
+Accepted values are the command-line spellings: `bootstrap`, `make`,
+`rsconstruct`, `cargo`, `cargo-publish`. A method given on the command line
+always overrides the config file. Without the key, `rsmultigit build` with no
+method is an error.

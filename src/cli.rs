@@ -7,6 +7,7 @@ use std::io;
 
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
+use serde::Deserialize;
 
 #[derive(Parser)]
 #[command(name = "rsmultigit")]
@@ -103,9 +104,10 @@ pub enum Commands {
     },
     /// Build projects
     Build {
-        /// What build system to use
+        /// What build system to use. Optional when the config file sets
+        /// `default_build_method`; a value given here always wins over it.
         #[arg(value_enum)]
-        what: BuildWhat,
+        what: Option<BuildWhat>,
     },
     /// Checkout a branch across all repositories
     Checkout {
@@ -448,7 +450,11 @@ impl ReleaseType {
     }
 }
 
-#[derive(Clone, ValueEnum)]
+/// Also deserializable so `default_build_method = "rsconstruct"` in
+/// ~/.config/rsmultigit/config.toml accepts exactly the spellings the
+/// command line does (kebab-case: `cargo-publish`).
+#[derive(Clone, Debug, PartialEq, Eq, ValueEnum, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum BuildWhat {
     /// Run bootstrap across all projects
     Bootstrap,
@@ -665,12 +671,15 @@ mod tests {
             assert!(result.is_ok(), "stash {what} should parse");
         }
 
-        // build requires a what argument
+        // build takes an optional what argument (falls back to the config
+        // file's `default_build_method` when omitted)
         let build_whats = ["bootstrap", "make", "rsconstruct", "cargo", "cargo-publish"];
         for what in build_whats {
             let result = Cli::try_parse_from(["rsmultigit", "build", what]);
             assert!(result.is_ok(), "build {what} should parse");
         }
+        let result = Cli::try_parse_from(["rsmultigit", "build"]);
+        assert!(result.is_ok(), "build without a method should parse");
 
         // rust requires a what argument
         let rust_whats = ["publish"];
@@ -817,6 +826,39 @@ mod tests {
         let cli = parse(&["rsmultigit", "--no-venv", "--venv", "run", "true"]);
         assert!(cli.venv);
         assert!(!cli.no_venv);
+    }
+
+    #[test]
+    fn parse_build_without_method() {
+        let cli = parse(&["rsmultigit", "build"]);
+        assert!(matches!(cli.command, Commands::Build { what: None }));
+        let cli = parse(&["rsmultigit", "build", "cargo-publish"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Build {
+                what: Some(BuildWhat::CargoPublish)
+            }
+        ));
+    }
+
+    #[test]
+    fn build_what_deserializes_with_cli_spellings() {
+        #[derive(Deserialize)]
+        struct Probe {
+            what: BuildWhat,
+        }
+        for (text, want) in [
+            ("bootstrap", BuildWhat::Bootstrap),
+            ("make", BuildWhat::Make),
+            ("rsconstruct", BuildWhat::Rsconstruct),
+            ("cargo", BuildWhat::Cargo),
+            ("cargo-publish", BuildWhat::CargoPublish),
+        ] {
+            let probe: Probe = toml::from_str(&format!("what = \"{text}\"")).unwrap();
+            assert_eq!(probe.what, want, "{text}");
+        }
+        assert!(toml::from_str::<Probe>("what = \"CargoPublish\"").is_err());
+        assert!(toml::from_str::<Probe>("what = \"ninja\"").is_err());
     }
 
     #[test]

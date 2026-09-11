@@ -9,6 +9,7 @@ A Rust CLI tool for managing multiple Git repositories at once. Reads the list o
 rsmultigit requires a config file at `~/.config/rsmultigit/config.toml`. Tests override this via the `RSMULTIGIT_CONFIG` env var. Run `rsmultigit config-example` to print a worked example; its source is `assets/config-example.toml` (embedded at compile time via `include_str!`).
 
 - `repos = [...]` — list of shell-expanded globs. Matches that aren't git repos are filtered out.
+- `default_build_method = "..."` — optional; what a bare `rsmultigit build` runs (same spellings as the CLI: `bootstrap`, `make`, `rsconstruct`, `cargo`, `cargo-publish`). Deserialized straight into `cli::BuildWhat`, so the CLI enum and the config key can never drift. An explicit method on the command line wins.
 - `[[check]]` blocks — consumed by `check-same` (and `check-all`). Fields: `name`, `select`, `exclude?`, `marker?`, `marker_absent?` (drop repos containing this file — the in-repo opt-out, e.g. `.noci`), `path`, `enabled?` (default true), `must_have?` (default false; when true, in-scope repos missing `path` are violations).
 - `[[exists]]` blocks — consumed by `check-exists` (and `check-all`). Presence-only: they assert every selected repo has `path`, and never compare content, which is what makes them right for files that legitimately differ per repo (README.md). Same selection fields as `[[check]]` (`name`, `select`, `exclude?`, `marker?`, `marker_absent?`, `path`, `enabled?`); no `must_have`, since requiring the file is the whole rule.
 

@@ -7,12 +7,19 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
+use crate::cli::BuildWhat;
+
 #[derive(Debug, Deserialize)]
 pub struct CheckConfig {
     /// Glob patterns (with shell expansion) identifying repo roots.
     /// Non-git directories matching the pattern are filtered out.
     #[serde(default)]
     pub repos: Vec<String>,
+    /// Build method `rsmultigit build` uses when none is given on the command
+    /// line, so a fleet that is all-rsconstruct can type `rsmultigit build`.
+    /// Spelled as on the command line (`rsconstruct`, `cargo-publish`, ...).
+    #[serde(default)]
+    pub default_build_method: Option<BuildWhat>,
     #[serde(default)]
     pub check: Vec<Rule>,
     /// Presence-only rules, consumed by `check-exists`. Unlike `[[check]]`,
@@ -390,9 +397,26 @@ mod tests {
     }
 
     #[test]
+    fn default_build_method_parses_and_defaults_to_none() {
+        let cfg: CheckConfig = toml::from_str("repos = [\"x\"]\n").unwrap();
+        assert_eq!(cfg.default_build_method, None);
+
+        let cfg: CheckConfig =
+            toml::from_str("repos = [\"x\"]\ndefault_build_method = \"rsconstruct\"\n").unwrap();
+        assert_eq!(cfg.default_build_method, Some(BuildWhat::Rsconstruct));
+
+        // Unknown methods are a config error, not a silent None.
+        assert!(
+            toml::from_str::<CheckConfig>("repos = [\"x\"]\ndefault_build_method = \"ninja\"\n")
+                .is_err()
+        );
+    }
+
+    #[test]
     fn resolve_repos_requires_non_empty() {
         let cfg = CheckConfig {
             repos: vec![],
+            default_build_method: None,
             check: vec![],
             exists: vec![],
         };
@@ -422,6 +446,7 @@ mod tests {
                 "{}/*",
                 camino::Utf8Path::from_path(tmp.path()).unwrap()
             )],
+            default_build_method: None,
             check: vec![],
             exists: vec![],
         };
@@ -445,6 +470,7 @@ mod tests {
                 format!("{}/a", camino::Utf8Path::from_path(tmp.path()).unwrap()),
                 format!("{}/*", camino::Utf8Path::from_path(tmp.path()).unwrap()),
             ],
+            default_build_method: None,
             check: vec![],
             exists: vec![],
         };
@@ -460,6 +486,7 @@ mod tests {
                 "{}/nonexistent*",
                 camino::Utf8Path::from_path(tmp.path()).unwrap()
             )],
+            default_build_method: None,
             check: vec![],
             exists: vec![],
         };

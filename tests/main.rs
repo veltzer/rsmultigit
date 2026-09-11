@@ -1,5 +1,8 @@
 mod common;
 
+#[path = "tests_mod/build.rs"]
+mod build;
+
 #[path = "tests_mod/check_same.rs"]
 mod check_same;
 #[path = "tests_mod/cli.rs"]

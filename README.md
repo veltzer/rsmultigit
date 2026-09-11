@@ -79,6 +79,9 @@ rsmultigit list-repos
 # Build all rsconstruct projects
 rsmultigit build rsconstruct
 
+# Same, with `default_build_method = "rsconstruct"` in the config file
+rsmultigit build
+
 # Generate shell completions
 rsmultigit complete bash >> ~/.bash_completion
 ```
@@ -136,6 +139,7 @@ rsmultigit complete bash >> ~/.bash_completion
 ### Build
 | Command | Description |
 |---------|-------------|
+| `build` | Build with the config file's `default_build_method` |
 | `build make` | Run make across all projects |
 | `build rsconstruct` | Run rsconstruct build on projects with `rsconstruct.toml` |
 | `build bootstrap` | Run bootstrap across all projects |

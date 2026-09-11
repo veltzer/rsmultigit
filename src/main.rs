@@ -385,6 +385,16 @@ fn main() -> Result<()> {
 
         // ── build commands ──
         Commands::Build { what } => {
+            // Command line wins; otherwise fall back to the config file's
+            // `default_build_method`; otherwise it's a usage error.
+            let what = match what.clone().or(file_config.default_build_method.clone()) {
+                Some(what) => what,
+                None => anyhow::bail!(
+                    "build: no build method given and `default_build_method` is not set in {config_path}\n\
+                     usage: rsmultigit build <bootstrap|make|rsconstruct|cargo|cargo-publish>\n\
+                     or add e.g. `default_build_method = \"rsconstruct\"` to the config file"
+                ),
+            };
             type CheckFn = fn(&Utf8Path) -> anyhow::Result<bool>;
             // All build actions take the effective --venv flag.
             type BuildFn = fn(&Utf8Path, bool) -> anyhow::Result<bool>;

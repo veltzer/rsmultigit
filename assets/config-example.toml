@@ -10,6 +10,12 @@
 # `repos` is a list of shell-expanded glob patterns that resolve to repo roots.
 # Matches that aren't git repos are filtered out automatically.
 #
+# `default_build_method` (optional) is what a bare `rsmultigit build` runs when
+# no method is given on the command line. It takes the same spellings as the
+# command line: bootstrap, make, rsconstruct, cargo, cargo-publish. A method
+# given on the command line always wins over it. Without this key, a bare
+# `rsmultigit build` is an error.
+#
 # `[[check]]` blocks are consumed only by `rsmultigit check-same`, which verifies
 # that a given path has identical content across a selection of repos.
 #
@@ -41,6 +47,9 @@
 repos = [
     "~/git/*",
 ]
+
+# `rsmultigit build` with no method means `rsmultigit build rsconstruct`.
+default_build_method = "rsconstruct"
 
 # ── shared dev-tooling configs across all repos ───────────────────────────────
 

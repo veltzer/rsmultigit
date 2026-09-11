@@ -363,7 +363,8 @@ rsmultigit --no-venv run which python  # ambient python everywhere
 
 ## Build Commands
 
-These commands run build tools in each project directory. Projects with a `.disable` file are skipped.
+`rsmultigit build <method>` runs a build tool in each project directory.
+Projects with a `.disable` file are skipped.
 
 By default (the global `--venv` flag), a project that has a local `.venv` gets
 it activated before the build tool runs: `.venv/bin` is prepended to `PATH`
@@ -373,24 +374,34 @@ itself (make, rsconstruct, ...) when the venv provides it. Projects without a
 `.venv` build with the ambient environment. Pass `--no-venv` to disable the
 activation everywhere.
 
-### `rsmultigit build-bootstrap`
+| Method | What runs | Which projects |
+|--------|-----------|----------------|
+| `bootstrap` | `python bootstrap.py` | all |
+| `make` | `make` | all |
+| `rsconstruct` | `rsconstruct --quiet build` | those with `rsconstruct.toml` |
+| `cargo` | `cargo build` then `cargo build --release` | those with `Cargo.toml` |
+| `cargo-publish` | `cargo publish` | those with `Cargo.toml` |
 
-Run `python bootstrap.py` in each project.
+### Default build method
 
-### `rsmultigit build-make`
+The method is optional when the config file sets `default_build_method`:
 
-Run `make` in each project.
+```toml
+# ~/.config/rsmultigit/config.toml
+default_build_method = "rsconstruct"
+```
 
-### `rsmultigit build-rsconstruct`
-
-Run `rsconstruct build` on projects that have an `rsconstruct.toml` file.
-Projects without `rsconstruct.toml` are skipped. As with every build command,
-the project's local `.venv` is activated by default (see above); pass
-`--no-venv` to build with the ambient environment only.
+With that in place a bare `rsmultigit build` means `rsmultigit build
+rsconstruct`. The key accepts exactly the spellings the command line does
+(`cargo-publish`, not `CargoPublish`), and a method given on the command line
+always wins over the config file. Without the key, a bare `rsmultigit build`
+is an error that says how to fix it.
 
 ```bash
-rsmultigit build-rsconstruct
-rsmultigit --no-venv build-rsconstruct
+rsmultigit build rsconstruct
+rsmultigit build                       # same, given default_build_method = "rsconstruct"
+rsmultigit build make                  # explicit method overrides the default
+rsmultigit --no-venv build rsconstruct
 ```
 
 ## Rust Commands
