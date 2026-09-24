@@ -28,7 +28,7 @@ is-terminal = "0.4.17"
 
 [dev-dependencies]
 tempfile = "3"
-serial_test = "3"
+serial_test = "4"
 
 [profile.release]
 strip = true
