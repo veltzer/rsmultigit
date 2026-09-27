@@ -9,6 +9,8 @@ mod check_same;
 mod cli;
 #[path = "tests_mod/count.rs"]
 mod count;
+#[path = "tests_mod/docs.rs"]
+mod docs;
 #[path = "tests_mod/run.rs"]
 mod run;
 #[path = "tests_mod/status.rs"]

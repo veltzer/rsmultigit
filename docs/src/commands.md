@@ -359,8 +359,10 @@ scripts call this to complete `check-same --checks <TAB>` and
 
 ## Build Commands
 
-`rsmultigit build [<method>]` runs a build tool in each project directory.
-Projects with a `.disable` file in their root are always skipped.
+### `rsmultigit build [<method>]`
+
+Run a build tool in each project directory. Projects with a `.disable` file
+in their root are always skipped.
 
 By default (the global `--venv` flag), a project that has a local `.venv`
 gets it activated before the build tool runs, so the tools the build spawns
