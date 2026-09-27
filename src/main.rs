@@ -6,13 +6,14 @@ mod subprocess_utils;
 
 use camino::Utf8Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use clap::Parser;
 
 use cli::{
     BranchWhat, BuildWhat, CargoWhat, CleanWhat, Cli, Commands, CountWhat, GhWhat, ResetWhat,
     RustWhat, StashWhat, TagWhat, UvWhat,
 };
+use commands::check_run::{self, CheckExistsOpts, CheckSameOpts};
 use config::AppConfig;
 
 fn main() -> Result<()> {
@@ -52,6 +53,12 @@ fn main() -> Result<()> {
     let file_config = commands::check::load_config(&config_path)?;
     let projects = commands::check::resolve_repos(&file_config)?;
 
+    // The check commands are organised by rule rather than by repo and own
+    // their exit codes, so they bypass the runners. Prompts (--diff, --copy,
+    // --fix-missing) are served from stdin; everything is written to stdout.
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+
     if let Commands::CheckSame {
         checks,
         checks_re,
@@ -62,7 +69,7 @@ fn main() -> Result<()> {
         fix_missing,
     } = &cli.command
     {
-        let exit_code = run_check_same(
+        let exit_code = check_run::run_check_same(
             &config,
             &file_config,
             &projects,
@@ -75,6 +82,8 @@ fn main() -> Result<()> {
                 allow_empty: *allow_empty,
                 do_fix_missing: *fix_missing,
             },
+            &mut stdin.lock(),
+            &mut stdout.lock(),
         )?;
         std::process::exit(exit_code);
     }
@@ -86,7 +95,7 @@ fn main() -> Result<()> {
         allow_empty,
     } = &cli.command
     {
-        let exit_code = run_check_exists(
+        let exit_code = check_run::run_check_exists(
             &config,
             &file_config,
             &projects,
@@ -96,6 +105,7 @@ fn main() -> Result<()> {
                 only_failed: *only_failed,
                 allow_empty: *allow_empty,
             },
+            &mut stdout.lock(),
         )?;
         std::process::exit(exit_code);
     }
@@ -109,31 +119,33 @@ fn main() -> Result<()> {
         // every invariant, so a failure in the first must not hide the state of
         // the second. An empty-rule bail in either half still propagates as an
         // error, since that is a config bug rather than drift.
-        let empty: Vec<String> = Vec::new();
-        let same = run_check_same(
+        let same = check_run::run_check_same(
             &config,
             &file_config,
             &projects,
             &CheckSameOpts {
-                requested: &empty,
-                requested_re: &empty,
+                requested: &[],
+                requested_re: &[],
                 only_failed: *only_failed,
                 show_diff: false,
                 do_copy: false,
                 allow_empty: *allow_empty,
                 do_fix_missing: false,
             },
+            &mut stdin.lock(),
+            &mut stdout.lock(),
         )?;
-        let exists = run_check_exists(
+        let exists = check_run::run_check_exists(
             &config,
             &file_config,
             &projects,
             &CheckExistsOpts {
-                requested: &empty,
-                requested_re: &empty,
+                requested: &[],
+                requested_re: &[],
                 only_failed: *only_failed,
                 allow_empty: *allow_empty,
             },
+            &mut stdout.lock(),
         )?;
         std::process::exit(if same != 0 || exists != 0 { 1 } else { 0 });
     }
@@ -391,8 +403,9 @@ fn main() -> Result<()> {
                 Some(what) => what,
                 None => anyhow::bail!(
                     "build: no build method given and `default_build_method` is not set in {config_path}\n\
-                     usage: rsmultigit build <bootstrap|make|rsconstruct|cargo|cargo-publish>\n\
-                     or add e.g. `default_build_method = \"rsconstruct\"` to the config file"
+                     usage: rsmultigit build <{}>\n\
+                     or add e.g. `default_build_method = \"rsconstruct\"` to the config file",
+                    BuildWhat::names().join("|")
                 ),
             };
             type CheckFn = fn(&Utf8Path) -> anyhow::Result<bool>;
@@ -488,639 +501,4 @@ fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-/// The check-same flag set, bundled to keep `run_check_same`'s signature small.
-struct CheckSameOpts<'a> {
-    requested: &'a [String],
-    requested_re: &'a [String],
-    only_failed: bool,
-    show_diff: bool,
-    do_copy: bool,
-    allow_empty: bool,
-    do_fix_missing: bool,
-}
-
-/// Run the check-same command. Returns the process exit code.
-///
-/// `requested` is the (possibly empty) list of rule names from `--checks`;
-/// `requested_re` the (possibly empty) list of regexes from `--checks-re`.
-/// Both empty → run all enabled rules. Otherwise → run exactly the rules named
-/// by `--checks` (in request order) plus, in config order, every rule whose
-/// name a regex matches (unanchored search), even if they are `enabled = false`.
-/// Any unknown name, invalid regex, or regex matching no rule is a hard error.
-///
-/// Passing rules print an `ok (N files)` line by default; `only_failed` (and
-/// `--terse`) restrict the output to failing rules.
-///
-/// A rule that matches no files at all fails ("no files matched") unless
-/// `allow_empty` is set, in which case it passes as `ok (0 files)`. Because
-/// that inline report is easy to miss in a long run, the whole command then
-/// ends with a hard error on stderr listing the empty rules — even under
-/// `--copy`/`--fix-missing`, which otherwise always exit 0.
-///
-/// When `copy` is set, interactive prompts are served. In that mode the overall
-/// exit code is always 0 regardless of mismatches — `--copy` is a tool to fix
-/// drift, not a pass/fail check.
-///
-/// With the global `--short-circuit` flag, evaluation stops as soon as the first
-/// rule is found broken: the remaining rules are neither evaluated nor reported.
-fn run_check_same(
-    app: &AppConfig,
-    file_config: &commands::check::CheckConfig,
-    projects: &[camino::Utf8PathBuf],
-    opts: &CheckSameOpts<'_>,
-) -> Result<i32> {
-    use commands::check;
-    use commands::interactive;
-
-    let &CheckSameOpts {
-        requested,
-        requested_re,
-        only_failed,
-        show_diff,
-        do_copy,
-        allow_empty,
-        do_fix_missing,
-    } = opts;
-
-    let rules: Vec<&check::Rule> = if requested.is_empty() && requested_re.is_empty() {
-        file_config.check.iter().filter(|r| r.enabled).collect()
-    } else {
-        let known: std::collections::HashSet<&str> =
-            file_config.check.iter().map(|r| r.name.as_str()).collect();
-        let unknown: Vec<&String> = requested
-            .iter()
-            .filter(|name| !known.contains(name.as_str()))
-            .collect();
-        if !unknown.is_empty() {
-            let joined = unknown
-                .iter()
-                .map(|s| format!("{s:?}"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            anyhow::bail!("unknown check name(s): {joined}");
-        }
-        let mut selected: Vec<&check::Rule> = requested
-            .iter()
-            .filter_map(|name| file_config.check.iter().find(|r| &r.name == name))
-            .collect();
-        for pattern in requested_re {
-            let re = regex_lite::Regex::new(pattern)
-                .with_context(|| format!("invalid check regex {pattern:?}"))?;
-            let mut matched_any = false;
-            for rule in &file_config.check {
-                if re.is_match(&rule.name) {
-                    matched_any = true;
-                    if !selected.iter().any(|r| r.name == rule.name) {
-                        selected.push(rule);
-                    }
-                }
-            }
-            if !matched_any {
-                anyhow::bail!("check regex {pattern:?} matches no check name");
-            }
-        }
-        selected
-    };
-
-    if rules.is_empty() {
-        if app.verbose {
-            println!("no rules to check");
-        }
-        return Ok(0);
-    }
-
-    let stdin = std::io::stdin();
-    let stdout = std::io::stdout();
-    let mut any_mismatch = false;
-    let mut empty_rules: Vec<String> = Vec::new();
-    let mut quit_requested = false;
-
-    for rule in rules {
-        if quit_requested {
-            break;
-        }
-        let result = check::evaluate_rule(rule, projects)?;
-        if result.matched_nothing() && !allow_empty {
-            // A rule that checked nothing is almost always a stale select/path,
-            // so it fails by default; --allow-empty restores the old "ok (0
-            // files)" behavior.
-            any_mismatch = true;
-            empty_rules.push(result.name.clone());
-            if app.terse {
-                println!("{}", result.name);
-                if app.short_circuit {
-                    break;
-                }
-                continue;
-            }
-            if !app.no_header {
-                println!("[{}]", result.name);
-            }
-            let suffix = if result.skipped.is_empty() {
-                String::new()
-            } else {
-                format!(" ({} skipped)", result.skipped.len())
-            };
-            println!("no files matched{suffix}");
-            if app.short_circuit {
-                break;
-            }
-            continue;
-        }
-        if result.is_consistent() {
-            // Passing rules are reported by default; --only-failed suppresses
-            // them, as does --terse (whose output is a machine-readable list
-            // of failing rule names).
-            if !only_failed && !app.terse {
-                if !app.no_header {
-                    println!("[{}]", result.name);
-                }
-                println!("ok ({} files)", result.total_files);
-            }
-            continue;
-        }
-
-        any_mismatch = true;
-
-        if app.terse {
-            println!("{}", result.name);
-            if app.short_circuit {
-                break;
-            }
-            continue;
-        }
-
-        if !app.no_header {
-            println!("[{}]", result.name);
-        }
-        let mut suffix_parts: Vec<String> = Vec::new();
-        if !result.must_have_violations.is_empty() {
-            suffix_parts.push(format!("{} missing", result.must_have_violations.len()));
-        }
-        if !result.skipped.is_empty() {
-            suffix_parts.push(format!("{} skipped", result.skipped.len()));
-        }
-        let suffix = if suffix_parts.is_empty() {
-            String::new()
-        } else {
-            format!(" ({})", suffix_parts.join(", "))
-        };
-        println!(
-            "{} files, {} groups{suffix}",
-            result.total_files,
-            result.groups.len(),
-        );
-        if !app.no_output {
-            for (i, group) in result.groups.iter().enumerate() {
-                let label = interactive::group_label(i);
-                println!("  group {label} ({} files):", group.len());
-                for file in group {
-                    println!("    {}", file);
-                }
-            }
-
-            if !result.must_have_violations.is_empty() {
-                println!("  missing in:");
-                for repo in &result.must_have_violations {
-                    println!("    {}", repo);
-                }
-            }
-
-            if show_diff {
-                match run_diff(&result, &mut stdin.lock(), &mut stdout.lock())? {
-                    FlowControl::Quit => {
-                        quit_requested = true;
-                        continue;
-                    }
-                    FlowControl::Continue => {}
-                }
-            }
-
-            if do_copy {
-                match run_copy(&result, &mut stdin.lock(), &mut stdout.lock())? {
-                    FlowControl::Quit => {
-                        quit_requested = true;
-                        continue;
-                    }
-                    FlowControl::Continue => {}
-                }
-            }
-
-            if do_fix_missing && !result.must_have_violations.is_empty() {
-                match run_fix_missing(&result, &mut stdin.lock(), &mut stdout.lock())? {
-                    FlowControl::Quit => {
-                        quit_requested = true;
-                        continue;
-                    }
-                    FlowControl::Continue => {}
-                }
-            }
-        }
-
-        if app.short_circuit {
-            break;
-        }
-    }
-
-    // The inline "no files matched" lines scroll away in a long run, so finish
-    // with a hard error on stderr — the last thing on screen — naming every
-    // empty rule. This takes precedence over --copy/--fix-missing's exit 0:
-    // an empty rule is a config bug, not drift those modes could fix.
-    if !empty_rules.is_empty() {
-        let joined = empty_rules
-            .iter()
-            .map(|name| format!("{name:?}"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let noun = if empty_rules.len() == 1 {
-            "rule"
-        } else {
-            "rules"
-        };
-        anyhow::bail!(
-            "check-same: {} {noun} matched no files: {joined} (stale select/path? pass --allow-empty to accept)",
-            empty_rules.len(),
-        );
-    }
-
-    if do_copy || do_fix_missing {
-        Ok(0)
-    } else {
-        Ok(if any_mismatch { 1 } else { 0 })
-    }
-}
-
-/// The check-exists flag set, mirroring `CheckSameOpts`.
-struct CheckExistsOpts<'a> {
-    requested: &'a [String],
-    requested_re: &'a [String],
-    only_failed: bool,
-    allow_empty: bool,
-}
-
-/// Run the `[[exists]]` rules: assert presence, never compare content.
-///
-/// Output and flag handling deliberately mirror `run_check_same` so the two
-/// commands read the same way — `--terse` prints bare failing rule names,
-/// `--only-failed` drops the `ok` lines, `--short-circuit` stops at the first
-/// failure, and an empty rule is a hard error unless `--allow-empty`.
-fn run_check_exists(
-    app: &AppConfig,
-    file_config: &commands::check::CheckConfig,
-    projects: &[camino::Utf8PathBuf],
-    opts: &CheckExistsOpts<'_>,
-) -> Result<i32> {
-    use commands::check;
-
-    let CheckExistsOpts {
-        requested,
-        requested_re,
-        only_failed,
-        allow_empty,
-    } = *opts;
-
-    let rules: Vec<&check::ExistsRule> = if requested.is_empty() && requested_re.is_empty() {
-        file_config.exists.iter().filter(|r| r.enabled).collect()
-    } else {
-        let known: std::collections::HashSet<&str> =
-            file_config.exists.iter().map(|r| r.name.as_str()).collect();
-        let unknown: Vec<&String> = requested
-            .iter()
-            .filter(|name| !known.contains(name.as_str()))
-            .collect();
-        if !unknown.is_empty() {
-            let joined = unknown
-                .iter()
-                .map(|s| format!("{s:?}"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            anyhow::bail!("unknown exists rule name(s): {joined}");
-        }
-        let mut selected: Vec<&check::ExistsRule> = requested
-            .iter()
-            .filter_map(|name| file_config.exists.iter().find(|r| &r.name == name))
-            .collect();
-        for pattern in requested_re {
-            let re = regex_lite::Regex::new(pattern)
-                .with_context(|| format!("invalid exists regex {pattern:?}"))?;
-            let mut matched_any = false;
-            for rule in &file_config.exists {
-                if re.is_match(&rule.name) {
-                    matched_any = true;
-                    if !selected.iter().any(|r| r.name == rule.name) {
-                        selected.push(rule);
-                    }
-                }
-            }
-            if !matched_any {
-                anyhow::bail!("exists regex {pattern:?} matches no rule name");
-            }
-        }
-        selected
-    };
-
-    if rules.is_empty() {
-        if app.verbose {
-            println!("no exists rules to check");
-        }
-        return Ok(0);
-    }
-
-    let mut any_missing = false;
-    let mut empty_rules: Vec<String> = Vec::new();
-
-    for rule in rules {
-        let result = check::evaluate_exists_rule(rule, projects)?;
-
-        if result.matched_nothing() && !allow_empty {
-            any_missing = true;
-            empty_rules.push(result.name.clone());
-            if app.terse {
-                println!("{}", result.name);
-            } else {
-                if !app.no_header {
-                    println!("[{}]", result.name);
-                }
-                println!("no repos selected");
-            }
-            if app.short_circuit {
-                break;
-            }
-            continue;
-        }
-
-        if result.is_satisfied() {
-            if !only_failed && !app.terse {
-                if !app.no_header {
-                    println!("[{}]", result.name);
-                }
-                println!("ok ({} repos)", result.total_repos());
-            }
-            continue;
-        }
-
-        any_missing = true;
-
-        if app.terse {
-            println!("{}", result.name);
-            if app.short_circuit {
-                break;
-            }
-            continue;
-        }
-
-        if !app.no_header {
-            println!("[{}]", result.name);
-        }
-        println!(
-            "{} repos, {} missing {}",
-            result.total_repos(),
-            result.missing.len(),
-            result.path,
-        );
-        if !app.no_output {
-            println!("  missing in:");
-            for repo in &result.missing {
-                println!("    {}", repo);
-            }
-        }
-
-        if app.short_circuit {
-            break;
-        }
-    }
-
-    if !empty_rules.is_empty() {
-        let joined = empty_rules
-            .iter()
-            .map(|name| format!("{name:?}"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let noun = if empty_rules.len() == 1 {
-            "rule"
-        } else {
-            "rules"
-        };
-        anyhow::bail!(
-            "check-exists: {} {noun} selected no repos: {joined} (stale select? pass --allow-empty to accept)",
-            empty_rules.len(),
-        );
-    }
-
-    Ok(if any_missing { 1 } else { 0 })
-}
-
-#[derive(Debug, PartialEq, Eq)]
-enum FlowControl {
-    Continue,
-    Quit,
-}
-
-/// Run the diff flow for a rule with at least two content groups.
-/// - 2 groups: auto-pair and diff, no prompting.
-/// - 3+ groups: prompt for from/to, diff, then offer to diff another pair.
-fn run_diff<R: std::io::BufRead, W: std::io::Write>(
-    result: &commands::check::RuleResult,
-    reader: &mut R,
-    writer: &mut W,
-) -> Result<FlowControl> {
-    use commands::interactive::{Choice, confirm, pick_group};
-
-    let n = result.groups.len();
-    if n == 2 {
-        emit_pair_diff(result, 0, 1, writer);
-        return Ok(FlowControl::Continue);
-    }
-
-    loop {
-        let from = match pick_group(&mut *reader, &mut *writer, "diff from group?", n, None)? {
-            Choice::Value(i) => i,
-            Choice::Skip => return Ok(FlowControl::Continue),
-            Choice::Quit => return Ok(FlowControl::Quit),
-        };
-        let to = match pick_group(&mut *reader, &mut *writer, "diff to group?", n, Some(from))? {
-            Choice::Value(i) => i,
-            Choice::Skip => return Ok(FlowControl::Continue),
-            Choice::Quit => return Ok(FlowControl::Quit),
-        };
-        emit_pair_diff(result, from, to, writer);
-
-        if !confirm(&mut *reader, &mut *writer, "diff another pair?")? {
-            return Ok(FlowControl::Continue);
-        }
-    }
-}
-
-/// Write a unified diff between representatives of `groups[a]` and `groups[b]`
-/// to `writer`. Handles I/O errors and non-UTF-8 content gracefully.
-fn emit_pair_diff<W: std::io::Write>(
-    result: &commands::check::RuleResult,
-    a_idx: usize,
-    b_idx: usize,
-    writer: &mut W,
-) {
-    let a = &result.groups[a_idx][0];
-    let b = &result.groups[b_idx][0];
-
-    let a_bytes = match std::fs::read(a) {
-        Ok(b) => b,
-        Err(e) => {
-            let _ = writeln!(writer, "  (could not read {}: {e})", a);
-            return;
-        }
-    };
-    let b_bytes = match std::fs::read(b) {
-        Ok(b) => b,
-        Err(e) => {
-            let _ = writeln!(writer, "  (could not read {}: {e})", b);
-            return;
-        }
-    };
-    let (a_text, b_text) = match (std::str::from_utf8(&a_bytes), std::str::from_utf8(&b_bytes)) {
-        (Ok(a), Ok(b)) => (a, b),
-        _ => {
-            let _ = writeln!(writer, "  (binary files differ, not shown)");
-            return;
-        }
-    };
-
-    let diff = similar::TextDiff::from_lines(a_text, b_text);
-    let _ = write!(
-        writer,
-        "{}",
-        diff.unified_diff()
-            .context_radius(3)
-            .header(a.as_str(), b.as_str())
-    );
-}
-
-/// Run the interactive copy flow for a rule: prompt for "from" and "to" groups,
-/// confirm, then overwrite every file in the "to" group with the content of a
-/// representative from the "from" group (preserving the destination's mode).
-fn run_copy<R: std::io::BufRead, W: std::io::Write>(
-    result: &commands::check::RuleResult,
-    reader: &mut R,
-    writer: &mut W,
-) -> Result<FlowControl> {
-    use commands::interactive::{Choice, confirm, group_label, pick_group};
-
-    let n = result.groups.len();
-    let from = match pick_group(&mut *reader, &mut *writer, "copy from group?", n, None)? {
-        Choice::Value(i) => i,
-        Choice::Skip => return Ok(FlowControl::Continue),
-        Choice::Quit => return Ok(FlowControl::Quit),
-    };
-    let to = match pick_group(&mut *reader, &mut *writer, "copy to group?", n, Some(from))? {
-        Choice::Value(i) => i,
-        Choice::Skip => return Ok(FlowControl::Continue),
-        Choice::Quit => return Ok(FlowControl::Quit),
-    };
-
-    let src = &result.groups[from][0];
-    let dst_group = &result.groups[to];
-    let prompt = format!(
-        "overwrite {} file(s) in group {} with content from {}?",
-        dst_group.len(),
-        group_label(to),
-        src
-    );
-    if !confirm(&mut *reader, &mut *writer, &prompt)? {
-        let _ = writeln!(writer, "  (skipped)");
-        return Ok(FlowControl::Continue);
-    }
-
-    for dst in dst_group {
-        if let Err(e) = copy_preserving_mode(src, dst) {
-            let _ = writeln!(writer, "  error: {} -> {}: {e}", src, dst);
-        } else {
-            let _ = writeln!(writer, "  copied -> {}", dst);
-        }
-    }
-    Ok(FlowControl::Continue)
-}
-
-/// `fs::copy` replaces the destination's permissions with the source's. We want
-/// the opposite — overwrite the *content* but keep the destination's mode.
-fn copy_preserving_mode(src: &camino::Utf8Path, dst: &camino::Utf8Path) -> Result<()> {
-    let original_mode = std::fs::metadata(dst)
-        .with_context(|| format!("failed to stat {}", dst))?
-        .permissions();
-    std::fs::copy(src, dst).with_context(|| format!("failed to copy {} -> {}", src, dst))?;
-    std::fs::set_permissions(dst, original_mode)
-        .with_context(|| format!("failed to restore permissions on {}", dst))?;
-    Ok(())
-}
-
-/// Run the interactive fix-missing flow for a rule that has `must_have`
-/// violations. Prompts for a "seed" group to copy from, then creates the file
-/// in each violating repo, using plain `fs::copy` (so the new file inherits the
-/// source's mode). Parent directories are created as needed.
-///
-/// When the rule has zero content groups (no repo has the file at all) there's
-/// nothing to seed from — print a note and skip.
-fn run_fix_missing<R: std::io::BufRead, W: std::io::Write>(
-    result: &commands::check::RuleResult,
-    reader: &mut R,
-    writer: &mut W,
-) -> Result<FlowControl> {
-    use commands::interactive::{Choice, confirm, pick_group};
-
-    if result.groups.is_empty() {
-        let _ = writeln!(
-            writer,
-            "  (cannot --fix-missing: no repo has {} — nothing to seed from)",
-            result.path
-        );
-        return Ok(FlowControl::Continue);
-    }
-
-    let n = result.groups.len();
-    let from = match pick_group(
-        &mut *reader,
-        &mut *writer,
-        "seed missing files from which group?",
-        n,
-        None,
-    )? {
-        Choice::Value(i) => i,
-        Choice::Skip => return Ok(FlowControl::Continue),
-        Choice::Quit => return Ok(FlowControl::Quit),
-    };
-
-    let src = &result.groups[from][0];
-    let violators = &result.must_have_violations;
-    let prompt = format!(
-        "create {} file(s) using content from {}?",
-        violators.len(),
-        src
-    );
-    if !confirm(&mut *reader, &mut *writer, &prompt)? {
-        let _ = writeln!(writer, "  (skipped)");
-        return Ok(FlowControl::Continue);
-    }
-
-    for repo in violators {
-        let dst = repo.join(&result.path);
-        if let Some(parent) = dst.parent()
-            && let Err(e) = std::fs::create_dir_all(parent)
-        {
-            let _ = writeln!(
-                writer,
-                "  error: failed to create directory {}: {e}",
-                parent
-            );
-            continue;
-        }
-        match std::fs::copy(src, &dst) {
-            Ok(_) => {
-                let _ = writeln!(writer, "  created -> {}", dst);
-            }
-            Err(e) => {
-                let _ = writeln!(writer, "  error: {} -> {}: {e}", src, dst);
-            }
-        }
-    }
-    Ok(FlowControl::Continue)
 }

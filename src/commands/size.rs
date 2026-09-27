@@ -8,13 +8,15 @@ pub fn do_size(project: &Utf8Path) -> Result<Option<String>> {
     if !git_dir.is_dir() {
         return Ok(None);
     }
-    let size = dir_size(&git_dir)?;
+    let size = dir_size(git_dir.as_std_path())?;
     Ok(Some(format_size(size)))
 }
 
 /// Recursively sum file sizes under `path`, skipping symlinks so we don't
-/// follow links out of the tree or into cycles.
-fn dir_size(path: &Utf8Path) -> Result<u64> {
+/// follow links out of the tree or into cycles. Works on plain `Path`s: only
+/// sizes are read, so a non-UTF-8 entry name inside `.git` is no reason to
+/// fail.
+fn dir_size(path: &std::path::Path) -> Result<u64> {
     let mut total = 0u64;
     for entry in std::fs::read_dir(path)? {
         let entry = entry?;
@@ -23,7 +25,7 @@ fn dir_size(path: &Utf8Path) -> Result<u64> {
             continue;
         }
         if metadata.is_dir() {
-            total += dir_size(camino::Utf8Path::from_path(&entry.path()).unwrap())?;
+            total += dir_size(&entry.path())?;
         } else {
             total += metadata.len();
         }

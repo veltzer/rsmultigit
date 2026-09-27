@@ -5,6 +5,7 @@ pub mod branch;
 pub mod build;
 pub mod cargo;
 pub mod check;
+pub mod check_run;
 pub mod checkout;
 pub mod clean;
 pub mod commit;

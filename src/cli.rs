@@ -468,6 +468,18 @@ pub enum BuildWhat {
     CargoPublish,
 }
 
+impl BuildWhat {
+    /// The command-line spellings of every method, in declaration order,
+    /// for usage messages. Derived from the enum so it cannot drift.
+    pub fn names() -> Vec<String> {
+        Self::value_variants()
+            .iter()
+            .filter_map(|v| v.to_possible_value())
+            .map(|p| p.get_name().to_string())
+            .collect()
+    }
+}
+
 /// Generate shell completions and print to stdout.
 pub fn print_completions(shell: Shell) {
     let mut cmd = Cli::command();
@@ -859,6 +871,14 @@ mod tests {
         }
         assert!(toml::from_str::<Probe>("what = \"CargoPublish\"").is_err());
         assert!(toml::from_str::<Probe>("what = \"ninja\"").is_err());
+    }
+
+    #[test]
+    fn build_what_names_are_the_cli_spellings() {
+        assert_eq!(
+            BuildWhat::names(),
+            ["bootstrap", "make", "rsconstruct", "cargo", "cargo-publish"]
+        );
     }
 
     #[test]

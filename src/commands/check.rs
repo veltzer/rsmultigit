@@ -176,7 +176,10 @@ pub fn resolve_repos(config: &CheckConfig) -> Result<Vec<Utf8PathBuf>> {
         for m in matches {
             let path = m.with_context(|| format!("error iterating glob `{entry}`"))?;
             if path.is_dir() && path.join(".git").is_dir() {
-                out.push(camino::Utf8PathBuf::from_path_buf(path).unwrap());
+                let path = Utf8PathBuf::from_path_buf(path).map_err(|p| {
+                    anyhow::anyhow!("repo path is not valid UTF-8: {}", p.display())
+                })?;
+                out.push(path);
             }
         }
     }
