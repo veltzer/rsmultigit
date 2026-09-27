@@ -1,57 +1,123 @@
 # Configuration
 
-RSMultiGit does not use a configuration file. All behavior is controlled via CLI flags passed before the subcommand.
+rsmultigit is driven by one file, `~/.config/rsmultigit/config.toml`, plus a
+handful of global command-line flags. The file says *which repositories* to
+operate on and *which invariants* to check; the flags say *how* to run and
+*how much* to print.
 
-## Output control
+The location is fixed and there is no `--config` flag. `RSMULTIGIT_CONFIG`
+overrides the path (the test suite uses it). A missing or unparsable file is
+an error for every command except `config-example`, `complete` and
+`version`.
+
+Print a fully commented starting point with:
+
+```bash
+rsmultigit config-example
+```
+
+## Top-level keys
+
+```toml
+repos = ["~/git/*"]
+default_build_method = "rsconstruct"
+```
+
+| Key | Required | Meaning |
+|-----|----------|---------|
+| `repos` | yes | List of shell-expanded glob patterns. Matches that are not git repositories are dropped; the rest are deduplicated and sorted. See [Repository Discovery](discovery.md) |
+| `default_build_method` | no | What a bare `rsmultigit build` runs: `bootstrap`, `make`, `rsconstruct`, `cargo` or `cargo-publish`, spelled as on the command line. A method given on the command line always wins. Without the key, `rsmultigit build` with no method is an error |
+
+## `[[check]]` rules: files that must be identical
+
+Each `[[check]]` block names one file that must have byte-identical content
+in every repo it applies to. `rsmultigit check-same` evaluates them.
+
+```toml
+[[check]]
+name = "workflow-build-yml"
+select = "*"
+marker = "rsconstruct.toml"
+marker_absent = ".noci"
+path = ".github/workflows/build.yml"
+must_have = true
+```
+
+| Field | Required | Default | Meaning |
+|-------|----------|---------|---------|
+| `name` | yes | | Rule name, used in output and for `--checks` / `--checks-re` |
+| `select` | yes | | Glob over repo directory names (not paths). `*` selects every repo |
+| `exclude` | no | none | Glob over repo names to drop from the selection |
+| `marker` | no | none | Only repos containing this file (relative to the repo root) stay selected |
+| `marker_absent` | no | none | Repos containing this file are dropped. This is the in-repo opt-out: a repo declares itself exempt (with a `.noci` file, say) instead of being named in an `exclude` glob far away from it |
+| `path` | yes | | The file to compare, relative to each repo root |
+| `enabled` | no | `true` | Disabled rules are skipped by default but can still be forced with `--checks` or `--checks-re` |
+| `must_have` | no | `false` | When true, every selected repo must contain `path`; missing files are violations. When false, repos without the file are silently skipped |
+
+A rule passes when every surviving repo's `path` hashes the same and, with
+`must_have = true`, no selected repo lacks the file. A rule that ends up
+matching no files at all fails, because that almost always means a stale
+`select` or `path`; `--allow-empty` turns that into a pass.
+
+Selection filters are applied in the order listed: `select`, then
+`exclude`, then `marker`, then `marker_absent`.
+
+## `[[exists]]` rules: files that must be present
+
+Each `[[exists]]` block asserts that a file is present in every repo it
+applies to, without ever comparing content. This is the rule type for files
+that must exist but legitimately differ per repo, such as a README.
+`rsmultigit check-exists` evaluates them.
+
+```toml
+[[exists]]
+name = "readme-present"
+select = "*"
+path = "README.md"
+```
+
+`name`, `select`, `exclude`, `marker`, `marker_absent`, `path` and `enabled`
+mean exactly what they mean for `[[check]]`. There is no `must_have`,
+because requiring the file *is* the whole rule. A directory at `path` does
+not satisfy the rule; it must be a file.
+
+`rsmultigit check-all` runs the `[[check]]` and `[[exists]]` rules together.
+
+## Global flags
+
+All flags are global: they may appear before or after the subcommand.
+
+### Output control
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--terse` | `false` | Suppress project headers (`=== name ===`) |
-| `--stats` | `false` | Print match count (`N/total`) for count commands |
-| `--no-output` | `false` | Suppress command output in print-if-data commands |
-| `--print-not` | `false` | Invert selection — print non-matching repos |
+| `-v`, `--verbose` | off | Print every repo, even when nothing happened; `status` switches to per-file output |
+| `--terse` | off | Repo names only for data commands; only the `N/total` line for count commands; failing rule names only for the check commands |
+| `--no-header` | off | Suppress the `[repo]` (or `[rule]`) header line |
+| `--no-output` | off | Suppress command output, keep the `[repo]` headers |
+| `--print-not` | off | Invert selection: print the repos that do NOT match |
 
-## Debug
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--git-verbose` | `false` | Pass `--verbose` to git commands |
-| `--git-quiet` | `false` | Pass `--quiet` to git commands |
-
-## Project discovery
+### Execution
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--glob <PATTERN>` | `*/*` | Glob pattern for finding projects |
-| `--no-glob` | `false` | Disable glob, scan immediate subdirectories only |
-| `--folders <LIST>` | (none) | Comma-separated explicit folder list |
-| `--no-sort` | `false` | Preserve discovery order instead of sorting |
+| `--no-stop` | off | Report errors on stderr and continue instead of stopping at the first one |
+| `--short-circuit` | off | Stop at the first negative result. Honoured by `check-same` and `check-exists`; other commands accept it and ignore it |
+| `-j`, `--jobs <N>` | 1 | Number of repos to process concurrently; 0 means one per CPU. Output is buffered per repo and printed in repo order |
 
-## Tool environment
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--venv` | `true` | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. Honoured by `run`, `build`, and `clean make`; repos without a `.venv` run unchanged. Not honoured by `uv`, which selects its own environment from the repo directory |
-| `--no-venv` | `false` | Turn the `.venv` activation off |
-
-## Error handling
+### Tool environment
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--no-stop` | `false` | Continue on errors instead of stopping |
-| `--short-circuit` | `false` | Stop at the first negative result instead of evaluating everything |
-| `--no-print-no-projects` | `false` | Suppress "no projects found" message |
+| `--venv` | on | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. Honoured by `run`, `build`, `cargo update` and `clean make`; repos without a `.venv` run unchanged. Not honoured by `uv`, which selects its own environment from the repo directory |
+| `--no-venv` | off | Turn the `.venv` activation off |
 
 ## Short-circuiting
 
-`--short-circuit` is a global flag, off by default. It tells a command to stop
-at the first negative result rather than working through everything.
-
-Today `check-same` and `check-exists` act on it: with the flag set, evaluation
-stops as soon as one rule is found broken — the remaining rules are neither
-evaluated nor reported. Rules that already passed before the failure are still reported as
-usual, and the exit code is unchanged (non-zero when a rule is broken). Without
-the flag, every rule is evaluated and every failure reported.
+`--short-circuit` tells a check command to stop at the first broken rule
+rather than working through everything. Rules that already passed are still
+reported, and the exit code is unchanged (non-zero when a rule is broken).
+Without the flag, every rule is evaluated and every failure reported.
 
 ```bash
 rsmultigit check-same                        # report every broken rule
@@ -60,22 +126,11 @@ rsmultigit --terse --short-circuit check-same # print just that rule's name
 rsmultigit --short-circuit check-exists      # same, for presence rules
 ```
 
-Other commands accept the flag (it is global) but currently ignore it.
-
 ## Build command skipping
 
-`rsmultigit build <method>` automatically skips projects that contain a `.disable` file in their root directory. `build rsconstruct` and `build cargo` additionally skip projects that do not have an `rsconstruct.toml` or `Cargo.toml` file respectively.
-
-## Default build method
-
-`default_build_method` in `~/.config/rsmultigit/config.toml` names the method a
-bare `rsmultigit build` runs when none is given on the command line:
-
-```toml
-default_build_method = "rsconstruct"
-```
-
-Accepted values are the command-line spellings: `bootstrap`, `make`,
-`rsconstruct`, `cargo`, `cargo-publish`. A method given on the command line
-always overrides the config file. Without the key, `rsmultigit build` with no
-method is an error.
+`rsmultigit build <method>` skips projects that contain a `.disable` file in
+their root. `build rsconstruct` additionally skips projects without an
+`rsconstruct.toml`, and `build cargo`, `build cargo-publish`, `cargo update`
+and `rust publish` skip projects without a `Cargo.toml`. The `uv` commands
+skip projects without a `pyproject.toml`, and `gh` commands skip repos with
+no github.com remote.

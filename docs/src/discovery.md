@@ -1,55 +1,53 @@
-# Project Discovery
+# Repository Discovery
 
-RSMultiGit discovers git repositories by searching for directories that contain a `.git` subdirectory.
+RSMultiGit does not scan the current directory. The set of repositories it
+operates on comes from the `repos` list in `~/.config/rsmultigit/config.toml`,
+so every command sees the same fleet no matter where it is run from.
 
-## Discovery modes
+## The `repos` list
 
-There are three ways RSMultiGit finds projects, checked in this order:
-
-### 1. Explicit folders (`--folders`)
-
-When `--folders` is provided, only those directories are considered. Non-git directories are silently skipped.
-
-```bash
-rsmultigit --folders /path/to/repoA,/path/to/repoB status
+```toml
+repos = [
+    "~/git/*",
+    "~/work/team-*/repo",
+    "/srv/checkouts/special",
+]
 ```
 
-### 2. No-glob mode (`--no-glob`)
+Each entry is a glob pattern. Resolution works as follows:
 
-When `--no-glob` is set, RSMultiGit scans immediate subdirectories of the current directory:
+1. **Shell expansion.** `~` and `$VAR` are expanded in every entry.
+2. **Glob matching.** The expanded pattern is matched against the filesystem.
+   A pattern with no glob characters is simply a path.
+3. **Git filter.** Only matches that are directories containing a `.git`
+   directory are kept. Plain directories, files, and worktrees whose `.git`
+   is a file are silently dropped.
+4. **Dedupe and sort.** Matches from all patterns are merged, duplicates
+   removed, and the list sorted alphabetically. Output order is always this
+   sorted order, even when running in parallel.
 
-```bash
-rsmultigit --no-glob list-repos
-```
+An empty `repos` list, or a list that matches no git repositories at all, is
+an error: rsmultigit refuses to run a command over nothing.
 
-### 3. Glob-based discovery (default)
-
-By default, RSMultiGit uses the glob pattern `*/*` to find projects two levels deep (e.g., `org/repo`). If no projects are found with `*/*`, it automatically falls back to `*` to handle the common case where immediate subdirectories are git repos.
-
-```bash
-# Works from a directory whose repos are nested (repos are at */*)
-cd ~/src
-rsmultigit list-repos
-
-# Also works from ~/git (repos are at *)
-cd ~/git
-rsmultigit list-repos
-```
-
-A custom glob can be provided:
+## Inspecting the result
 
 ```bash
-rsmultigit --glob "python-*" list-repos
-rsmultigit --glob "org/team-*" list-repos
+rsmultigit list-repos              # one absolute path per line
+rsmultigit --verbose list-repos    # with the usual [repo] header per entry
 ```
 
-## Sorting
+## Per-rule selection
 
-By default, discovered projects are sorted alphabetically. Use `--no-sort` to preserve the filesystem discovery order.
+The `[[check]]` and `[[exists]]` rules narrow the discovered list further
+with `select`, `exclude`, `marker` and `marker_absent`. Those filters apply
+only to the consistency checks; every other command runs over the whole
+`repos` list. See [Configuration](configuration.md).
 
-## How it works
+## Overriding the config path
 
-1. Collect candidate paths using the selected mode
-2. Filter to directories that contain `.git/`
-3. Sort alphabetically (unless `--no-sort`)
-4. Pass the list to the selected subcommand's runner
+The location is fixed at `~/.config/rsmultigit/config.toml` and there is no
+`--config` flag. The `RSMULTIGIT_CONFIG` environment variable overrides the
+path; the integration tests use it to point the binary at a temporary config.
+
+Three commands need no config at all, because they are how a fresh install
+bootstraps one: `config-example`, `complete`, and `version`.

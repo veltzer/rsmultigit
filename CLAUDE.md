@@ -35,7 +35,8 @@ src/
 ├── config.rs            # AppConfig: transforms CLI args to runtime config
 ├── runner.rs            # Three runner patterns for executing across repos
 ├── subprocess_utils.rs  # Shell command helpers (capture_output, check_call)
-└── commands/            # Command modules (one per operation); `check.rs` owns config-file parsing
+└── commands/            # Command modules (one per operation); `check.rs` owns config-file
+                         # parsing and rule evaluation, `check_run.rs` the check-* drivers
 tests/
 ├── main.rs              # Integration test entry
 ├── common/mod.rs        # Test helpers (setup_git_repos, run_rsmultigit)
@@ -57,22 +58,31 @@ All commands use one of three patterns in `runner.rs`:
 - **Edition 2024** Rust
 - **Error handling**: `anyhow::Result<T>` everywhere, with `.context()` for error messages
 - **Git inspection**: Prefer the `git2` crate for everything libgit2 can do — subprocess startup times 260 repos dominates runtime (see "Git inspection" in `docs/src/architecture.md` for the recorded benchmark). Use the `git` CLI subprocess only for network ops (`pull`/`push`/`fetch`) and commands whose value is git's own output formatting (`log`, `blame`, `grep`).
-- **Command module pattern**: Each command is a simple `pub fn` returning `Result<bool>` or `Result<Option<String>>`
+- **Command module pattern**: Each command is a simple `pub fn` returning `Result<bool>` or `Result<Option<String>>`. A module that prints its own lines uses `subprocess_utils::out_line`, never `println!`, so the parallel runner and `--no-output` see them
 - **No rustfmt.toml or clippy.toml** — uses Rust defaults
 - **Release profile**: `strip = true`, `lto = true`
-- **Tests**: Unit tests in `#[cfg(test)]` modules within source files. Integration tests in `tests/`. Use `tempfile::TempDir` for isolation and `serial_test::serial` for tests that change working directory.
+- **Tests**: Unit tests in `#[cfg(test)]` modules within source files. Integration tests in `tests/`. Use `tempfile::TempDir` for isolation; tests take explicit repo paths and never change the working directory.
 
 ## CI/CD
 
 This repo uses the canonical `.github/workflows/ci.yml` shared byte-identically
 by all rs* repos (canonical copy in rsconstruct — edit it there, not here; the
-`rs-ci-workflow` rule in `check-same` guards against drift).
+`rs-workflow-ci` rule in `check-same` guards against drift). The same applies
+to `build.rs`, `release.toml`, `deny.toml`, `.config/nextest.toml`,
+`scripts/ci-install-tools.sh` and `docs/src/release-info.md`.
 
-- **Every push**: build, clippy (`-D warnings`), tests.
-- **Release**: Triggered by `v*` tags. Builds binaries for Linux x64/ARM64 and
-  macOS x64/ARM64 (openssl is vendored unconditionally via the `git2` feature
-  in Cargo.toml, so no `--features` flag is needed).
-- **Docs**: mdBook deployed to GitHub Pages on `v*` tags and manual dispatch.
+- **Every branch push**: `cargo fmt --check`, build, clippy (`-D warnings`),
+  `cargo deny check`, `cargo nextest run`.
+- **Release**: triggered by a `chore: Release ...` commit (as written by
+  `cargo release`) landing on the default branch — the `v*` tag push itself
+  triggers nothing. Builds binaries for Linux x64/ARM64 and macOS x64/ARM64,
+  named `rsmultigit-{linux,macos}-{x86_64,aarch64}`, and attaches them to a
+  GitHub release for the tag computed from `Cargo.toml` (openssl is vendored
+  unconditionally via the `git2` feature in Cargo.toml, so no `--features`
+  flag is needed).
+- **Docs**: mdBook deployed to GitHub Pages on release and on manual dispatch.
+  The book lives in `docs/`; keep `docs/src/commands.md` and README.md in step
+  with `cli.rs` when adding or renaming a subcommand or flag.
 
 ## Dependencies
 
@@ -85,3 +95,9 @@ Runtime deps — keep it minimal:
 - `serde` + `toml` — config-file parsing
 - `sha2` — SHA-256 hashing for `check-same`
 - `shellexpand` — tilde/env expansion in config paths
+- `regex-lite` — `--checks-re` rule matching
+- `similar` — unified diffs for `check-same --diff`
+- `camino` — UTF-8 paths throughout
+- `indicatif` — progress bar in the parallel runner
+
+Licenses and advisories are gated by the fleet-shared `deny.toml`.

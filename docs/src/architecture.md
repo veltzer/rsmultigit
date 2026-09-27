@@ -2,45 +2,109 @@
 
 ## Overview
 
-RSMultiGit follows a simple pipeline: **discover projects** → **run command** → **collect results**.
+RSMultiGit follows a simple pipeline: **load the config** (the `repos` list
+and the check rules) → **resolve the repo list** → **run one command across
+every repo** → **print per-repo results in repo order**.
 
 ## Module structure
 
 ```
 src/
-  main.rs              Entry point, CLI dispatch
-  cli.rs               Clap derive definitions (Cli + Commands)
-  config.rs            AppConfig runtime struct
-  discovery.rs         Project discovery via glob or folder list
-  runner.rs            Three execution patterns
-  subprocess_utils.rs  Shell command helpers
+  main.rs              Entry point: CLI dispatch
+  cli.rs               Clap derive definitions (Cli + Commands + value enums),
+                       shell-completion output
+  config.rs            AppConfig: the global flags as a runtime struct
+  runner.rs            The three execution patterns and the parallel scheduler
+  subprocess_utils.rs  Shell command helpers, venv activation, per-thread output capture
   commands/
     mod.rs             Module declarations
-    count.rs           git2-based repo inspection (dirty, untracked, synchronized)
+    check.rs           Config-file parsing (repos, [[check]], [[exists]]), repo
+                       resolution, rule evaluation (SHA-256 grouping, presence)
+    check_run.rs       check-same / check-exists / check-all drivers: rule selection,
+                       reporting, exit codes, the interactive flows
+    interactive.rs     Prompt helpers for --diff / --copy / --fix-missing
+    count.rs           git2-based repo inspection (dirty, untracked, ahead/behind)
     status.rs          Status summary via git2; per-file detail / diff via subprocess
-    branch.rs          Branch listing (local, remote, github)
-    pull.rs            git pull
-    clean.rs           git clean -ffxd
-    diff.rs            git diff
-    grep.rs            git grep with project-name prefix
-    build.rs           Build commands (make, rsconstruct, cargo, bootstrap)
+    build.rs           Build methods and their precondition checks
+    run.rs             Arbitrary command execution
+    gh.rs              GitHub cleanup via the gh CLI
+    uv.rs, cargo.rs, rust.rs   Tooling passthrough
+    <one file per git operation>  pull, push, fetch, clean, diff, log, grep, ...
 ```
 
 ## Runner patterns
 
-All subcommands use one of three runner functions:
+Every subcommand that operates on repos uses one of three runner functions
+in `runner.rs`. Each command module exposes a plain `pub fn` taking a repo
+path, and `main.rs` picks the runner.
 
 ### `do_count`
 
-For count commands (`count-dirty`, `untracked`, `synchronized`). Calls a test function on each project path (using libgit2, no subprocess), counts matches, optionally prints statistics.
+For `count <what>` and `tag has-local` / `tag has-remote`. Calls a boolean
+test function on each repo (libgit2, no subprocess), prints the path of each
+match, then a final `matched/total` line. `--print-not` inverts the test,
+`--terse` drops the per-repo lines.
 
-### `do_for_all_projects`
+### `do_for_all_projects` and `do_for_all_projects_with_check`
 
-For action commands (`pull`, `clean-hard`, `diff`, `grep`, `branch-*`, `build-*`). Changes into each project directory, runs the action, prints a header. Respects `--no-stop` for error handling.
+For action commands (`pull`, `clean`, `diff`, `grep`, `run`, `build`, ...).
+Runs an action in each repo directory that returns `Ok(true)` (did work) or
+`Ok(false)` (skipped). The `_with_check` variant runs a cheap precondition
+first (is there a `Cargo.toml`? a `.disable` file?) and only runs the action
+where it passes. The `[repo]` header is printed for repos where the action
+ran, or for every repo with `--verbose`. `--no-stop` turns a failing repo
+into a stderr line instead of a fatal error.
 
 ### `print_if_data`
 
-For status commands (`status`, `dirty`, `list-repos`). Changes into each project directory, calls a data function. If it returns `Some(text)`, prints the project name and data. If `None`, the project is silently skipped.
+For data commands (`status`, `dirty`, `age`, `size`, `list-repos` in verbose
+mode, ...). Calls a function returning `Option<String>` per repo and prints
+the header plus data only when it is `Some`. `--verbose` and `--print-not`
+also print the header for `None` repos; `--terse` prints only the repo
+path.
+
+## Parallel execution
+
+All three runners go through `for_each_project_ordered`, which is a serial
+loop when `--jobs` is 1 (the default) and a work-stealing thread pool
+otherwise. Workers claim repo indices from an atomic counter and send
+`(index, result)` pairs back over a channel; the calling thread buffers
+out-of-order results and emits them strictly in repo order, so parallel
+output is indistinguishable from serial output.
+
+Subprocess output is the complication: `git pull` writes straight to the
+inherited stdout. In the parallel path each worker thread enables a
+thread-local capture buffer (`subprocess_utils::enter_capture`) before
+running the action, so `check_call` and friends collect the child's stdout
+and stderr into it instead of inheriting the parent's streams, and command
+modules that format their own lines (`grep`, `gh`) route them through
+`subprocess_utils::out_line`, which lands in the same buffer. The buffer
+travels back with the result and is replayed on the main thread under the
+repo's header. In the serial path nothing is captured and children write
+live, which keeps interactive tools (credential prompts, pagers) working.
+`--no-output` reuses the capture: the buffer is simply dropped, in both
+paths, and attached to the error if the action failed.
+
+An error without `--no-stop` ends the run the way the serial loop does: the
+receiver is closed, a cancel flag stops idle workers from claiming more
+repos, and only work already in flight completes.
+
+When stderr is a terminal, the parallel path shows an `indicatif` progress
+bar on stderr and suspends it while each repo's output is printed.
+
+## Consistency checks
+
+`check-same` and `check-exists` do not use the runners: they are organised
+by rule, not by repo. `check.rs` parses the config, applies each rule's
+`select` / `exclude` / `marker` / `marker_absent` filters to the resolved
+repo list, then either hashes `path` in every selected repo with SHA-256 and
+groups repos by digest (`evaluate_rule`) or records presence
+(`evaluate_exists_rule`). `check_run.rs` owns rule selection
+(`--checks` / `--checks-re`, shared by both commands through the `NamedRule`
+trait), the reporting, the exit codes, and the interactive `--diff` /
+`--copy` / `--fix-missing` flows. The drivers read prompts from a `BufRead`
+and write everything to a `Write`, so the unit tests run whole commands
+against in-memory buffers.
 
 ## Git inspection — prefer the `git2` crate
 
@@ -147,7 +211,11 @@ It still parses there (it is a global flag) but has no effect.
 
 ## Error handling
 
-All functions return `anyhow::Result`. The `--no-stop` flag controls whether errors in individual projects are fatal (default) or logged and skipped.
+All functions return `anyhow::Result`, with `.context()` naming the repo the
+error came from. The `--no-stop` flag controls whether an error in one repo
+is fatal (default) or printed to stderr as `error in <repo>: ...` before
+moving on. In the parallel path a failing repo's captured output is attached
+to the error so it is not lost.
 
 ## Build script
 

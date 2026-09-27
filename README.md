@@ -1,6 +1,8 @@
 # RSMultiGit - Rust Multi Git
 
-A fast CLI tool for managing multiple git repositories at once. Run status checks, builds, pulls, greps, and more across all your repos in a single command.
+A fast CLI tool for managing multiple git repositories at once. Run status
+checks, pulls, builds, greps, and cross-repo consistency checks over every
+repo in a single command.
 
 ## Documentation
 
@@ -8,27 +10,37 @@ Full documentation: <https://veltzer.github.io/rsmultigit/>
 
 ## Features
 
-- **Batch operations** — pull, diff, grep, clean, and build across all repos at once
-- **Smart discovery** — finds git repos via glob patterns, explicit folder lists, or automatic fallback
-- **Dirty/untracked detection** — uses libgit2 for fast native repo inspection
-- **Build system support** — make, rsconstruct, cargo, bootstrap, virtualenv workflows
-- **Selective output** — only prints repos where work was done; use `-v` for all
-- **Flexible filtering** — `--print-not` to invert selection, `--terse` for minimal output, `--stats` for counts
-- **Shell completions** — bash, zsh, fish, elvish, powershell
+- **Batch operations** — pull, push, fetch, diff, grep, clean, commit, and build across all repos at once
+- **Native git inspection** — status, dirty and sync checks use libgit2 in-process, with no `git` subprocess per repo
+- **Consistency checks** — `check-same` verifies that shared files (`.gitignore`, CI workflows, lint configs, ...) are byte-identical across the fleet, `check-exists` verifies that required files are present, and `--diff`, `--copy` and `--fix-missing` repair drift interactively
+- **Build orchestration** — make, rsconstruct, cargo, bootstrap, with each repo's `.venv` activated automatically
+- **Tooling passthrough** — `uv lock` / `uv sync` on Python projects, `cargo update` on Rust projects, `gh` cleanup on GitHub repos
+- **Parallel execution** — `-j N` runs repos concurrently while keeping output in repo order
+- **Selective output** — only prints repos where something happened; `--verbose`, `--terse`, `--print-not` and `--no-header` control the rest
+- **Shell completions** — bash, zsh, fish, elvish, powershell, including dynamic completion of check names
 
 ## Installation
 
-### Download pre-built binary (Linux)
-
-Pre-built binaries are available for x86_64 and aarch64 (arm64).
+### From crates.io
 
 ```bash
-# x86_64
-gh release download latest --repo veltzer/rsmultigit --pattern 'rsmultigit-x86_64-unknown-linux-gnu' --output rsmultigit --clobber
+cargo install rsmultigit
+```
 
-# aarch64 / arm64
-gh release download latest --repo veltzer/rsmultigit --pattern 'rsmultigit-aarch64-unknown-linux-gnu' --output rsmultigit --clobber
+### Pre-built binaries
 
+Every release ships binaries for Linux (x86_64, aarch64) and macOS (x86_64,
+aarch64). The asset names are:
+
+| Platform | Asset |
+|----------|-------|
+| Linux x86_64 | `rsmultigit-linux-x86_64` |
+| Linux aarch64 | `rsmultigit-linux-aarch64` |
+| macOS x86_64 | `rsmultigit-macos-x86_64` |
+| macOS aarch64 | `rsmultigit-macos-aarch64` |
+
+```bash
+gh release download --repo veltzer/rsmultigit --pattern rsmultigit-linux-x86_64 --output rsmultigit --clobber
 chmod +x rsmultigit
 sudo mv rsmultigit /usr/local/bin/
 ```
@@ -36,12 +48,7 @@ sudo mv rsmultigit /usr/local/bin/
 Or without the GitHub CLI:
 
 ```bash
-# x86_64
-curl -Lo rsmultigit https://github.com/veltzer/rsmultigit/releases/download/latest/rsmultigit-x86_64-unknown-linux-gnu
-
-# aarch64 / arm64
-curl -Lo rsmultigit https://github.com/veltzer/rsmultigit/releases/download/latest/rsmultigit-aarch64-unknown-linux-gnu
-
+curl -Lo rsmultigit https://github.com/veltzer/rsmultigit/releases/latest/download/rsmultigit-linux-x86_64
 chmod +x rsmultigit
 sudo mv rsmultigit /usr/local/bin/
 ```
@@ -52,37 +59,48 @@ sudo mv rsmultigit /usr/local/bin/
 cargo build --release
 ```
 
+## Configuration
+
+rsmultigit reads `~/.config/rsmultigit/config.toml` on every run. Bootstrap
+it from the built-in example:
+
+```bash
+mkdir -p ~/.config/rsmultigit
+rsmultigit config-example > ~/.config/rsmultigit/config.toml
+```
+
+The file names the repositories to operate on and, optionally, the
+consistency rules to enforce:
+
+```toml
+repos = ["~/git/*"]                  # shell-expanded globs; non-git matches are ignored
+default_build_method = "rsconstruct" # what a bare `rsmultigit build` runs
+
+[[check]]                            # files that must be byte-identical
+name = "gitignore"
+select = "*"
+path = ".gitignore"
+
+[[exists]]                           # files that must be present
+name = "readme-present"
+select = "*"
+path = "README.md"
+```
+
+See the [configuration docs](https://veltzer.github.io/rsmultigit/configuration.html)
+for every field.
+
 ## Quick Start
 
 ```bash
-# Navigate to a directory containing git repos (e.g. ~/git/myorg)
-cd ~/git/myorg
-
-# See which repos are dirty
-rsmultigit dirty
-
-# Pull all repos
-rsmultigit pull
-
-# Count dirty repos with stats
-rsmultigit --stats count dirty
-
-# Grep across all repos
-rsmultigit grep "TODO"
-
-# Show status of all repos
-rsmultigit status
-
-# List discovered projects
-rsmultigit list-repos
-
-# Build all rsconstruct projects
-rsmultigit build rsconstruct
-
-# Same, with `default_build_method = "rsconstruct"` in the config file
-rsmultigit build
-
-# Generate shell completions
+rsmultigit status                 # one-line summary of every repo that needs attention
+rsmultigit -j 8 pull              # pull all repos, 8 at a time
+rsmultigit count dirty            # count repos with uncommitted changes
+rsmultigit grep "TODO"            # git grep across all repos
+rsmultigit check-same             # verify shared files are identical everywhere
+rsmultigit check-same --diff      # ... and show what differs
+rsmultigit build                  # build every repo with the configured default method
+rsmultigit run "git log -1"       # run any shell command in every repo
 rsmultigit complete bash >> ~/.bash_completion
 ```
 
@@ -91,88 +109,92 @@ rsmultigit complete bash >> ~/.bash_completion
 ### Inspection
 | Command | Description |
 |---------|-------------|
-| `count dirty` | Count dirty repositories |
+| `status` | One-line summary per repo needing attention (`--verbose` for `git status -s`) |
+| `dirty` | Show `git diff --stat` for repos with modifications |
+| `count dirty` | Count repositories with uncommitted changes |
 | `count untracked` | Count repositories with untracked files |
-| `count synchronized` | Count non-synchronized repositories (ahead/behind remote) |
-| `status` | Show status of repositories |
-| `dirty` | Show dirty repositories |
-| `list-repos` | List discovered projects |
+| `count synchronized` | Count repositories that are not in sync with their upstream |
+| `list-repos` | Print the path of every configured repo |
 | `age` | Show the age of the last commit per repo |
-| `authors` | Show unique commit authors per repo |
+| `authors` | Show commit authors per repo |
 | `config <key>` | Show a git config value across all repos |
 | `size` | Show the size of the `.git` directory per repo |
 | `last-tag` | Show the most recent tag per repo |
+| `tag local` / `tag remote` | List local or remote tags |
+| `tag has-local` / `tag has-remote` | Count repos that have local or remote tags |
+| `branch local` / `branch remote` / `branch github` | Show local, remote, or GitHub default branches |
+| `remote` | Show remote URLs |
+| `log [--count N]` | Show recent commits (default 10) |
+| `diff` | Show `git diff` for all repositories |
+| `blame <file>` | Run `git blame` on a file (skips repos without it) |
+| `grep [-l] <regexp>` | Grep across all repositories |
+
+### Consistency checks
+| Command | Description |
+|---------|-------------|
+| `check-same` | Verify that `[[check]]` files are byte-identical across repos |
+| `check-same --diff` | Also show a unified diff between differing groups |
+| `check-same --copy` | Interactively copy one group's content over another |
+| `check-same --fix-missing` | Interactively create files missing from `must_have` repos |
+| `check-exists` | Verify that `[[exists]]` files are present in every selected repo |
+| `check-all` | Run both checks; exit non-zero if either fails |
+| `list-checks` | Print every `[[check]]` rule name (used by shell completion) |
 
 ### Operations
 | Command | Description |
 |---------|-------------|
-| `pull` | Pull all repositories |
-| `push` | Push all repositories |
-| `fetch` | Fetch from origin for all repositories |
-| `stash push` | Stash working-tree changes |
-| `stash pop` | Pop the most recent stash |
-| `reset hard/soft/mixed` | Reset HEAD across all repositories |
-| `diff` | Show diff for all repositories |
-| `log` | Show recent commits (default 10) |
-| `tag local` | List local tags |
-| `tag remote` | List remote tags |
-| `tag has-local` | Show repos that have local tags |
-| `tag has-remote` | Show repos that have remote tags |
-| `remote` | Show remote URLs |
+| `pull [--quiet]` | Pull all repositories |
+| `push` | Push repositories that are ahead of their upstream |
+| `fetch` | Fetch from origin |
+| `commit -m <msg>` | Stage and commit all changes with a shared message |
+| `checkout <branch>` | Checkout a branch across all repositories |
+| `stash push` / `stash pop` | Stash or pop working-tree changes |
+| `reset hard` / `reset soft` / `reset mixed` | Reset HEAD across all repositories |
+| `clean hard` | `git clean -ffxd` (removes untracked and ignored files) |
+| `clean soft` | `git clean -fd` (removes untracked files only) |
+| `clean git` | `git checkout .` (discards unstaged changes) |
+| `clean make` | `make clean` |
+| `clean cargo` | `cargo clean` (skips repos without `Cargo.toml`) |
 | `prune` | Prune stale remote-tracking branches |
 | `gc` | Run git garbage collection |
-| `checkout <branch>` | Checkout a branch across all repositories |
-| `commit -m <msg>` | Commit all changes with a shared message |
-| `submodule-update` | Update submodules recursively |
-| `blame <file>` | Run git blame on a file (skips repos without it) |
-| `grep <regexp>` | Grep across all repositories |
-| `clean hard` | Hard-clean all repositories (`git clean -ffxd`) |
-| `clean soft` | Remove untracked files only (`git clean -fd`) |
-| `clean make` | Run `make clean` |
-| `clean git` | Discard unstaged working-tree changes (`git checkout .`) |
-| `clean cargo` | Run `cargo clean` (skip if no `Cargo.toml`) |
-| `branch local` | Show local branches |
-| `branch remote` | Show remote branches |
-| `branch github` | Show GitHub default branch |
-| `run <cmd>` | Run an arbitrary shell command across all repositories |
+| `submodule-update` | `git submodule update --init --recursive` |
+| `run <cmd...>` (alias `exec`) | Run an arbitrary command in every repo |
 
-### Build
+### Build and tooling
 | Command | Description |
 |---------|-------------|
 | `build` | Build with the config file's `default_build_method` |
-| `build make` | Run make across all projects |
-| `build rsconstruct` | Run rsconstruct build on projects with `rsconstruct.toml` |
-| `build bootstrap` | Run bootstrap across all projects |
+| `build make` / `build bootstrap` | Run `make` or `python bootstrap.py` |
+| `build rsconstruct` | Run `rsconstruct --quiet build` on repos with `rsconstruct.toml` |
+| `build cargo` / `build cargo-publish` | Run `cargo build` (debug and release) or `cargo publish` on repos with `Cargo.toml` |
+| `cargo update` | Run `cargo update` on repos with `Cargo.toml` |
+| `uv lock [--upgrade\|--check]` | Run `uv lock` on repos with `pyproject.toml` |
+| `uv sync` | Run `uv sync` on repos with `pyproject.toml` |
+| `rust publish [--type patch\|minor\|major]` | Run `cargo release` on repos with `Cargo.toml` |
+| `gh clean-all [--keep N]` | Delete old deployments, releases and workflow runs on GitHub repos |
 
 ### Other
 | Command | Description |
 |---------|-------------|
+| `config-example` | Print a sample config file to stdout |
 | `complete <shell>` | Generate shell completion scripts |
-| `version` | Print version information |
+| `version` | Print detailed version information |
 
 ## Global Options
 
+All global options work before or after the subcommand.
+
 | Option | Description |
 |--------|-------------|
-| `-v, --verbose` | Print all projects, even when no action is taken |
-| `--terse` | Terse output (suppress project headers) |
-| `--stats` | Show statistics |
-| `--no-output` | Suppress command output |
-| `--print-not` | Print repos that do NOT match (invert selection) |
-| `--glob <pattern>` | Glob pattern for discovering projects (default: `*/*`) |
-| `--no-glob` | Disable glob-based discovery |
-| `--folders <list>` | Explicit comma-separated list of folders to operate on |
-| `--no-sort` | Do not sort project list |
-| `--no-stop` | Do not stop on errors |
-
-## Project Discovery
-
-By default, rsmultigit looks for git repositories matching the `*/*` glob pattern (two levels deep, e.g. `org/repo`). If no repos are found with `*/*`, it automatically falls back to `*` (immediate subdirectories).
-
-You can override this with:
-- `--glob "myorg/*"` — custom glob pattern
-- `--folders "repo1,repo2,repo3"` — explicit list
-- `--no-glob` — only scan immediate subdirectories
+| `-v, --verbose` | Print all repos, even when no action is taken |
+| `--terse` | Minimal output: repo names only, or failing rule names for the check commands |
+| `--no-header` | Suppress the `[repo]` header line before per-repo output |
+| `--no-output` | Suppress command output, keep the `[repo]` headers |
+| `--print-not` | Invert selection: print repos that do NOT match |
+| `--no-stop` | Report errors and continue instead of stopping at the first one |
+| `--short-circuit` | Stop at the first failing rule (`check-same`, `check-exists`) |
+| `-j, --jobs <N>` | Run N repos in parallel (default 1; 0 means all CPUs) |
+| `--venv` / `--no-venv` | Activate each repo's `.venv` before running tools (default on) |
 
 ## License
 

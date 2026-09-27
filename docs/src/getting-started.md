@@ -1,93 +1,113 @@
 # Getting Started
 
-## Basic usage
+## Create the config file
 
-Navigate to a directory that contains git repositories as subdirectories, then run any rsmultigit command:
+Every rsmultigit command reads `~/.config/rsmultigit/config.toml` to learn
+which repositories to operate on. There is no `--config` flag and no
+directory scanning: the file is the single source of truth.
+
+Bootstrap it from the built-in example, then edit the `repos` list:
 
 ```bash
-cd ~/git/myorg
+mkdir -p ~/.config/rsmultigit
+rsmultigit config-example > ~/.config/rsmultigit/config.toml
+```
+
+The minimum useful config is one glob:
+
+```toml
+repos = ["~/git/*"]
+```
+
+Patterns are shell-expanded, and matches that are not git repositories are
+ignored. Check what was picked up:
+
+```bash
 rsmultigit list-repos
 ```
 
-RSMultiGit will automatically discover git repos by looking for directories containing a `.git` folder. It searches both immediate subdirectories (`*`) and two levels deep (`*/*`).
-
 ## Checking repository status
 
-See which repos have uncommitted changes:
+See which repos need attention, one line per repo:
 
 ```bash
 rsmultigit status
+# [/home/me/git/myrepo]
+# 2 modified, 1 untracked, ahead 1
 ```
 
-Count dirty repos with statistics:
+Clean, in-sync repos print nothing. Pass `--verbose` for the full
+`git status -s` per-file output instead of the summary.
+
+Count repos with uncommitted changes, untracked files, or unpushed commits:
 
 ```bash
-rsmultigit --stats count-dirty
+rsmultigit count dirty
+rsmultigit count untracked
+rsmultigit count synchronized      # repos NOT in sync with upstream
 ```
 
-Find repos with untracked files:
-
-```bash
-rsmultigit --stats untracked
-```
+Each prints the matching repos followed by a `matched/total` line.
 
 ## Pulling all repos
 
 ```bash
 rsmultigit pull
-```
-
-Or quietly:
-
-```bash
 rsmultigit pull --quiet
+rsmultigit -j 8 pull               # eight repos at a time
 ```
 
 ## Searching across repos
 
-Grep for a pattern across all repositories:
-
 ```bash
 rsmultigit grep "TODO"
+rsmultigit grep -l "TODO"          # filenames only
 ```
 
-Show only filenames:
+## Running any command
+
+A single argument is run through the shell; several arguments are executed
+directly:
 
 ```bash
-rsmultigit grep --files "TODO"
+rsmultigit run "git log -1 --oneline"
+rsmultigit run cargo check
 ```
+
+Repos with a `.venv` get it activated first, so `rsmultigit run pytest` runs
+each repo's own pytest.
 
 ## Building all projects
 
-Run make across all repos:
-
 ```bash
-rsmultigit build-make
+rsmultigit build make
+rsmultigit build rsconstruct       # only repos with rsconstruct.toml
+rsmultigit build                   # uses default_build_method from the config
 ```
 
-Run rsconstruct build on projects that have an `rsconstruct.toml`:
+## Keeping shared files identical
 
-```bash
-rsmultigit build-rsconstruct
+Declare the files that must not drift between repos, then check them:
+
+```toml
+[[check]]
+name = "gitignore"
+select = "*"
+path = ".gitignore"
 ```
 
-## Filtering projects
-
-Only operate on specific folders:
-
 ```bash
-rsmultigit --folders projectA,projectB status
+rsmultigit check-same              # report every rule
+rsmultigit check-same --diff       # show what differs
+rsmultigit check-same --copy       # interactively copy one version over the others
 ```
 
-Use a custom glob pattern:
-
-```bash
-rsmultigit --glob "python-*" status
-```
+See [Configuration](configuration.md) for `[[check]]` and `[[exists]]` rules.
 
 ## Error handling
 
-By default, rsmultigit stops on the first error. To continue through all projects:
+By default, rsmultigit stops on the first error. To report errors and keep
+going:
 
 ```bash
 rsmultigit --no-stop pull
