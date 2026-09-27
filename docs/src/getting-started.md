@@ -44,7 +44,7 @@ Count repos with uncommitted changes, untracked files, or unpushed commits:
 ```bash
 rsmultigit count dirty
 rsmultigit count untracked
-rsmultigit count synchronized      # repos NOT in sync with upstream
+rsmultigit count synchronized      # repos ahead of or behind their upstream
 ```
 
 Each prints the matching repos followed by a `matched/total` line.

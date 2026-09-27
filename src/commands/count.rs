@@ -111,12 +111,14 @@ fn upstream_oid(repo: &Repository, head: &git2::Reference<'_>) -> Option<git2::O
         .ok()
 }
 
-/// Returns true if the local branch is NOT synchronized with its upstream.
-/// A repo with no upstream is considered non-synchronized.
+/// Returns true if the local branch is NOT synchronized with its upstream,
+/// i.e. is ahead of or behind it. A repo with no upstream has nothing to be
+/// out of sync with and is not counted, which is how `status` and `push`
+/// treat it too.
 pub fn non_synchronized(project: &Utf8Path) -> Result<bool> {
     match ahead_behind(project)? {
         Some((ahead, behind)) => Ok(ahead != 0 || behind != 0),
-        None => Ok(true),
+        None => Ok(false),
     }
 }
 
@@ -239,10 +241,10 @@ mod tests {
     }
 
     #[test]
-    fn repo_without_upstream_is_non_synchronized() {
+    fn repo_without_upstream_is_not_counted_as_unsynchronized() {
         let tmp = TempDir::new().unwrap();
         init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
-        assert!(non_synchronized(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap());
+        assert!(!non_synchronized(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap());
     }
 
     /// Add `remote`, point `branch.<head>.remote`/`.merge` at

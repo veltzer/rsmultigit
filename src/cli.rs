@@ -379,7 +379,7 @@ pub enum CountWhat {
     Dirty,
     /// Count repositories with untracked files
     Untracked,
-    /// Count non-synchronized repositories (ahead/behind remote)
+    /// Count non-synchronized repositories (ahead of or behind their upstream)
     Synchronized,
 }
 

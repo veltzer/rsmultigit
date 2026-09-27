@@ -113,7 +113,7 @@ rsmultigit complete bash >> ~/.bash_completion
 | `dirty` | Show `git diff --stat` for repos with modifications |
 | `count dirty` | Count repositories with uncommitted changes |
 | `count untracked` | Count repositories with untracked files |
-| `count synchronized` | Count repositories that are not in sync with their upstream |
+| `count synchronized` | Count repositories ahead of or behind their upstream |
 | `list-repos` | Print the path of every configured repo |
 | `age` | Show the age of the last commit per repo |
 | `authors` | Show commit authors per repo |

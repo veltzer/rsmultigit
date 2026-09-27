@@ -58,9 +58,10 @@ Repos that have untracked files.
 ### `rsmultigit count synchronized`
 
 Repos that are **not** synchronized with their upstream: ahead of or behind
-it, or with no upstream at all. The upstream is the branch's configured
-tracking branch (as set by `clone` or `push -u`); when none is configured,
-`origin/<branch>` is used.
+it. The upstream is the branch's configured tracking branch (as set by
+`clone` or `push -u`); when none is configured, `origin/<branch>` is used.
+A repo with no upstream at all has nothing to be out of sync with and is not
+counted, which matches how `status` and `push` treat it.
 
 ```bash
 rsmultigit count synchronized
