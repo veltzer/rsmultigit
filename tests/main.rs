@@ -11,9 +11,15 @@ mod cli;
 mod count;
 #[path = "tests_mod/docs.rs"]
 mod docs;
+#[path = "tests_mod/inspect.rs"]
+mod inspect;
+#[path = "tests_mod/remote.rs"]
+mod remote;
 #[path = "tests_mod/run.rs"]
 mod run;
 #[path = "tests_mod/status.rs"]
 mod status;
 #[path = "tests_mod/version.rs"]
 mod version;
+#[path = "tests_mod/worktree.rs"]
+mod worktree;

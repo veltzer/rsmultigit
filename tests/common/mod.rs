@@ -80,6 +80,61 @@ pub fn stderr_str(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).trim().to_string()
 }
 
+/// Run `git <args>` in `dir`, panicking on failure, and return trimmed stdout.
+pub fn git(dir: &Utf8Path, args: &[&str]) -> String {
+    // A developer's global tag.gpgSign / commit.gpgsign must not turn a
+    // fixture tag or commit into a signing prompt.
+    let out = Command::new("git")
+        .args(["-c", "tag.gpgSign=false", "-c", "commit.gpgsign=false"])
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .expect("git runs");
+    assert!(
+        out.status.success(),
+        "git {args:?} in {dir} failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// The checked-out branch name of `dir`.
+pub fn current_branch(dir: &Utf8Path) -> String {
+    git(dir, &["rev-parse", "--abbrev-ref", "HEAD"])
+}
+
+/// Give `repo` an `origin` remote backed by a bare repository at `bare`
+/// (created here), and push the current branch to it with tracking set, the
+/// way a fresh clone would have it. Returns the bare path.
+pub fn add_bare_origin(repo: &Utf8Path, bare: &Utf8Path) {
+    let status = Command::new("git")
+        .args(["init", "-q", "--bare", bare.as_str()])
+        .status()
+        .unwrap();
+    assert!(status.success(), "git init --bare failed");
+    git(repo, &["remote", "add", "origin", bare.as_str()]);
+    git(repo, &["push", "-q", "-u", "origin", "HEAD"]);
+}
+
+/// A second working clone of `bare` at `path`, with a user configured, for
+/// producing commits "somewhere else" that a fetch or pull must bring in.
+pub fn clone_of(bare: &Utf8Path, path: &Utf8Path) {
+    let status = Command::new("git")
+        .args(["clone", "-q", bare.as_str(), path.as_str()])
+        .status()
+        .unwrap();
+    assert!(status.success(), "git clone failed");
+    git(path, &["config", "user.email", "test@test.com"]);
+    git(path, &["config", "user.name", "Test"]);
+}
+
+/// Write `content` to `name` in `repo` and commit it.
+pub fn commit_file(repo: &Utf8Path, name: &str, content: &str, message: &str) {
+    fs::write(repo.join(name), content).unwrap();
+    git(repo, &["add", name]);
+    git(repo, &["commit", "-q", "-m", message]);
+}
+
 /// Create a temp directory containing `n` fake git repos as immediate subdirectories.
 /// Returns the TempDir (caller must hold it to keep the directory alive).
 pub fn setup_git_repos(names: &[&str]) -> TempDir {

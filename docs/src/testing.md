@@ -55,10 +55,17 @@ tests/
                        --terse, --short-circuit, exit codes
     cli.rs             Help, unknown subcommand, missing args
     count.rs           count dirty/untracked, --terse, --print-not
+    docs.rs            Every subcommand and global flag is in commands.md
+    inspect.rs         list-repos, log, blame, tags, size, age, authors, config,
+                       check-exists, check-all, complete
+    remote.rs          push, fetch, pull, prune, remote, tag remote, against a
+                       local bare repository standing in for origin
     run.rs             run/exec, shell vs direct, --no-stop, --no-output,
                        parallel output ordering
     status.rs          status summary, --verbose, dirty
     version.rs         version subcommand and --version flag
+    worktree.rs        commit, checkout, stash, reset, diff, clean, gc,
+                       submodule-update
 ```
 
 Every run points the binary at a config written into the temp directory via
@@ -71,6 +78,12 @@ the `RSMULTIGIT_CONFIG` environment variable, so tests never touch
 |----------|-------------|
 | `setup_git_repos(names)` | Create a temp dir with one initialised git repo (one empty commit) per name |
 | `init_git_repo(path)` | Initialise a single git repo with one commit |
+| `utf8(&tmp)` | The temp dir as a UTF-8 path |
+| `git(dir, args)` | Run git in `dir` with signing off, panic on failure, return trimmed stdout |
+| `current_branch(dir)` | The checked-out branch name |
+| `commit_file(repo, name, content, message)` | Write a file and commit it |
+| `add_bare_origin(repo, bare)` | Create a bare repo at `bare`, add it as `origin`, push with tracking |
+| `clone_of(bare, path)` | A second working clone of `bare`, for commits made "elsewhere" |
 | `write_config(dir, extra)` | Write `<dir>/config.toml` with `repos = ["<dir>/*"]` plus `extra` (for `[[check]]` blocks); returns its path |
 | `run_rsmultigit(dir, args)` | Run the binary in `dir` against a default config written by `write_config` |
 | `run_rsmultigit_with_env(dir, args, env)` | Run the binary with extra environment variables (used to pass a custom `RSMULTIGIT_CONFIG`) |
