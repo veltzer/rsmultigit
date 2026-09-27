@@ -47,19 +47,21 @@ match, then a final `matched/total` line. `--print-not` inverts the test,
 
 ### `do_for_all_projects` and `do_for_all_projects_with_check`
 
-For action commands (`pull`, `clean`, `diff`, `grep`, `run`, `build`, ...).
-Runs an action in each repo directory that returns `Ok(true)` (did work) or
-`Ok(false)` (skipped). The `_with_check` variant runs a cheap precondition
-first (is there a `Cargo.toml`? a `.disable` file?) and only runs the action
-where it passes. The `[repo]` header is printed for repos where the action
-ran, or for every repo with `--verbose`. `--no-stop` turns a failing repo
-into a stderr line instead of a fatal error.
+For action commands (`pull`, `clean`, `diff`, `run`, `build`, ...). Runs
+an action in each repo directory. The `_with_check` variant runs a cheap
+precondition first (is there a `Cargo.toml`? is the branch ahead? does the
+file exist?) and skips repos where it fails: no header, no output. That
+predicate is the only place a skip can be decided, because the serial path
+prints the `[repo]` header before the action so the action's live output
+lands under it. The header is printed for repos where the action ran, or
+for every repo with `--verbose`. `--no-stop` turns a failing repo into a
+stderr line instead of a fatal error.
 
 ### `print_if_data`
 
-For data commands (`status`, `dirty`, `age`, `size`, `list-repos` in verbose
-mode, ...). Calls a function returning `Option<String>` per repo and prints
-the header plus data only when it is `Some`. `--verbose` and `--print-not`
+For data commands (`status`, `dirty`, `grep`, `age`, `size`, ...). Calls a
+function returning `Option<String>` per repo and prints the header plus data
+only when it is `Some`, so a repo with nothing to say prints nothing. `--verbose` and `--print-not`
 also print the header for `None` repos; `--terse` prints only the repo
 path.
 
@@ -77,8 +79,8 @@ inherited stdout. In the parallel path each worker thread enables a
 thread-local capture buffer (`subprocess_utils::enter_capture`) before
 running the action, so `check_call` and friends collect the child's stdout
 and stderr into it instead of inheriting the parent's streams, and command
-modules that format their own lines (`grep`, `gh`) route them through
-`subprocess_utils::out_line`, which lands in the same buffer. The buffer
+modules that format their own lines (`gh`, `branch github`) route them
+through `subprocess_utils::out_line`, which lands in the same buffer. The buffer
 travels back with the result and is replayed on the main thread under the
 repo's header. In the serial path nothing is captured and children write
 live, which keeps interactive tools (credential prompts, pagers) working.

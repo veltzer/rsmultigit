@@ -28,12 +28,12 @@ pub fn check_github(project: &Utf8Path) -> Result<bool> {
 
 /// Clean up GitHub deployments, releases, and workflow runs for a repository,
 /// keeping only the `keep` most recent non-failed of each and deleting the rest.
-pub fn clean_all(project: &Utf8Path, keep: usize) -> Result<bool> {
+pub fn clean_all(project: &Utf8Path, keep: usize) -> Result<()> {
     let repo = repo_name_with_owner(project)?;
     clean_deployments(project, &repo, keep)?;
     clean_releases(project, &repo, keep)?;
     clean_workflows(project, &repo, keep)?;
-    Ok(true)
+    Ok(())
 }
 
 /// The repo's `owner/name` as GitHub knows it (resolved by gh from the remote).

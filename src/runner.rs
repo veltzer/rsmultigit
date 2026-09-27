@@ -202,11 +202,17 @@ where
 /// stdout/stderr into a buffer and replaying on the main thread in input order.
 pub fn do_for_all_projects<F>(config: &AppConfig, projects: &[Utf8PathBuf], action: F) -> Result<()>
 where
-    F: Fn(&Utf8Path) -> Result<bool> + Sync,
+    F: Fn(&Utf8Path) -> Result<()> + Sync,
 {
     do_for_all_projects_with_check(config, projects, |_| Ok(true), action)
 }
 
+/// Like [`do_for_all_projects`], but `check` decides per repo whether the
+/// action applies at all. A repo where it returns `Ok(false)` is skipped:
+/// no header (unless `--verbose`), no output. This is the only place a
+/// skip can be decided, because the serial path prints the header before
+/// the action runs so that the action's live output lands under it; an
+/// action cannot skip after the fact, which is why actions return `()`.
 pub fn do_for_all_projects_with_check<C, F>(
     config: &AppConfig,
     projects: &[Utf8PathBuf],
@@ -215,7 +221,7 @@ pub fn do_for_all_projects_with_check<C, F>(
 ) -> Result<()>
 where
     C: Fn(&Utf8Path) -> Result<bool> + Sync,
-    F: Fn(&Utf8Path) -> Result<bool> + Sync,
+    F: Fn(&Utf8Path) -> Result<()> + Sync,
 {
     let base = current_dir()?;
     let jobs = resolve_jobs(config);
@@ -489,7 +495,7 @@ mod tests {
         let counter = AtomicU32::new(0);
         let result = do_for_all_projects(&config, &projects, |_| {
             counter.fetch_add(1, Ordering::SeqCst);
-            Ok(true)
+            Ok(())
         });
         assert!(result.is_ok());
         assert_eq!(counter.load(Ordering::SeqCst), 3);
@@ -545,7 +551,7 @@ mod tests {
         let counter = AtomicU32::new(0);
         let result = do_for_all_projects(&config, &projects, |_| {
             counter.fetch_add(1, Ordering::SeqCst);
-            Ok(true)
+            Ok(())
         });
         assert!(result.is_ok());
         assert_eq!(counter.load(Ordering::SeqCst), 4);
@@ -570,7 +576,7 @@ mod tests {
             // Give the main thread time to see the failure before this
             // worker looks for more work.
             std::thread::sleep(std::time::Duration::from_millis(50));
-            Ok(true)
+            Ok(())
         });
         assert!(result.is_err());
         // "a" fails at once; the other worker is at most one project in, and

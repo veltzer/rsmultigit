@@ -216,7 +216,7 @@ fn main() -> Result<()> {
 
         // ── do_for_all_projects ──
         Commands::Branch { what } => {
-            let branch_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
+            let branch_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
                 BranchWhat::Local => commands::branch::branch_local,
                 BranchWhat::Remote => commands::branch::branch_remote,
                 BranchWhat::Github => commands::branch::branch_github,
@@ -228,13 +228,18 @@ fn main() -> Result<()> {
             runner::do_for_all_projects(
                 &config,
                 &projects,
-                move |project: &Utf8Path| -> anyhow::Result<bool> {
+                move |project: &Utf8Path| -> anyhow::Result<()> {
                     commands::pull::do_pull(project, quiet)
                 },
             )?;
         }
         Commands::Push => {
-            runner::do_for_all_projects(&config, &projects, commands::push::do_push)?;
+            runner::do_for_all_projects_with_check(
+                &config,
+                &projects,
+                commands::count::is_ahead,
+                commands::push::do_push,
+            )?;
         }
         Commands::Fetch => {
             runner::do_for_all_projects(&config, &projects, commands::fetch::do_fetch)?;
@@ -245,31 +250,38 @@ fn main() -> Result<()> {
                 runner::do_for_all_projects(
                     &config,
                     &projects,
-                    move |project: &Utf8Path| -> anyhow::Result<bool> {
+                    move |project: &Utf8Path| -> anyhow::Result<()> {
                         commands::clean::clean_make(project, venv)
                     },
                 )?;
             }
+            CleanWhat::Cargo => {
+                runner::do_for_all_projects_with_check(
+                    &config,
+                    &projects,
+                    commands::clean::has_cargo_toml,
+                    commands::clean::clean_cargo,
+                )?;
+            }
             _ => {
-                let clean_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
+                let clean_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
                     CleanWhat::Hard => commands::clean::clean_hard,
                     CleanWhat::Soft => commands::clean::clean_soft,
                     CleanWhat::Git => commands::clean::clean_git,
-                    CleanWhat::Cargo => commands::clean::clean_cargo,
-                    CleanWhat::Make => unreachable!("handled above"),
+                    CleanWhat::Make | CleanWhat::Cargo => unreachable!("handled above"),
                 };
                 runner::do_for_all_projects(&config, &projects, clean_fn)?;
             }
         },
         Commands::Stash { what } => {
-            let stash_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
+            let stash_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
                 StashWhat::Push => commands::stash::stash_push,
                 StashWhat::Pop => commands::stash::stash_pop,
             };
             runner::do_for_all_projects(&config, &projects, stash_fn)?;
         }
         Commands::Reset { what } => {
-            let reset_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
+            let reset_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
                 ResetWhat::Hard => commands::reset::reset_hard,
                 ResetWhat::Soft => commands::reset::reset_soft,
                 ResetWhat::Mixed => commands::reset::reset_mixed,
@@ -284,14 +296,14 @@ fn main() -> Result<()> {
             runner::do_for_all_projects(
                 &config,
                 &projects,
-                move |project: &Utf8Path| -> anyhow::Result<bool> {
+                move |project: &Utf8Path| -> anyhow::Result<()> {
                     commands::log::do_log(project, count)
                 },
             )?;
         }
         Commands::Tag { what } => match what {
             TagWhat::Local | TagWhat::Remote => {
-                let tag_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
+                let tag_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
                     TagWhat::Local => commands::tag::tag_local,
                     TagWhat::Remote => commands::tag::tag_remote,
                     _ => unreachable!(),
@@ -321,17 +333,18 @@ fn main() -> Result<()> {
             runner::do_for_all_projects(
                 &config,
                 &projects,
-                move |project: &Utf8Path| -> anyhow::Result<bool> {
+                move |project: &Utf8Path| -> anyhow::Result<()> {
                     commands::checkout::do_checkout(project, &branch)
                 },
             )?;
         }
         Commands::Commit { message } => {
             let message = message.clone();
-            runner::do_for_all_projects(
+            runner::do_for_all_projects_with_check(
                 &config,
                 &projects,
-                move |project: &Utf8Path| -> anyhow::Result<bool> {
+                commands::commit::has_anything_to_commit,
+                move |project: &Utf8Path| -> anyhow::Result<()> {
                     commands::commit::do_commit(project, &message)
                 },
             )?;
@@ -341,24 +354,23 @@ fn main() -> Result<()> {
         }
         Commands::Blame { file } => {
             let file = file.clone();
-            runner::do_for_all_projects(
+            let file_for_check = file.clone();
+            runner::do_for_all_projects_with_check(
                 &config,
                 &projects,
-                move |project: &Utf8Path| -> anyhow::Result<bool> {
+                move |project: &Utf8Path| commands::blame::has_file(project, &file_for_check),
+                move |project: &Utf8Path| -> anyhow::Result<()> {
                     commands::blame::do_blame(project, &file)
                 },
             )?;
         }
         Commands::Grep { regexp, files } => {
+            // A data command: a repo without a match prints nothing at all.
             let regexp = regexp.clone();
             let files = *files;
-            runner::do_for_all_projects(
-                &config,
-                &projects,
-                move |project: &Utf8Path| -> anyhow::Result<bool> {
-                    commands::grep::do_grep(project, &regexp, files)
-                },
-            )?;
+            runner::print_if_data(&config, &projects, move |project: &Utf8Path| {
+                commands::grep::do_grep(project, &regexp, files)
+            })?;
         }
         Commands::Run { command } => {
             let command = command.clone();
@@ -366,7 +378,7 @@ fn main() -> Result<()> {
             runner::do_for_all_projects(
                 &config,
                 &projects,
-                move |project: &Utf8Path| -> anyhow::Result<bool> {
+                move |project: &Utf8Path| -> anyhow::Result<()> {
                     commands::run::do_run(project, &command, venv)
                 },
             )?;
@@ -379,7 +391,7 @@ fn main() -> Result<()> {
                     &config,
                     &projects,
                     commands::gh::check_github,
-                    move |project: &Utf8Path| -> anyhow::Result<bool> {
+                    move |project: &Utf8Path| -> anyhow::Result<()> {
                         commands::gh::clean_all(project, keep)
                     },
                 )?;
@@ -392,7 +404,7 @@ fn main() -> Result<()> {
                     &config,
                     &projects,
                     commands::build::check_cargo,
-                    move |project: &Utf8Path| -> anyhow::Result<bool> {
+                    move |project: &Utf8Path| -> anyhow::Result<()> {
                         commands::rust::publish(project, level)
                     },
                 )?;
@@ -414,7 +426,7 @@ fn main() -> Result<()> {
             };
             type CheckFn = fn(&Utf8Path) -> anyhow::Result<bool>;
             // All build actions take the effective --venv flag.
-            type BuildFn = fn(&Utf8Path, bool) -> anyhow::Result<bool>;
+            type BuildFn = fn(&Utf8Path, bool) -> anyhow::Result<()>;
             let (check_fn, build_fn): (CheckFn, BuildFn) = match what {
                 BuildWhat::Bootstrap => (
                     commands::build::check_not_disabled,
@@ -439,7 +451,7 @@ fn main() -> Result<()> {
                 &config,
                 &projects,
                 check_fn,
-                move |project: &Utf8Path| -> anyhow::Result<bool> { build_fn(project, venv) },
+                move |project: &Utf8Path| -> anyhow::Result<()> { build_fn(project, venv) },
             )?;
         }
 
@@ -464,7 +476,7 @@ fn main() -> Result<()> {
                         &config,
                         &projects,
                         commands::uv::check_pyproject,
-                        move |project: &Utf8Path| -> anyhow::Result<bool> {
+                        move |project: &Utf8Path| -> anyhow::Result<()> {
                             commands::uv::lock(project, upgrade, check)
                         },
                     )?;
@@ -488,7 +500,7 @@ fn main() -> Result<()> {
                         &config,
                         &projects,
                         commands::build::check_cargo,
-                        move |project: &Utf8Path| -> anyhow::Result<bool> {
+                        move |project: &Utf8Path| -> anyhow::Result<()> {
                             commands::cargo::update(project, venv)
                         },
                     )?;

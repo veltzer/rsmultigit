@@ -5,15 +5,15 @@ use anyhow::Result;
 use crate::subprocess_utils::{capture_output, check_call};
 
 /// List local tags.
-pub fn tag_local(project: &Utf8Path) -> Result<bool> {
+pub fn tag_local(project: &Utf8Path) -> Result<()> {
     check_call(project, "git", &["tag"])?;
-    Ok(true)
+    Ok(())
 }
 
 /// List remote tags.
-pub fn tag_remote(project: &Utf8Path) -> Result<bool> {
+pub fn tag_remote(project: &Utf8Path) -> Result<()> {
     check_call(project, "git", &["ls-remote", "--tags", "origin"])?;
-    Ok(true)
+    Ok(())
 }
 
 /// Check if local tags exist.

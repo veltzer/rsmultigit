@@ -5,7 +5,7 @@ use anyhow::Result;
 use crate::subprocess_utils::check_call;
 
 /// Show remote URLs.
-pub fn do_remote(project: &Utf8Path) -> Result<bool> {
+pub fn do_remote(project: &Utf8Path) -> Result<()> {
     check_call(project, "git", &["remote", "-v"])?;
-    Ok(true)
+    Ok(())
 }

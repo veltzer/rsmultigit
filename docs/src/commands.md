@@ -199,8 +199,9 @@ rsmultigit log --count 5
 ### `rsmultigit grep [-l|--files] <REGEXP>`
 
 `git grep -n <REGEXP>` in every repo. Each output line is prefixed with the
-repo name; `-l` prints matching filenames only. Repos with no match are
-skipped.
+repo name; `-l` prints matching filenames only. Repos with no match print
+nothing; `--terse` lists just the repos that matched and `--print-not` the
+ones that did not.
 
 ```bash
 rsmultigit grep "TODO"

@@ -14,9 +14,9 @@ pub fn check_pyproject(project: &Utf8Path) -> Result<bool> {
 /// Runs with a clean environment (see `check_call_clean_env`): uv resolves the
 /// project and its `.venv` from the repo dir itself, so the global
 /// `--venv`/`--no-venv` flag does not apply to uv.
-pub fn sync(project: &Utf8Path) -> Result<bool> {
+pub fn sync(project: &Utf8Path) -> Result<()> {
     check_call_clean_env(project, "uv", &["sync"])?;
-    Ok(true)
+    Ok(())
 }
 
 /// Re-resolve the lockfile from pyproject.toml: `uv lock`, optionally with
@@ -24,12 +24,12 @@ pub fn sync(project: &Utf8Path) -> Result<bool> {
 /// `--check` to only assert the lockfile is up to date (stale lockfile =
 /// non-zero exit = error). The two flags are mutually exclusive (enforced
 /// by clap). Runs with a clean environment, as `sync` does.
-pub fn lock(project: &Utf8Path, upgrade: bool, check: bool) -> Result<bool> {
+pub fn lock(project: &Utf8Path, upgrade: bool, check: bool) -> Result<()> {
     let args: &[&str] = match (upgrade, check) {
         (true, _) => &["lock", "--upgrade"],
         (_, true) => &["lock", "--check"],
         _ => &["lock"],
     };
     check_call_clean_env(project, "uv", args)?;
-    Ok(true)
+    Ok(())
 }

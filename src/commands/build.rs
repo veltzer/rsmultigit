@@ -31,28 +31,28 @@ pub fn check_rsconstruct(project: &Utf8Path) -> Result<bool> {
 // whatever it spawns (pytest, mypy, ...) resolve from the repo's own venv.
 // Repos without a `.venv` run with the environment unchanged.
 
-pub fn build_bootstrap(project: &Utf8Path, venv: bool) -> Result<bool> {
+pub fn build_bootstrap(project: &Utf8Path, venv: bool) -> Result<()> {
     check_call_maybe_ve(project, venv, "python", &["bootstrap.py"])?;
-    Ok(true)
+    Ok(())
 }
 
-pub fn build_make(project: &Utf8Path, venv: bool) -> Result<bool> {
+pub fn build_make(project: &Utf8Path, venv: bool) -> Result<()> {
     check_call_maybe_ve(project, venv, "make", &[])?;
-    Ok(true)
+    Ok(())
 }
 
-pub fn build_cargo(project: &Utf8Path, venv: bool) -> Result<bool> {
+pub fn build_cargo(project: &Utf8Path, venv: bool) -> Result<()> {
     check_call_maybe_ve(project, venv, "cargo", &["build"])?;
     check_call_maybe_ve(project, venv, "cargo", &["build", "--release"])?;
-    Ok(true)
+    Ok(())
 }
 
-pub fn build_cargo_publish(project: &Utf8Path, venv: bool) -> Result<bool> {
+pub fn build_cargo_publish(project: &Utf8Path, venv: bool) -> Result<()> {
     check_call_maybe_ve(project, venv, "cargo", &["publish"])?;
-    Ok(true)
+    Ok(())
 }
 
-pub fn build_rsconstruct(project: &Utf8Path, venv: bool) -> Result<bool> {
+pub fn build_rsconstruct(project: &Utf8Path, venv: bool) -> Result<()> {
     check_call_maybe_ve(project, venv, "rsconstruct", &["--quiet", "build"])?;
-    Ok(true)
+    Ok(())
 }

@@ -4,11 +4,13 @@ use anyhow::Result;
 
 use crate::subprocess_utils::check_call;
 
-/// Run git blame on a file. Skips repos where the file does not exist.
-pub fn do_blame(project: &Utf8Path, file: &str) -> Result<bool> {
-    if !project.join(file).exists() {
-        return Ok(false);
-    }
+/// Repos `blame <file>` applies to: those that have the file.
+pub fn has_file(project: &Utf8Path, file: &str) -> Result<bool> {
+    Ok(project.join(file).is_file())
+}
+
+/// Run git blame on a file (see [`has_file`] for the precondition).
+pub fn do_blame(project: &Utf8Path, file: &str) -> Result<()> {
     check_call(project, "git", &["blame", file])?;
-    Ok(true)
+    Ok(())
 }

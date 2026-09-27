@@ -50,15 +50,15 @@ build.rs                 # Embeds git metadata at compile time
 All commands use one of three patterns in `runner.rs`:
 
 1. **`do_count`** — Boolean test per repo using git2 (no subprocess). Prints count summary. Used by: `count dirty/untracked/synchronized`.
-2. **`do_for_all_projects`** — Runs an action in each repo dir, returns `Result<bool>` (did work / skipped). Used by: `pull, push, fetch, grep, clean, build`, etc.
-3. **`print_if_data`** — Calls data function returning `Option<String>`, prints only if Some. Used by: `status, dirty, list-repos, age, authors`.
+2. **`do_for_all_projects`** — Runs an action (`Result<()>`) in each repo dir; the `_with_check` variant runs a cheap predicate first and skips repos where it is false. Skips are decided only there, never inside the action, because the serial path prints the header before the action runs. Used by: `pull, push, fetch, clean, build`, etc.
+3. **`print_if_data`** — Calls data function returning `Option<String>`, prints only if Some. Used by: `status, dirty, grep, age, authors, size`.
 
 ## Key Conventions
 
 - **Edition 2024** Rust
 - **Error handling**: `anyhow::Result<T>` everywhere, with `.context()` for error messages
 - **Git inspection**: Prefer the `git2` crate for everything libgit2 can do — subprocess startup times 260 repos dominates runtime (see "Git inspection" in `docs/src/architecture.md` for the recorded benchmark). Use the `git` CLI subprocess only for network ops (`pull`/`push`/`fetch`) and commands whose value is git's own output formatting (`log`, `blame`, `grep`).
-- **Command module pattern**: Each command is a simple `pub fn` returning `Result<bool>` or `Result<Option<String>>`. A module that prints its own lines uses `subprocess_utils::out_line`, never `println!`, so the parallel runner and `--no-output` see them
+- **Command module pattern**: Each command is a simple `pub fn` returning `Result<()>` (action), `Result<bool>` (predicate or count test) or `Result<Option<String>>` (data). A module that prints its own lines uses `subprocess_utils::out_line`, never `println!`, so the parallel runner and `--no-output` see them
 - **No rustfmt.toml or clippy.toml** — uses Rust defaults
 - **Release profile**: `strip = true`, `lto = true`
 - **Tests**: Unit tests in `#[cfg(test)]` modules within source files. Integration tests in `tests/`. Use `tempfile::TempDir` for isolation; tests take explicit repo paths and never change the working directory.

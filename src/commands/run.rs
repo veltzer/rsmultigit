@@ -14,7 +14,7 @@ use crate::subprocess_utils::check_call_maybe_ve;
 /// With `venv` (the global `--venv` flag, default on), an existing repo `.venv`
 /// is activated (PATH + VIRTUAL_ENV) before the command runs, so both the
 /// command itself and anything it spawns resolve from the repo's own venv.
-pub fn do_run(project: &Utf8Path, command: &[String], venv: bool) -> Result<bool> {
+pub fn do_run(project: &Utf8Path, command: &[String], venv: bool) -> Result<()> {
     if command.is_empty() {
         bail!("no command specified to run");
     }
@@ -35,12 +35,12 @@ pub fn do_run(project: &Utf8Path, command: &[String], venv: bool) -> Result<bool
         let shell_arg = "-c";
 
         check_call_maybe_ve(project, venv, shell, &[shell_arg, cmd_str])?;
-        return Ok(true);
+        return Ok(());
     }
 
     let args: Vec<&str> = command.iter().map(|s| s.as_str()).collect();
     check_call_maybe_ve(project, venv, args[0], &args[1..])?;
-    Ok(true)
+    Ok(())
 }
 
 #[cfg(test)]
