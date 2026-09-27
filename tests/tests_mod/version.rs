@@ -1,13 +1,10 @@
-use crate::common::{run_rsmultigit, stdout_str};
+use crate::common::{run_rsmultigit, stdout_str, utf8};
 use tempfile::TempDir;
 
 #[test]
 fn version_subcommand_prints_info() {
     let tmp = TempDir::new().unwrap();
-    let output = run_rsmultigit(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &["version"],
-    );
+    let output = run_rsmultigit(utf8(&tmp), &["version"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -31,10 +28,7 @@ fn version_subcommand_prints_info() {
 #[test]
 fn version_flag_prints_short_version() {
     let tmp = TempDir::new().unwrap();
-    let output = run_rsmultigit(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &["--version"],
-    );
+    let output = run_rsmultigit(utf8(&tmp), &["--version"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(

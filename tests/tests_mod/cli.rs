@@ -1,12 +1,9 @@
-use crate::common::{run_rsmultigit, stderr_str, stdout_str};
+use crate::common::{run_rsmultigit, stderr_str, stdout_str, utf8};
 
 #[test]
 fn help_flag_shows_usage() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let output = run_rsmultigit(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &["--help"],
-    );
+    let output = run_rsmultigit(utf8(&tmp), &["--help"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -22,10 +19,7 @@ fn help_flag_shows_usage() {
 #[test]
 fn unknown_subcommand_fails() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let output = run_rsmultigit(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &["nonexistent"],
-    );
+    let output = run_rsmultigit(utf8(&tmp), &["nonexistent"]);
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(
@@ -37,13 +31,13 @@ fn unknown_subcommand_fails() {
 #[test]
 fn no_subcommand_fails() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &[]);
+    let output = run_rsmultigit(utf8(&tmp), &[]);
     assert!(!output.status.success());
 }
 
 #[test]
 fn grep_requires_regexp() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let output = run_rsmultigit(camino::Utf8Path::from_path(tmp.path()).unwrap(), &["grep"]);
+    let output = run_rsmultigit(utf8(&tmp), &["grep"]);
     assert!(!output.status.success());
 }

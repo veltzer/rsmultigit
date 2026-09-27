@@ -2,7 +2,7 @@ use camino::Utf8Path;
 use std::fs;
 use std::process::Output;
 
-use crate::common::{run_rsmultigit_with_env, setup_git_repos, stderr_str, write_config};
+use crate::common::{run_rsmultigit_with_env, setup_git_repos, stderr_str, utf8, write_config};
 
 fn run(tmp: &Utf8Path, config: &Utf8Path, args: &[&str]) -> Output {
     let cfg_str = config.to_string();
@@ -24,7 +24,7 @@ fn add_marker_makefiles(tmp: &Utf8Path, repos: &[&str]) {
 #[test]
 fn build_without_method_and_without_default_is_an_error() {
     let tmp = setup_git_repos(&["a"]);
-    let tmp = Utf8Path::from_path(tmp.path()).unwrap();
+    let tmp = utf8(&tmp);
     let cfg = write_config(tmp, "");
     let out = run(tmp, &cfg, &["build"]);
     assert!(!out.status.success());
@@ -36,7 +36,7 @@ fn build_without_method_and_without_default_is_an_error() {
 #[test]
 fn build_without_method_uses_default_build_method_from_config() {
     let tmp = setup_git_repos(&["a", "b"]);
-    let tmp = Utf8Path::from_path(tmp.path()).unwrap();
+    let tmp = utf8(&tmp);
     add_marker_makefiles(tmp, &["a", "b"]);
     let cfg = write_config(tmp, "default_build_method = \"make\"\n");
     let out = run(tmp, &cfg, &["build"]);
@@ -48,7 +48,7 @@ fn build_without_method_uses_default_build_method_from_config() {
 #[test]
 fn build_explicit_method_overrides_default_build_method() {
     let tmp = setup_git_repos(&["a"]);
-    let tmp = Utf8Path::from_path(tmp.path()).unwrap();
+    let tmp = utf8(&tmp);
     add_marker_makefiles(tmp, &["a"]);
     // Default is rsconstruct, but no repo has rsconstruct.toml, so that would
     // skip everything. Explicit `make` must win and produce the marker.
@@ -61,7 +61,7 @@ fn build_explicit_method_overrides_default_build_method() {
 #[test]
 fn build_rejects_unknown_default_build_method_in_config() {
     let tmp = setup_git_repos(&["a"]);
-    let tmp = Utf8Path::from_path(tmp.path()).unwrap();
+    let tmp = utf8(&tmp);
     let cfg = write_config(tmp, "default_build_method = \"ninja\"\n");
     let out = run(tmp, &cfg, &["build"]);
     assert!(!out.status.success());

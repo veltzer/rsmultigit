@@ -63,6 +63,13 @@ pub fn run_rsmultigit_with_stdin(
         .expect("Failed to wait on rsmultigit")
 }
 
+/// The temp directory as a UTF-8 path, which every helper and the binary's
+/// output speak. Test temp dirs are always UTF-8, so the conversion never
+/// fails in practice.
+pub fn utf8(tmp: &TempDir) -> &Utf8Path {
+    Utf8Path::from_path(tmp.path()).expect("temp dir path is UTF-8")
+}
+
 /// Get stdout from an Output as a trimmed String.
 pub fn stdout_str(output: &Output) -> String {
     String::from_utf8_lossy(&output.stdout).trim().to_string()
@@ -78,7 +85,7 @@ pub fn stderr_str(output: &Output) -> String {
 pub fn setup_git_repos(names: &[&str]) -> TempDir {
     let tmp = TempDir::new().expect("Failed to create temp dir");
     for name in names {
-        let repo_path = camino::Utf8Path::from_path(tmp.path()).unwrap().join(name);
+        let repo_path = utf8(&tmp).join(name);
         init_git_repo(&repo_path);
     }
     tmp

@@ -4,7 +4,7 @@ use std::process::Output;
 
 use crate::common::{
     run_rsmultigit_with_env, run_rsmultigit_with_stdin, setup_git_repos, stderr_str, stdout_str,
-    write_config,
+    utf8, write_config,
 };
 
 fn run(tmp: &Utf8Path, config: &Utf8Path, args: &[&str]) -> Output {
@@ -21,17 +21,10 @@ fn run_with_stdin(tmp: &Utf8Path, config: &Utf8Path, args: &[&str], stdin_bytes:
 fn check_same_all_identical_reports_ok() {
     let tmp = setup_git_repos(&["a", "b", "c"]);
     for repo in ["a", "b", "c"] {
-        fs::write(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join(repo)
-                .join(".gitignore"),
-            "target\n",
-        )
-        .unwrap();
+        fs::write(utf8(&tmp).join(repo).join(".gitignore"), "target\n").unwrap();
     }
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -40,11 +33,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     assert_eq!(stdout_str(&output), "[gi]\nok (3 files)");
 }
@@ -53,17 +42,10 @@ path = ".gitignore"
 fn check_same_only_failed_silences_passing_checks() {
     let tmp = setup_git_repos(&["a", "b"]);
     for repo in ["a", "b"] {
-        fs::write(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join(repo)
-                .join(".gitignore"),
-            "target\n",
-        )
-        .unwrap();
+        fs::write(utf8(&tmp).join(repo).join(".gitignore"), "target\n").unwrap();
     }
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -72,11 +54,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--only-failed"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--only-failed"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     assert_eq!(stdout_str(&output), "");
 }
@@ -85,36 +63,12 @@ path = ".gitignore"
 fn check_same_only_failed_still_reports_failures() {
     let tmp = setup_git_repos(&["a", "b"]);
     // gi diverges, readme passes; --only-failed must print gi and nothing else.
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/README"),
-        "same\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/README"),
-        "same\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
+    fs::write(utf8(&tmp).join("a/README"), "same\n").unwrap();
+    fs::write(utf8(&tmp).join("b/README"), "same\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -128,11 +82,7 @@ path = "README"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--only-failed"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--only-failed"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -145,36 +95,12 @@ path = "README"
 #[test]
 fn check_same_mixed_results_report_ok_and_failure() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/README"),
-        "same\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/README"),
-        "same\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
+    fs::write(utf8(&tmp).join("a/README"), "same\n").unwrap();
+    fs::write(utf8(&tmp).join("b/README"), "same\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -188,11 +114,7 @@ path = "README"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -204,29 +126,11 @@ path = "README"
 #[test]
 fn check_same_divergent_exits_nonzero() {
     let tmp = setup_git_repos(&["a", "b", "c"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("c/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("c/.gitignore"), "y\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -235,11 +139,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -251,22 +151,10 @@ path = ".gitignore"
 #[test]
 fn check_same_terse_prints_only_rule_name() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -275,11 +163,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--terse"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--terse"]);
     assert!(!output.status.success());
     assert_eq!(stdout_str(&output), "gi");
 }
@@ -287,22 +171,10 @@ path = ".gitignore"
 #[test]
 fn check_same_no_header_suppresses_rule_label() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -311,11 +183,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--no-header"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--no-header"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -328,36 +196,12 @@ path = ".gitignore"
 #[test]
 fn check_same_only_runs_named_rule() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/README"),
-        "same\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/README"),
-        "same\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
+    fs::write(utf8(&tmp).join("a/README"), "same\n").unwrap();
+    fs::write(utf8(&tmp).join("b/README"), "same\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -371,11 +215,7 @@ path = "README"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--checks", "readme"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks", "readme"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     // Only the requested (passing) rule appears; gi's divergence must not.
     let stdout = stdout_str(&output);
@@ -388,50 +228,14 @@ path = "README"
 fn check_same_checks_accepts_multiple_names() {
     let tmp = setup_git_repos(&["a", "b"]);
     // Two mismatching checks; a third consistent one we want to skip.
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/README"),
-        "one\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/README"),
-        "two\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/LICENSE"),
-        "MIT\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/LICENSE"),
-        "BSD\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
+    fs::write(utf8(&tmp).join("a/README"), "one\n").unwrap();
+    fs::write(utf8(&tmp).join("b/README"), "two\n").unwrap();
+    fs::write(utf8(&tmp).join("a/LICENSE"), "MIT\n").unwrap();
+    fs::write(utf8(&tmp).join("b/LICENSE"), "BSD\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -452,7 +256,7 @@ path = "LICENSE"
 
     // Run only gi + license; readme's divergence must not appear.
     let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         &cfg,
         &["check-same", "--checks", "gi", "license"],
     );
@@ -469,36 +273,12 @@ path = "LICENSE"
 #[test]
 fn check_same_checks_preserves_request_order() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/README"),
-        "one\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/README"),
-        "two\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
+    fs::write(utf8(&tmp).join("a/README"), "one\n").unwrap();
+    fs::write(utf8(&tmp).join("b/README"), "two\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -514,7 +294,7 @@ path = "README"
 
     // Request in reverse of config order.
     let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         &cfg,
         &["check-same", "--checks", "readme", "gi"],
     );
@@ -529,50 +309,14 @@ path = "README"
 fn check_same_checks_re_selects_matching_rules() {
     let tmp = setup_git_repos(&["a", "b"]);
     // All three checks diverge; only the rs-* ones should be reported.
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/README"),
-        "one\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/README"),
-        "two\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/LICENSE"),
-        "MIT\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/LICENSE"),
-        "BSD\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
+    fs::write(utf8(&tmp).join("a/README"), "one\n").unwrap();
+    fs::write(utf8(&tmp).join("b/README"), "two\n").unwrap();
+    fs::write(utf8(&tmp).join("a/LICENSE"), "MIT\n").unwrap();
+    fs::write(utf8(&tmp).join("b/LICENSE"), "BSD\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "rs-gitignore"
@@ -591,11 +335,7 @@ path = "LICENSE"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--checks-re", "^rs-"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks-re", "^rs-"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[rs-gitignore]"), "stdout: {stdout}");
@@ -609,36 +349,12 @@ path = "LICENSE"
 #[test]
 fn check_same_checks_re_combines_with_checks() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/README"),
-        "one\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/README"),
-        "two\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
+    fs::write(utf8(&tmp).join("a/README"), "one\n").unwrap();
+    fs::write(utf8(&tmp).join("b/README"), "two\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -655,7 +371,7 @@ path = "README"
     // --checks names one rule, --checks-re matches the other (and also
     // re-matches the first, which must not be run twice).
     let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         &cfg,
         &[
             "check-same",
@@ -678,22 +394,10 @@ path = "README"
 #[test]
 fn check_same_checks_re_overrides_enabled_false() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -703,11 +407,7 @@ enabled = false
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--checks-re", "gi"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks-re", "gi"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -716,15 +416,9 @@ enabled = false
 #[test]
 fn check_same_checks_re_no_match_fails() {
     let tmp = setup_git_repos(&["a"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -733,11 +427,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--checks-re", "^bogus"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks-re", "^bogus"]);
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(
@@ -749,15 +439,9 @@ path = ".gitignore"
 #[test]
 fn check_same_checks_re_invalid_regex_fails() {
     let tmp = setup_git_repos(&["a"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -766,11 +450,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--checks-re", "("],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks-re", "("]);
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(stderr.contains("invalid check regex"), "stderr: {stderr}");
@@ -779,15 +459,9 @@ path = ".gitignore"
 #[test]
 fn check_same_unknown_rule_fails() {
     let tmp = setup_git_repos(&["a"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -796,11 +470,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--checks", "nonexistent"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks", "nonexistent"]);
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(
@@ -812,15 +482,9 @@ path = ".gitignore"
 #[test]
 fn check_same_mixed_known_and_unknown_names_fails() {
     let tmp = setup_git_repos(&["a"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -830,11 +494,7 @@ path = ".gitignore"
     );
 
     // Even if one name is known, an unknown one must hard-error.
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--checks", "gi", "bogus"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks", "gi", "bogus"]);
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(
@@ -846,43 +506,19 @@ path = ".gitignore"
 #[test]
 fn check_same_missing_config_fails() {
     let tmp = setup_git_repos(&["a"]);
-    let nonexistent = camino::Utf8Path::from_path(tmp.path())
-        .unwrap()
-        .join("nope.toml");
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &nonexistent,
-        &["check-same"],
-    );
+    let nonexistent = utf8(&tmp).join("nope.toml");
+    let output = run(utf8(&tmp), &nonexistent, &["check-same"]);
     assert!(!output.status.success());
 }
 
 #[test]
 fn check_same_respects_select_glob() {
     let tmp = setup_git_repos(&["pyalpha", "pybeta", "go-proj"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("pyalpha/Makefile"),
-        "PY\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("pybeta/Makefile"),
-        "PY\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("go-proj/Makefile"),
-        "GO\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("pyalpha/Makefile"), "PY\n").unwrap();
+    fs::write(utf8(&tmp).join("pybeta/Makefile"), "PY\n").unwrap();
+    fs::write(utf8(&tmp).join("go-proj/Makefile"), "GO\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "py-make"
@@ -892,11 +528,7 @@ path = "Makefile"
     );
 
     // Only py* repos considered — they match, so should succeed even though go-proj differs.
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(
         output.status.success(),
         "stdout: {}\nstderr: {}",
@@ -908,29 +540,11 @@ path = "Makefile"
 #[test]
 fn check_same_marker_requires_file() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.tag"),
-        "",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.tag"), "").unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -940,11 +554,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(
         output.status.success(),
         "stdout: {}\nstderr: {}",
@@ -956,22 +566,10 @@ path = ".gitignore"
 #[test]
 fn check_same_disabled_rule_is_skipped() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -981,11 +579,7 @@ enabled = false
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(
         output.status.success(),
         "stdout: {}\nstderr: {}",
@@ -997,22 +591,10 @@ enabled = false
 #[test]
 fn check_same_checks_override_enabled_false() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1022,11 +604,7 @@ enabled = false
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--checks", "gi"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks", "gi"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -1035,22 +613,10 @@ enabled = false
 #[test]
 fn check_same_verbose_reports_consistent_rules() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "same\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "same\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "same\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "same\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1059,11 +625,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--verbose"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--verbose"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -1074,21 +636,13 @@ path = ".gitignore"
 fn check_same_diff_emits_unified_diff_for_two_groups() {
     let tmp = setup_git_repos(&["a", "b"]);
     fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
+        utf8(&tmp).join("a/.gitignore"),
         "target\nnode_modules\n.env\n",
     )
     .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "target\ndist\n.env\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "target\ndist\n.env\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1097,11 +651,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--diff"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--diff"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     // Unified diff markers must appear.
@@ -1123,29 +673,11 @@ path = ".gitignore"
 #[test]
 fn check_same_diff_three_groups_prompts_for_pair() {
     let tmp = setup_git_repos(&["a", "b", "c"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "one\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "two\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("c/.gitignore"),
-        "three\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "one\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "two\n").unwrap();
+    fs::write(utf8(&tmp).join("c/.gitignore"), "three\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1156,11 +688,7 @@ path = ".gitignore"
 
     // stdin is the default (closed → EOF → treated as Quit).
     // The prompt for "diff from group" should still be visible in stdout.
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--diff"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--diff"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -1177,22 +705,10 @@ path = ".gitignore"
 #[test]
 fn check_same_diff_off_by_default() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "target\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "dist\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "target\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "dist\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1202,11 +718,7 @@ path = ".gitignore"
     );
 
     // Without --diff, no unified-diff output.
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(!stdout.contains("+++ "), "no diff without --diff: {stdout}");
@@ -1216,22 +728,10 @@ path = ".gitignore"
 fn check_same_diff_binary_files() {
     let tmp = setup_git_repos(&["a", "b"]);
     // Non-UTF-8 payloads.
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/blob.bin"),
-        [0xffu8, 0xfe, 0x00, 0x01],
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/blob.bin"),
-        [0xffu8, 0xfe, 0x00, 0x02],
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/blob.bin"), [0xffu8, 0xfe, 0x00, 0x01]).unwrap();
+    fs::write(utf8(&tmp).join("b/blob.bin"), [0xffu8, 0xfe, 0x00, 0x02]).unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "bin"
@@ -1240,11 +740,7 @@ path = "blob.bin"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--diff"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--diff"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -1256,22 +752,10 @@ path = "blob.bin"
 #[test]
 fn check_same_diff_suppressed_by_terse() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "target\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "dist\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "target\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "dist\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1281,11 +765,7 @@ path = ".gitignore"
     );
 
     // --terse takes precedence — only the rule name, no grouping output, no diff.
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--terse", "--diff"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--terse", "--diff"]);
     assert!(!output.status.success());
     assert_eq!(stdout_str(&output), "gi");
 }
@@ -1294,9 +774,7 @@ path = ".gitignore"
 fn check_same_config_without_repos_fails() {
     let tmp = setup_git_repos(&["a"]);
     // Config missing the `repos` key.
-    let cfg_path = camino::Utf8Path::from_path(tmp.path())
-        .unwrap()
-        .join("no-repos.toml");
+    let cfg_path = utf8(&tmp).join("no-repos.toml");
     fs::write(
         &cfg_path,
         r#"
@@ -1308,11 +786,7 @@ path = ".gitignore"
     )
     .unwrap();
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg_path,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg_path, &["check-same"]);
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(
@@ -1329,7 +803,7 @@ fn check_same_rule_matching_no_files_fails_by_default() {
     // which is an error by default (usually a stale select/path).
     let tmp = setup_git_repos(&["a", "b"]);
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1338,11 +812,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(!output.status.success(), "empty rule should exit 1");
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -1363,7 +833,7 @@ path = ".gitignore"
 fn check_same_trailing_error_lists_all_empty_rules() {
     let tmp = setup_git_repos(&["a", "b"]);
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1377,11 +847,7 @@ path = "Makefile"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(
@@ -1396,7 +862,7 @@ path = "Makefile"
 fn check_same_rule_selecting_no_repos_fails_by_default() {
     let tmp = setup_git_repos(&["a", "b"]);
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1405,11 +871,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(!output.status.success(), "empty rule should exit 1");
     let stdout = stdout_str(&output);
     assert!(stdout.contains("no files matched"), "stdout: {stdout}");
@@ -1423,7 +885,7 @@ path = ".gitignore"
 fn check_same_allow_empty_restores_ok_for_empty_rule() {
     let tmp = setup_git_repos(&["a", "b"]);
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1432,11 +894,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--allow-empty"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--allow-empty"]);
     assert!(
         output.status.success(),
         "stdout: {}\nstderr: {}",
@@ -1454,7 +912,7 @@ path = ".gitignore"
 fn check_same_empty_rule_terse_prints_rule_name() {
     let tmp = setup_git_repos(&["a", "b"]);
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1463,11 +921,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--terse"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--terse"]);
     assert!(!output.status.success());
     assert_eq!(stdout_str(&output), "gi");
 }
@@ -1478,7 +932,7 @@ fn check_same_empty_must_have_rule_reports_missing_not_empty() {
     // report those, not "no files matched".
     let tmp = setup_git_repos(&["a", "b"]);
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1488,11 +942,7 @@ must_have = true
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("missing in:"), "stdout: {stdout}");
@@ -1509,11 +959,9 @@ fn config_example_does_not_require_existing_config() {
     // Point RSMULTIGIT_CONFIG at a non-existent path; the subcommand must still
     // succeed (it's meant for bootstrapping a fresh install).
     let tmp = setup_git_repos(&["a"]);
-    let missing = camino::Utf8Path::from_path(tmp.path())
-        .unwrap()
-        .join("does-not-exist.toml");
+    let missing = utf8(&tmp).join("does-not-exist.toml");
     let output = run_rsmultigit_with_env(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         &["config-example"],
         &[("RSMULTIGIT_CONFIG", missing.as_str())],
     );
@@ -1533,22 +981,11 @@ fn config_example_does_not_require_existing_config() {
 fn config_example_output_parses_as_valid_config() {
     // Round-trip: config-example → write to disk → load with rsmultigit → works.
     let tmp = setup_git_repos(&["a"]);
-    fs::create_dir_all(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.github/workflows"),
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
+    fs::create_dir_all(utf8(&tmp).join("a/.github/workflows")).unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
 
     let example = run_rsmultigit_with_env(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         &["config-example"],
         &[("RSMULTIGIT_CONFIG", "/nonexistent")],
     );
@@ -1557,22 +994,13 @@ fn config_example_output_parses_as_valid_config() {
 
     // Rewrite `repos` to point at our tempdir so the config is actually usable.
     // The example ships with `repos = ["~/git/*"]` which won't exist in tests.
-    let rewritten = regex_replace_repos_line(
-        &example_toml,
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-    );
-    let cfg_path = camino::Utf8Path::from_path(tmp.path())
-        .unwrap()
-        .join("config.toml");
+    let rewritten = regex_replace_repos_line(&example_toml, utf8(&tmp));
+    let cfg_path = utf8(&tmp).join("config.toml");
     fs::write(&cfg_path, &rewritten).unwrap();
 
     // Now a normal invocation using this config should parse it (list-checks is
     // the cheapest command that reads the full config without doing much).
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg_path,
-        &["list-checks"],
-    );
+    let output = run(utf8(&tmp), &cfg_path, &["list-checks"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     // Should emit at least one rule name.
     assert!(!stdout_str(&output).is_empty());
@@ -1608,7 +1036,7 @@ fn regex_replace_repos_line(text: &str, dir: &Utf8Path) -> String {
 fn list_checks_prints_every_rule_name() {
     let tmp = setup_git_repos(&["a"]);
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "alpha"
@@ -1627,11 +1055,7 @@ select = "*"
 path = "c"
 "#,
     );
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["list-checks"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["list-checks"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     // Order should match config order, and disabled rules must still appear
     // (completion needs to offer them so they can be forced on via --checks).
@@ -1641,12 +1065,8 @@ path = "c"
 #[test]
 fn list_checks_empty_when_no_rules() {
     let tmp = setup_git_repos(&["a"]);
-    let cfg = write_config(camino::Utf8Path::from_path(tmp.path()).unwrap(), "");
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["list-checks"],
-    );
+    let cfg = write_config(utf8(&tmp), "");
+    let output = run(utf8(&tmp), &cfg, &["list-checks"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     assert_eq!(stdout_str(&output), "");
 }
@@ -1659,34 +1079,14 @@ fn check_same_diff_three_groups_feeds_pair_and_exits() {
     //   A = 3 repos ("one"), B = 2 repos ("two"), C = 1 repo ("three").
     let tmp = setup_git_repos(&["a1", "a2", "a3", "b1", "b2", "c1"]);
     for r in ["a1", "a2", "a3"] {
-        fs::write(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join(r)
-                .join(".gitignore"),
-            "one\n",
-        )
-        .unwrap();
+        fs::write(utf8(&tmp).join(r).join(".gitignore"), "one\n").unwrap();
     }
     for r in ["b1", "b2"] {
-        fs::write(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join(r)
-                .join(".gitignore"),
-            "two\n",
-        )
-        .unwrap();
+        fs::write(utf8(&tmp).join(r).join(".gitignore"), "two\n").unwrap();
     }
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("c1/.gitignore"),
-        "three\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("c1/.gitignore"), "three\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1695,12 +1095,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run_with_stdin(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--diff"],
-        b"A\nB\nn\n",
-    );
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--diff"], b"A\nB\nn\n");
     assert!(
         !output.status.success(),
         "non-copy invocation: mismatch → exit 1"
@@ -1725,34 +1120,14 @@ fn check_same_diff_three_groups_loops_for_more_pairs() {
     // Distinct sizes for deterministic A/B/C ordering.
     let tmp = setup_git_repos(&["a1", "a2", "a3", "b1", "b2", "c1"]);
     for r in ["a1", "a2", "a3"] {
-        fs::write(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join(r)
-                .join(".gitignore"),
-            "one\n",
-        )
-        .unwrap();
+        fs::write(utf8(&tmp).join(r).join(".gitignore"), "one\n").unwrap();
     }
     for r in ["b1", "b2"] {
-        fs::write(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join(r)
-                .join(".gitignore"),
-            "two\n",
-        )
-        .unwrap();
+        fs::write(utf8(&tmp).join(r).join(".gitignore"), "two\n").unwrap();
     }
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("c1/.gitignore"),
-        "three\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("c1/.gitignore"), "three\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1763,7 +1138,7 @@ path = ".gitignore"
 
     // First diff A→B, then y (another pair), then A→C, then n.
     let output = run_with_stdin(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         &cfg,
         &["check-same", "--diff"],
         b"A\nB\ny\nA\nC\nn\n",
@@ -1781,29 +1156,11 @@ path = ".gitignore"
 #[test]
 fn check_same_copy_overwrites_destination_group() {
     let tmp = setup_git_repos(&["a", "b", "c"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "canonical\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "canonical\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("c/.gitignore"),
-        "stale\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "canonical\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "canonical\n").unwrap();
+    fs::write(utf8(&tmp).join("c/.gitignore"), "stale\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1814,54 +1171,27 @@ path = ".gitignore"
 
     // 2 groups: A = {a, b} (canonical, larger), B = {c} (stale).
     // Copy from A to B, confirm.
-    let output = run_with_stdin(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--copy"],
-        b"A\nB\ny\n",
-    );
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--copy"], b"A\nB\ny\n");
     assert!(
         output.status.success(),
         "--copy always exits 0: stderr={}",
         stderr_str(&output)
     );
     // c's .gitignore should now equal a's.
-    let c_content = fs::read_to_string(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("c/.gitignore"),
-    )
-    .unwrap();
+    let c_content = fs::read_to_string(utf8(&tmp).join("c/.gitignore")).unwrap();
     assert_eq!(c_content, "canonical\n");
     // a and b unchanged.
-    let a_content = fs::read_to_string(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-    )
-    .unwrap();
+    let a_content = fs::read_to_string(utf8(&tmp).join("a/.gitignore")).unwrap();
     assert_eq!(a_content, "canonical\n");
 }
 
 #[test]
 fn check_same_copy_declined_leaves_files_alone() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "keep-a\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "keep-b\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "keep-a\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "keep-b\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1871,25 +1201,10 @@ path = ".gitignore"
     );
 
     // Pick A from, B to, but decline the confirmation.
-    let output = run_with_stdin(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--copy"],
-        b"A\nB\nn\n",
-    );
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--copy"], b"A\nB\nn\n");
     assert!(output.status.success());
-    let a = fs::read_to_string(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-    )
-    .unwrap();
-    let b = fs::read_to_string(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-    )
-    .unwrap();
+    let a = fs::read_to_string(utf8(&tmp).join("a/.gitignore")).unwrap();
+    let b = fs::read_to_string(utf8(&tmp).join("b/.gitignore")).unwrap();
     assert_eq!(a, "keep-a\n");
     assert_eq!(b, "keep-b\n");
 }
@@ -1898,22 +1213,10 @@ path = ".gitignore"
 fn check_same_copy_always_exits_zero() {
     // Even when there's a mismatch and the user quits, --copy returns 0.
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1923,12 +1226,7 @@ path = ".gitignore"
     );
 
     // Quit immediately.
-    let output = run_with_stdin(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--copy"],
-        b"q\n",
-    );
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--copy"], b"q\n");
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
 }
 
@@ -1936,51 +1234,28 @@ path = ".gitignore"
 fn check_same_copy_preserves_destination_mode() {
     // Group A = {a1, a2} (2 files, "from-a"), Group B = {b1} (1 file, "old-b").
     let tmp = setup_git_repos(&["a1", "a2", "b1"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a1/.gitignore"),
-        "from-a\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a2/.gitignore"),
-        "from-a\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b1/.gitignore"),
-        "old-b\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a1/.gitignore"), "from-a\n").unwrap();
+    fs::write(utf8(&tmp).join("a2/.gitignore"), "from-a\n").unwrap();
+    fs::write(utf8(&tmp).join("b1/.gitignore"), "old-b\n").unwrap();
 
     // Set A reps to 0644 and B to 0600 — copy A→B should keep B's 0600.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         for r in ["a1", "a2"] {
-            let p = camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join(r)
-                .join(".gitignore");
+            let p = utf8(&tmp).join(r).join(".gitignore");
             let mut perm = fs::metadata(&p).unwrap().permissions();
             perm.set_mode(0o644);
             fs::set_permissions(&p, perm).unwrap();
         }
-        let p = camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b1/.gitignore");
+        let p = utf8(&tmp).join("b1/.gitignore");
         let mut perm = fs::metadata(&p).unwrap().permissions();
         perm.set_mode(0o600);
         fs::set_permissions(&p, perm).unwrap();
     }
 
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -1988,33 +1263,19 @@ select = "*"
 path = ".gitignore"
 "#,
     );
-    let output = run_with_stdin(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--copy"],
-        b"A\nB\ny\n",
-    );
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--copy"], b"A\nB\ny\n");
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
 
-    let content = fs::read_to_string(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b1/.gitignore"),
-    )
-    .unwrap();
+    let content = fs::read_to_string(utf8(&tmp).join("b1/.gitignore")).unwrap();
     assert_eq!(content, "from-a\n");
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mode = fs::metadata(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join("b1/.gitignore"),
-        )
-        .unwrap()
-        .permissions()
-        .mode()
+        let mode = fs::metadata(utf8(&tmp).join("b1/.gitignore"))
+            .unwrap()
+            .permissions()
+            .mode()
             & 0o777;
         assert_eq!(mode, 0o600, "destination mode should be preserved");
     }
@@ -2029,34 +1290,14 @@ fn check_same_copy_three_groups_picks_from_and_to() {
     //   group C = {c1}         (content "stale-2")
     let tmp = setup_git_repos(&["a1", "a2", "a3", "b1", "b2", "c1"]);
     for r in ["a1", "a2", "a3"] {
-        fs::write(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join(r)
-                .join(".gitignore"),
-            "canonical\n",
-        )
-        .unwrap();
+        fs::write(utf8(&tmp).join(r).join(".gitignore"), "canonical\n").unwrap();
     }
     for r in ["b1", "b2"] {
-        fs::write(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join(r)
-                .join(".gitignore"),
-            "stale-1\n",
-        )
-        .unwrap();
+        fs::write(utf8(&tmp).join(r).join(".gitignore"), "stale-1\n").unwrap();
     }
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("c1/.gitignore"),
-        "stale-2\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("c1/.gitignore"), "stale-2\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -2066,39 +1307,19 @@ path = ".gitignore"
     );
 
     // Copy A → C, leave B alone.
-    let output = run_with_stdin(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--copy"],
-        b"A\nC\ny\n",
-    );
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--copy"], b"A\nC\ny\n");
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     assert_eq!(
-        fs::read_to_string(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join("c1/.gitignore")
-        )
-        .unwrap(),
+        fs::read_to_string(utf8(&tmp).join("c1/.gitignore")).unwrap(),
         "canonical\n"
     );
     // B repos unchanged.
     assert_eq!(
-        fs::read_to_string(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join("b1/.gitignore")
-        )
-        .unwrap(),
+        fs::read_to_string(utf8(&tmp).join("b1/.gitignore")).unwrap(),
         "stale-1\n"
     );
     assert_eq!(
-        fs::read_to_string(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join("b2/.gitignore")
-        )
-        .unwrap(),
+        fs::read_to_string(utf8(&tmp).join("b2/.gitignore")).unwrap(),
         "stale-1\n"
     );
 }
@@ -2107,29 +1328,11 @@ path = ".gitignore"
 fn check_same_copy_rejects_same_group_as_from_and_to() {
     // Group sizes: A = 2 files, B = 1 file — deterministic labels.
     let tmp = setup_git_repos(&["a1", "a2", "b1"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a1/.gitignore"),
-        "from-a\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a2/.gitignore"),
-        "from-a\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b1/.gitignore"),
-        "bb\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a1/.gitignore"), "from-a\n").unwrap();
+    fs::write(utf8(&tmp).join("a2/.gitignore"), "from-a\n").unwrap();
+    fs::write(utf8(&tmp).join("b1/.gitignore"), "bb\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -2140,12 +1343,7 @@ path = ".gitignore"
 
     // User picks A for "from", then tries A again for "to" — should be rejected
     // and re-prompted. After re-prompt, pick B and confirm.
-    let output = run_with_stdin(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--copy"],
-        b"A\nA\nB\ny\n",
-    );
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--copy"], b"A\nA\nB\ny\n");
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     let stdout = stdout_str(&output);
     assert!(
@@ -2153,12 +1351,7 @@ path = ".gitignore"
         "should reject same group: {stdout}"
     );
     assert_eq!(
-        fs::read_to_string(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join("b1/.gitignore")
-        )
-        .unwrap(),
+        fs::read_to_string(utf8(&tmp).join("b1/.gitignore")).unwrap(),
         "from-a\n"
     );
 }
@@ -2169,15 +1362,9 @@ path = ".gitignore"
 fn check_same_must_have_false_ignores_missing_files() {
     // a has the file, b doesn't. must_have defaults to false → no violation.
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -2186,11 +1373,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(
         output.status.success(),
         "stdout: {}\nstderr: {}",
@@ -2202,15 +1385,9 @@ path = ".gitignore"
 #[test]
 fn check_same_must_have_true_flags_missing_files() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -2220,11 +1397,7 @@ must_have = true
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(
         !output.status.success(),
         "must_have violation should exit 1"
@@ -2239,12 +1412,7 @@ must_have = true
         "should emit missing-in block: {stdout}"
     );
     assert!(
-        stdout.contains(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join("b")
-                .as_str()
-        ),
+        stdout.contains(utf8(&tmp).join("b").as_str()),
         "should list the violating repo: {stdout}"
     );
 }
@@ -2254,15 +1422,9 @@ fn check_same_fix_missing_creates_files() {
     // a has the file ("canonical"), b and c don't. With must_have=true and
     // --fix-missing, we seed from group A.
     let tmp = setup_git_repos(&["a", "b", "c"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "canonical\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "canonical\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -2274,7 +1436,7 @@ must_have = true
 
     // Only one content group (A), pick it, confirm.
     let output = run_with_stdin(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         &cfg,
         &["check-same", "--fix-missing"],
         b"A\ny\n",
@@ -2285,31 +1447,16 @@ must_have = true
         stderr_str(&output)
     );
     assert_eq!(
-        fs::read_to_string(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join("b/.gitignore")
-        )
-        .unwrap(),
+        fs::read_to_string(utf8(&tmp).join("b/.gitignore")).unwrap(),
         "canonical\n"
     );
     assert_eq!(
-        fs::read_to_string(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join("c/.gitignore")
-        )
-        .unwrap(),
+        fs::read_to_string(utf8(&tmp).join("c/.gitignore")).unwrap(),
         "canonical\n"
     );
     // a unchanged.
     assert_eq!(
-        fs::read_to_string(
-            camino::Utf8Path::from_path(tmp.path())
-                .unwrap()
-                .join("a/.gitignore")
-        )
-        .unwrap(),
+        fs::read_to_string(utf8(&tmp).join("a/.gitignore")).unwrap(),
         "canonical\n"
     );
 }
@@ -2318,13 +1465,11 @@ must_have = true
 fn check_same_fix_missing_creates_parent_directories() {
     // Path with nested subdirectories that don't exist in the violator.
     let tmp = setup_git_repos(&["a", "b"]);
-    let nested = camino::Utf8Path::from_path(tmp.path())
-        .unwrap()
-        .join("a/.github/workflows/build.yml");
+    let nested = utf8(&tmp).join("a/.github/workflows/build.yml");
     fs::create_dir_all(nested.parent().unwrap()).unwrap();
     fs::write(&nested, "on: push\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "wf"
@@ -2335,15 +1480,13 @@ must_have = true
     );
 
     let output = run_with_stdin(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         &cfg,
         &["check-same", "--fix-missing"],
         b"A\ny\n",
     );
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
-    let dst = camino::Utf8Path::from_path(tmp.path())
-        .unwrap()
-        .join("b/.github/workflows/build.yml");
+    let dst = utf8(&tmp).join("b/.github/workflows/build.yml");
     assert!(
         dst.exists(),
         "nested file should have been created: {}",
@@ -2355,15 +1498,9 @@ must_have = true
 #[test]
 fn check_same_fix_missing_declined_leaves_alone() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "canonical\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "canonical\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -2375,17 +1512,14 @@ must_have = true
 
     // Pick A, then decline the confirmation.
     let output = run_with_stdin(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         &cfg,
         &["check-same", "--fix-missing"],
         b"A\nn\n",
     );
     assert!(output.status.success());
     assert!(
-        !camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore")
-            .exists(),
+        !utf8(&tmp).join("b/.gitignore").exists(),
         "file should not have been created"
     );
 }
@@ -2395,7 +1529,7 @@ fn check_same_fix_missing_with_no_groups_skips() {
     // Nobody has the file, so there's nothing to seed from.
     let tmp = setup_git_repos(&["a", "b"]);
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -2405,12 +1539,7 @@ must_have = true
 "#,
     );
 
-    let output = run_with_stdin(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--fix-missing"],
-        b"",
-    );
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--fix-missing"], b"");
     assert!(output.status.success(), "should still exit 0");
     let stdout = stdout_str(&output);
     assert!(
@@ -2418,32 +1547,16 @@ must_have = true
         "should note no seed available: {stdout}"
     );
     // Neither file should have been created.
-    assert!(
-        !camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore")
-            .exists()
-    );
-    assert!(
-        !camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore")
-            .exists()
-    );
+    assert!(!utf8(&tmp).join("a/.gitignore").exists());
+    assert!(!utf8(&tmp).join("b/.gitignore").exists());
 }
 
 #[test]
 fn check_same_fix_missing_always_exits_zero() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -2453,12 +1566,7 @@ must_have = true
 "#,
     );
     // Quit immediately.
-    let output = run_with_stdin(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--fix-missing"],
-        b"q\n",
-    );
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--fix-missing"], b"q\n");
     assert!(output.status.success());
 }
 
@@ -2466,36 +1574,12 @@ must_have = true
 fn check_same_short_circuit_stops_after_first_failing_rule() {
     let tmp = setup_git_repos(&["a", "b"]);
     // Both rules fail; --short-circuit must report only the first one.
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/README"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/README"),
-        "y\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
+    fs::write(utf8(&tmp).join("a/README"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/README"), "y\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -2509,11 +1593,7 @@ path = "README"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--short-circuit"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--short-circuit"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -2527,36 +1607,12 @@ path = "README"
 fn check_same_short_circuit_skips_later_passing_rules_too() {
     let tmp = setup_git_repos(&["a", "b"]);
     // gi fails, readme would pass — short-circuit must not report readme at all.
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/README"),
-        "same\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/README"),
-        "same\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
+    fs::write(utf8(&tmp).join("a/README"), "same\n").unwrap();
+    fs::write(utf8(&tmp).join("b/README"), "same\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -2570,11 +1626,7 @@ path = "README"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--short-circuit"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--short-circuit"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -2585,50 +1637,14 @@ path = "README"
 fn check_same_short_circuit_keeps_earlier_passing_rules() {
     let tmp = setup_git_repos(&["a", "b"]);
     // readme passes and comes first: it is still reported, then gi stops the run.
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/README"),
-        "same\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/README"),
-        "same\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/AUTHORS"),
-        "p\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/AUTHORS"),
-        "q\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/README"), "same\n").unwrap();
+    fs::write(utf8(&tmp).join("b/README"), "same\n").unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
+    fs::write(utf8(&tmp).join("a/AUTHORS"), "p\n").unwrap();
+    fs::write(utf8(&tmp).join("b/AUTHORS"), "q\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "readme"
@@ -2647,11 +1663,7 @@ path = "AUTHORS"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--short-circuit"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--short-circuit"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[readme]"), "stdout: {stdout}");
@@ -2663,36 +1675,12 @@ path = "AUTHORS"
 #[test]
 fn check_same_short_circuit_terse_prints_one_name() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/README"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/README"),
-        "y\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
+    fs::write(utf8(&tmp).join("a/README"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/README"), "y\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -2707,7 +1695,7 @@ path = "README"
     );
 
     let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         &cfg,
         &["check-same", "--terse", "--short-circuit"],
     );
@@ -2720,22 +1708,10 @@ fn check_same_short_circuit_stops_on_empty_rule_failure() {
     let tmp = setup_git_repos(&["a", "b"]);
     // The first rule matches no files at all (a failure by default); the second
     // one would pass. --short-circuit must stop before reaching it.
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/README"),
-        "same\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/README"),
-        "same\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/README"), "same\n").unwrap();
+    fs::write(utf8(&tmp).join("b/README"), "same\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "nothing"
@@ -2749,11 +1725,7 @@ path = "README"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same", "--short-circuit"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same", "--short-circuit"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("no files matched"), "stdout: {stdout}");
@@ -2763,36 +1735,12 @@ path = "README"
 #[test]
 fn check_same_without_short_circuit_reports_every_failure() {
     let tmp = setup_git_repos(&["a", "b"]);
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/.gitignore"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/.gitignore"),
-        "y\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("a/README"),
-        "x\n",
-    )
-    .unwrap();
-    fs::write(
-        camino::Utf8Path::from_path(tmp.path())
-            .unwrap()
-            .join("b/README"),
-        "y\n",
-    )
-    .unwrap();
+    fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/.gitignore"), "y\n").unwrap();
+    fs::write(utf8(&tmp).join("a/README"), "x\n").unwrap();
+    fs::write(utf8(&tmp).join("b/README"), "y\n").unwrap();
     let cfg = write_config(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
+        utf8(&tmp),
         r#"
 [[check]]
 name = "gi"
@@ -2806,11 +1754,7 @@ path = "README"
 "#,
     );
 
-    let output = run(
-        camino::Utf8Path::from_path(tmp.path()).unwrap(),
-        &cfg,
-        &["check-same"],
-    );
+    let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
