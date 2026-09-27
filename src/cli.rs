@@ -53,8 +53,8 @@ pub struct Cli {
     pub no_stop: bool,
 
     /// Stop at the first negative result instead of processing everything.
-    /// Off by default. Currently honoured by `check-same`, which exits as soon
-    /// as one rule is broken instead of evaluating the remaining rules.
+    /// Off by default. Honoured by `check-same` and `check-exists`, which stop
+    /// at the first broken rule instead of evaluating the remaining ones.
     #[arg(long, global = true, default_value_t = false)]
     pub short_circuit: bool,
 
@@ -64,8 +64,8 @@ pub struct Cli {
 
     /// Activate each repo's local .venv (prepend .venv/bin to PATH, set
     /// VIRTUAL_ENV) before running tool subprocesses. On by default; honoured
-    /// by `run`, `build`, and `clean make`. Repos without a .venv run
-    /// with the environment unchanged. Negate with --no-venv.
+    /// by `run`, `build`, `cargo update` and `clean make`. Repos without a
+    /// .venv run with the environment unchanged. Negate with --no-venv.
     ///
     /// Not honoured by `uv`, which selects its own target environment from
     /// the repo directory and is always run with VIRTUAL_ENV unset.
