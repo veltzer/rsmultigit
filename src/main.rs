@@ -11,7 +11,7 @@ use clap::Parser;
 
 use cli::{
     BranchWhat, BuildWhat, CargoWhat, CleanWhat, Cli, Commands, CountWhat, GhWhat, ResetWhat,
-    RustWhat, StashWhat, TagWhat, UvWhat,
+    RuleKind, RustWhat, StashWhat, TagWhat, UvWhat,
 };
 use commands::check_run::{self, CheckExistsOpts, CheckSameOpts};
 use config::AppConfig;
@@ -175,9 +175,13 @@ fn main() -> Result<()> {
         Commands::Dirty => {
             runner::print_if_data(&config, &projects, commands::status::do_dirty)?;
         }
-        Commands::ListChecks => {
-            for rule in &file_config.check {
-                println!("{}", rule.name);
+        Commands::ListChecks { kind } => {
+            let names: Vec<&str> = match kind {
+                RuleKind::Check => file_config.check.iter().map(|r| r.name.as_str()).collect(),
+                RuleKind::Exists => file_config.exists.iter().map(|r| r.name.as_str()).collect(),
+            };
+            for name in names {
+                println!("{name}");
             }
         }
         Commands::ListRepos => {

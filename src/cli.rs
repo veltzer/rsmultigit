@@ -249,10 +249,15 @@ pub enum Commands {
     /// Print the path of every configured repo, one per line (no header by default).
     /// Pass --verbose to also emit the [project] header for each entry.
     ListRepos,
-    /// Print the name of every check rule defined in the config, one per line.
-    /// Intended for use in shell-completion scripts. All rules are listed,
-    /// including those with `enabled = false`.
-    ListChecks,
+    /// Print the name of every rule of one kind defined in the config, one
+    /// per line: the `[[check]]` rules by default, the `[[exists]]` rules with
+    /// `exists`. Intended for use in shell-completion scripts. All rules are
+    /// listed, including those with `enabled = false`.
+    ListChecks {
+        /// Which rule list to print
+        #[arg(value_enum, default_value_t = RuleKind::Check)]
+        kind: RuleKind,
+    },
     /// Show recent commits
     Log {
         /// Number of commits to show
@@ -334,6 +339,14 @@ pub enum Commands {
     },
     /// Print version information
     Version,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum RuleKind {
+    /// The `[[check]]` rules, consumed by `check-same`
+    Check,
+    /// The `[[exists]]` rules, consumed by `check-exists`
+    Exists,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -486,9 +499,10 @@ pub fn print_completions(shell: Shell) {
     generate(shell, &mut cmd, "rsmultigit", &mut io::stdout());
 
     // Append a dynamic extension that completes `check-same --checks <names>`
-    // against `rsmultigit list-checks`, which reads the user's config file.
-    // clap_complete only knows about static ValueEnum choices, so --checks
-    // (free-form names from the config) needs runtime help.
+    // and `check-exists --checks <names>` against `rsmultigit list-checks`
+    // (`list-checks exists` for the latter), which reads the user's config
+    // file. clap_complete only knows about static ValueEnum choices, so
+    // --checks (free-form names from the config) needs runtime help.
     match shell {
         Shell::Bash => print!("{}", CHECKS_COMPLETION_BASH),
         Shell::Zsh => print!("{}", CHECKS_COMPLETION_ZSH),
@@ -497,8 +511,9 @@ pub fn print_completions(shell: Shell) {
 }
 
 /// Bash snippet appended to `rsmultigit complete bash`. Wraps clap's generated
-/// `_rsmultigit` function so that tabbing after `check-same --checks` completes
-/// check names returned by `rsmultigit list-checks`.
+/// `_rsmultigit` function so that tabbing after `check-same --checks` or
+/// `check-exists --checks` completes the rule names returned by
+/// `rsmultigit list-checks` / `rsmultigit list-checks exists`.
 const CHECKS_COMPLETION_BASH: &str = r#"
 # rsmultigit: dynamic --checks completion (appended by `rsmultigit complete bash`)
 if declare -F _rsmultigit >/dev/null; then
@@ -510,22 +525,23 @@ if declare -F _rsmultigit >/dev/null; then
         prev="${COMP_WORDS[COMP_CWORD-1]}"
 
         local in_checks=0
-        local saw_check_same=0
+        local kind=""
         for ((i=1; i<COMP_CWORD; i++)); do
             local w="${COMP_WORDS[i]}"
             case "$w" in
-                check-same) saw_check_same=1 ;;
-                --checks)   in_checks=1 ;;
-                --*)        in_checks=0 ;;
+                check-same)   kind=check ;;
+                check-exists) kind=exists ;;
+                --checks)     in_checks=1 ;;
+                --*)          in_checks=0 ;;
             esac
         done
         if [[ "$prev" == "--checks" ]]; then
             in_checks=1
         fi
 
-        if (( saw_check_same && in_checks )); then
+        if [[ -n "$kind" ]] && (( in_checks )); then
             local names
-            names=$(rsmultigit list-checks 2>/dev/null)
+            names=$(rsmultigit list-checks "$kind" 2>/dev/null)
             if [[ -n "$names" ]]; then
                 # shellcheck disable=SC2207
                 COMPREPLY=($(compgen -W "$names" -- "$cur"))
@@ -549,22 +565,23 @@ if (( ${+functions[_rsmultigit]} )); then
     _rsmultigit() {
         local prev=${words[$CURRENT-1]}
         local seen_checks=0
-        local seen_check_same=0
+        local kind=""
         local i
         for ((i=1; i<CURRENT; i++)); do
             case "${words[i]}" in
-                check-same) seen_check_same=1 ;;
-                --checks)   seen_checks=1 ;;
-                --*)        seen_checks=0 ;;
+                check-same)   kind=check ;;
+                check-exists) kind=exists ;;
+                --checks)     seen_checks=1 ;;
+                --*)          seen_checks=0 ;;
             esac
         done
         if [[ "$prev" == "--checks" ]]; then
             seen_checks=1
         fi
 
-        if (( seen_check_same && seen_checks )); then
+        if [[ -n "$kind" ]] && (( seen_checks )); then
             local -a names
-            names=(${(f)"$(rsmultigit list-checks 2>/dev/null)"})
+            names=(${(f)"$(rsmultigit list-checks "$kind" 2>/dev/null)"})
             if (( ${#names} )); then
                 _describe 'check name' names
                 return 0
@@ -736,6 +753,34 @@ mod tests {
         for shell in complete_shells {
             let result = Cli::try_parse_from(["rsmultigit", "complete", shell]);
             assert!(result.is_ok(), "complete {shell} should parse");
+        }
+    }
+
+    #[test]
+    fn parse_list_checks_kind() {
+        let cli = parse(&["rsmultigit", "list-checks"]);
+        assert!(matches!(
+            cli.command,
+            Commands::ListChecks {
+                kind: RuleKind::Check
+            }
+        ));
+        let cli = parse(&["rsmultigit", "list-checks", "exists"]);
+        assert!(matches!(
+            cli.command,
+            Commands::ListChecks {
+                kind: RuleKind::Exists
+            }
+        ));
+        assert!(Cli::try_parse_from(["rsmultigit", "list-checks", "both"]).is_err());
+    }
+
+    #[test]
+    fn completion_snippets_know_both_check_commands() {
+        for snippet in [CHECKS_COMPLETION_BASH, CHECKS_COMPLETION_ZSH] {
+            assert!(snippet.contains("check-same)"));
+            assert!(snippet.contains("check-exists)"));
+            assert!(snippet.contains(r#"list-checks "$kind""#));
         }
     }
 

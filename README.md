@@ -138,7 +138,7 @@ rsmultigit complete bash >> ~/.bash_completion
 | `check-same --fix-missing` | Interactively create files missing from `must_have` repos |
 | `check-exists` | Verify that `[[exists]]` files are present in every selected repo |
 | `check-all` | Run both checks; exit non-zero if either fails |
-| `list-checks` | Print every `[[check]]` rule name (used by shell completion) |
+| `list-checks [check\|exists]` | Print every rule name of one kind (used by shell completion) |
 
 ### Operations
 | Command | Description |

@@ -350,11 +350,12 @@ the second. Exit code is non-zero if either half fails.
 rsmultigit check-all --only-failed
 ```
 
-### `rsmultigit list-checks`
+### `rsmultigit list-checks [check|exists]`
 
-Print the name of every `[[check]]` rule, one per line, including disabled
-ones. The bash and zsh completion scripts call this to complete
-`check-same --checks <TAB>`.
+Print the name of every `[[check]]` rule (the default) or every `[[exists]]`
+rule, one per line, including disabled ones. The bash and zsh completion
+scripts call this to complete `check-same --checks <TAB>` and
+`check-exists --checks <TAB>`.
 
 ## Build Commands
 
@@ -501,8 +502,9 @@ rsmultigit config-example > ~/.config/rsmultigit/config.toml
 ### `rsmultigit complete <bash|zsh|fish|elvish|powershell>`
 
 Print a shell completion script. The bash and zsh scripts additionally
-complete `check-same --checks <TAB>` with the rule names from your config,
-by calling `rsmultigit list-checks` at completion time.
+complete `check-same --checks <TAB>` and `check-exists --checks <TAB>` with
+the rule names from your config, by calling `rsmultigit list-checks` at
+completion time.
 
 ```bash
 rsmultigit complete bash >> ~/.bash_completion
