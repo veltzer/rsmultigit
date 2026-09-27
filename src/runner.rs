@@ -1,7 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use std::io::{self, Write};
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
 
 use anyhow::{Context, Result};
@@ -39,8 +38,21 @@ fn headers_suppressed(config: &AppConfig) -> bool {
     config.no_header || config.terse
 }
 
+/// The current directory as a UTF-8 path, for resolving relative repo paths.
+fn current_dir() -> Result<Utf8PathBuf> {
+    let cwd = std::env::current_dir().context("failed to get current directory")?;
+    Utf8PathBuf::from_path_buf(cwd)
+        .map_err(|p| anyhow::anyhow!("current directory is not valid UTF-8: {}", p.display()))
+}
+
 /// Execute `work` across `projects`, optionally in parallel. Results are delivered
 /// to `on_result` in input order on the calling thread so stdout stays ordered.
+///
+/// An error returned by `on_result` ends the run: no further results are
+/// delivered, and workers stop claiming projects (those already in flight
+/// finish). This matches the serial path, which returns at the first error.
+/// Under `--no-stop` the callbacks report the error themselves and return
+/// `Ok`, so everything runs to completion.
 fn for_each_project_ordered<T, W, R>(
     jobs: usize,
     projects: &[Utf8PathBuf],
@@ -61,13 +73,20 @@ where
     }
 
     let next = AtomicUsize::new(0);
+    let cancel = AtomicBool::new(false);
     let (tx, rx) = mpsc::channel::<(usize, Result<T>)>();
 
     let pb = {
         use std::io::IsTerminal;
         if projects.len() > 1 && io::stderr().is_terminal() {
+            let style = indicatif::ProgressStyle::default_bar()
+                .template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}",
+                )
+                .expect("static progress-bar template is valid")
+                .progress_chars("#>-");
             let pb = indicatif::ProgressBar::new(projects.len() as u64);
-            pb.set_style(indicatif::ProgressStyle::default_bar().template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}").unwrap().progress_chars("#>-"));
+            pb.set_style(style);
             Some(pb)
         } else {
             None
@@ -78,14 +97,20 @@ where
         for _ in 0..jobs.min(projects.len()) {
             let tx = tx.clone();
             let next = &next;
+            let cancel = &cancel;
             let work = &work;
             scope.spawn(move || {
                 loop {
+                    if cancel.load(Ordering::SeqCst) {
+                        break;
+                    }
                     let idx = next.fetch_add(1, Ordering::SeqCst);
                     if idx >= projects.len() {
                         break;
                     }
                     let result = work(&projects[idx]);
+                    // A closed receiver means the main thread gave up on the
+                    // run; nothing more to do here either.
                     if tx.send((idx, result)).is_err() {
                         break;
                     }
@@ -96,31 +121,30 @@ where
 
         let mut buffer: Vec<Option<Result<T>>> = (0..projects.len()).map(|_| None).collect();
         let mut next_emit = 0usize;
-        let mut first_err: Option<anyhow::Error> = None;
+        let mut outcome: Result<()> = Ok(());
 
-        for (idx, result) in rx {
+        'receive: for (idx, result) in rx {
             buffer[idx] = Some(result);
             if let Some(pb) = &pb {
                 pb.inc(1);
             }
             while next_emit < projects.len() && buffer[next_emit].is_some() {
                 let result = buffer[next_emit].take().unwrap();
-                if let Some(pb) = &pb {
-                    pb.suspend(|| {
-                        if let Err(e) = on_result(&projects[next_emit], result)
-                            && first_err.is_none()
-                        {
-                            first_err = Some(e);
-                        }
-                    });
-                } else {
-                    if let Err(e) = on_result(&projects[next_emit], result)
-                        && first_err.is_none()
-                    {
-                        first_err = Some(e);
-                    }
-                }
+                let project = &projects[next_emit];
+                let emitted = match &pb {
+                    Some(pb) => pb.suspend(|| on_result(project, result)),
+                    None => on_result(project, result),
+                };
                 next_emit += 1;
+                if let Err(e) = emitted {
+                    // Stop the run the way the serial path does: nothing
+                    // further is delivered. Breaking drops the receiver, so
+                    // workers exit on their next send; the flag stops those
+                    // between jobs from claiming another.
+                    cancel.store(true, Ordering::SeqCst);
+                    outcome = Err(e);
+                    break 'receive;
+                }
             }
         }
 
@@ -128,10 +152,7 @@ where
             pb.finish_and_clear();
         }
 
-        match first_err {
-            Some(e) => Err(e),
-            None => Ok(()),
-        }
+        outcome
     })
 }
 
@@ -142,7 +163,8 @@ where
     F: Fn(&Utf8Path) -> Result<bool> + Sync,
 {
     let total = projects.len() as u32;
-    let count = Mutex::new(0u32);
+    // on_result runs only on the calling thread, so a plain counter suffices.
+    let mut count = 0u32;
     let jobs = resolve_jobs(config);
 
     for_each_project_ordered(
@@ -165,13 +187,13 @@ where
                 if !config.terse {
                     println!("{}", project);
                 }
-                *count.lock().unwrap() += 1;
+                count += 1;
             }
             Ok(())
         },
     )?;
 
-    println!("{}/{}", *count.lock().unwrap(), total);
+    println!("{count}/{total}");
     Ok(())
 }
 
@@ -195,13 +217,12 @@ where
     C: Fn(&Utf8Path) -> Result<bool> + Sync,
     F: Fn(&Utf8Path) -> Result<bool> + Sync,
 {
-    let base = camino::Utf8PathBuf::from_path_buf(
-        std::env::current_dir().context("failed to get current directory")?,
-    )
-    .unwrap();
+    let base = current_dir()?;
     let jobs = resolve_jobs(config);
 
-    // Serial fast path: action writes live to inherited stdout/stderr.
+    // Serial fast path: action writes live to inherited stdout/stderr. With
+    // --no-output the action runs under capture and the buffer is dropped,
+    // which is the same silencing the parallel path applies.
     if jobs <= 1 || projects.len() <= 1 {
         let show_header = !headers_suppressed(config);
         for project in projects {
@@ -230,7 +251,15 @@ where
                 print_project_header(project);
             }
 
-            if let Err(e) = action(&abs).with_context(|| format!("error in project {}", project)) {
+            let outcome = if config.no_output {
+                crate::subprocess_utils::enter_capture();
+                let r = action(&abs);
+                let captured = crate::subprocess_utils::leave_capture();
+                r.map_err(|e| attach_captured(e, &captured))
+            } else {
+                action(&abs)
+            };
+            if let Err(e) = outcome.with_context(|| format!("error in project {}", project)) {
                 if config.no_stop {
                     eprintln!("error in {}: {e:#}", project);
                 } else {
@@ -264,9 +293,7 @@ where
             let captured = crate::subprocess_utils::leave_capture();
             match r {
                 Ok(passed) => Ok((passed, captured)),
-                Err(e) => {
-                    Err(e.context(format!("captured: {}", String::from_utf8_lossy(&captured))))
-                }
+                Err(e) => Err(attach_captured(e, &captured)),
             }
         },
         |project, result| -> Result<()> {
@@ -277,7 +304,7 @@ where
                         if show_header {
                             print_project_header(project);
                         }
-                        if passed {
+                        if passed && !config.no_output {
                             let stdout = io::stdout();
                             let mut lock = stdout.lock();
                             lock.write_all(&captured).ok();
@@ -298,15 +325,22 @@ where
     )
 }
 
+/// Attach a failed action's captured subprocess output to its error, so a
+/// failure that happened under capture is not reported without its cause.
+fn attach_captured(e: anyhow::Error, captured: &[u8]) -> anyhow::Error {
+    if captured.is_empty() {
+        e
+    } else {
+        e.context(format!("captured: {}", String::from_utf8_lossy(captured)))
+    }
+}
+
 /// Runner for "print projects that return data" commands.
 pub fn print_if_data<F>(config: &AppConfig, projects: &[Utf8PathBuf], data_fn: F) -> Result<()>
 where
     F: Fn(&Utf8Path) -> Result<Option<String>> + Sync,
 {
-    let base = camino::Utf8PathBuf::from_path_buf(
-        std::env::current_dir().context("failed to get current directory")?,
-    )
-    .unwrap();
+    let base = current_dir()?;
     let jobs = resolve_jobs(config);
     let projects_vec: Vec<Utf8PathBuf> = projects.to_vec();
 
@@ -512,6 +546,54 @@ mod tests {
         let result = do_for_all_projects(&config, &projects, |_| {
             counter.fetch_add(1, Ordering::SeqCst);
             Ok(true)
+        });
+        assert!(result.is_ok());
+        assert_eq!(counter.load(Ordering::SeqCst), 4);
+    }
+
+    #[test]
+    fn do_for_all_parallel_stops_on_error_by_default() {
+        let tmp = TempDir::new().unwrap();
+        let projects = make_dirs(
+            camino::Utf8Path::from_path(tmp.path()).unwrap(),
+            &["a", "b", "c", "d", "e", "f", "g", "h"],
+        );
+        let mut config = default_config();
+        config.jobs = 2;
+
+        let counter = AtomicU32::new(0);
+        let result = do_for_all_projects(&config, &projects, |p| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            if p.file_name() == Some("a") {
+                anyhow::bail!("fail")
+            }
+            // Give the main thread time to see the failure before this
+            // worker looks for more work.
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            Ok(true)
+        });
+        assert!(result.is_err());
+        // "a" fails at once; the other worker is at most one project in, and
+        // neither claims anything further once the failure is delivered.
+        let visited = counter.load(Ordering::SeqCst);
+        assert!(visited < projects.len() as u32, "visited {visited}");
+    }
+
+    #[test]
+    fn do_for_all_parallel_no_stop_visits_everything() {
+        let tmp = TempDir::new().unwrap();
+        let projects = make_dirs(
+            camino::Utf8Path::from_path(tmp.path()).unwrap(),
+            &["a", "b", "c", "d"],
+        );
+        let mut config = default_config();
+        config.jobs = 2;
+        config.no_stop = true;
+
+        let counter = AtomicU32::new(0);
+        let result = do_for_all_projects(&config, &projects, |_| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            anyhow::bail!("fail")
         });
         assert!(result.is_ok());
         assert_eq!(counter.load(Ordering::SeqCst), 4);

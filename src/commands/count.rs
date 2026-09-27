@@ -7,12 +7,27 @@ pub(crate) fn open_repo(project: &Utf8Path) -> Result<Repository> {
     Repository::open(project).with_context(|| format!("failed to open repo at {}", project))
 }
 
+/// Status options for the working-tree scans. `statuses(None)` would use
+/// libgit2's defaults (untracked files included, untracked directories
+/// recursed, ignored entries included); this keeps the first two and drops
+/// the third, since listing ignored paths means walking `target/`, `.venv/`
+/// and friends only to discard them, and nothing here looks at them. An
+/// explicit `StatusOptions` starts blank, hence the untracked flags are set
+/// rather than inherited.
+pub(crate) fn status_options() -> git2::StatusOptions {
+    let mut opts = git2::StatusOptions::new();
+    opts.include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_ignored(false);
+    opts
+}
+
 /// Returns true if there are any dirty changes (modified, staged, or new in index)
 /// OR any untracked files. One status scan serves both questions.
 pub fn has_changes(project: &Utf8Path) -> Result<(bool, bool)> {
     let repo = open_repo(project)?;
     let statuses = repo
-        .statuses(None)
+        .statuses(Some(&mut status_options()))
         .with_context(|| format!("failed to get statuses for {}", project))?;
     let mut dirty = false;
     let mut untracked = false;
@@ -51,34 +66,49 @@ pub fn has_untracked(project: &Utf8Path) -> Result<bool> {
     Ok(has_changes(project)?.1)
 }
 
-/// Returns `Some((ahead, behind))` relative to `refs/remotes/origin/<current_branch>`,
-/// or `None` when the repo has no HEAD, no branch, or no upstream ref.
+/// Returns `Some((ahead, behind))` of the checked-out branch relative to its
+/// upstream, or `None` when the repo has no HEAD, HEAD is detached, or no
+/// upstream can be found (see [`upstream_oid`]).
 pub fn ahead_behind(project: &Utf8Path) -> Result<Option<(usize, usize)>> {
     let repo = open_repo(project)?;
+    ahead_behind_in(&repo)
+}
 
-    let head = match repo.head() {
-        Ok(h) => h,
-        Err(_) => return Ok(None),
+/// [`ahead_behind`] for an already-open repository, so callers that have
+/// one for another scan do not open it twice.
+pub(crate) fn ahead_behind_in(repo: &Repository) -> Result<Option<(usize, usize)>> {
+    let Ok(head) = repo.head() else {
+        return Ok(None);
     };
-
-    let local_oid = match head.target() {
-        Some(oid) => oid,
-        None => return Ok(None),
+    let Some(local_oid) = head.target() else {
+        return Ok(None);
     };
-
-    let branch_name = match head.shorthand() {
-        Ok(name) => name.to_string(),
-        Err(_) => return Ok(None),
+    let Some(upstream_oid) = upstream_oid(repo, &head) else {
+        return Ok(None);
     };
-
-    let upstream_ref = format!("refs/remotes/origin/{branch_name}");
-    let upstream_oid = match repo.refname_to_id(&upstream_ref) {
-        Ok(oid) => oid,
-        Err(_) => return Ok(None),
-    };
-
     let counts = repo.graph_ahead_behind(local_oid, upstream_oid)?;
     Ok(Some(counts))
+}
+
+/// The commit `head`'s branch is measured against. This is the configured
+/// upstream (`branch.<name>.remote` + `branch.<name>.merge`, as `clone` and
+/// `push -u` set it), so a remote that is not called `origin` or a branch
+/// tracking a differently named remote branch is handled the way git itself
+/// handles it. When no upstream is configured, `refs/remotes/origin/<name>`
+/// is used instead, since that is where an untracked branch usually lives.
+fn upstream_oid(repo: &Repository, head: &git2::Reference<'_>) -> Option<git2::Oid> {
+    if !head.is_branch() {
+        return None;
+    }
+    let name = head.shorthand().ok()?;
+    if let Ok(branch) = repo.find_branch(name, git2::BranchType::Local)
+        && let Ok(upstream) = branch.upstream()
+        && let Some(oid) = upstream.get().target()
+    {
+        return Some(oid);
+    }
+    repo.refname_to_id(&format!("refs/remotes/origin/{name}"))
+        .ok()
 }
 
 /// Returns true if the local branch is NOT synchronized with its upstream.
@@ -213,6 +243,81 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         init_repo_with_commit(camino::Utf8Path::from_path(tmp.path()).unwrap());
         assert!(non_synchronized(camino::Utf8Path::from_path(tmp.path()).unwrap()).unwrap());
+    }
+
+    /// Add `remote`, point `branch.<head>.remote`/`.merge` at
+    /// `refs/remotes/<remote>/<branch>` and create that ref at HEAD, the way
+    /// `git remote add` plus `git push -u <remote> <branch>` do. libgit2 maps
+    /// the merge ref through the remote's fetch refspec, so the remote must
+    /// exist.
+    fn track(repo: &Repository, remote: &str, branch: &str) {
+        repo.remote(remote, "https://example.invalid/repo.git")
+            .unwrap();
+        let head = repo.head().unwrap();
+        let local = head.shorthand().unwrap().to_string();
+        let oid = head.target().unwrap();
+        repo.reference(
+            &format!("refs/remotes/{remote}/{branch}"),
+            oid,
+            true,
+            "upstream",
+        )
+        .unwrap();
+        let mut cfg = repo.config().unwrap();
+        cfg.set_str(&format!("branch.{local}.remote"), remote)
+            .unwrap();
+        cfg.set_str(
+            &format!("branch.{local}.merge"),
+            &format!("refs/heads/{branch}"),
+        )
+        .unwrap();
+    }
+
+    fn commit_empty(repo: &Repository, msg: &str) {
+        let sig = Signature::now("Test", "test@test.com").unwrap();
+        let parent = repo.head().unwrap().peel_to_commit().unwrap();
+        let tree = parent.tree().unwrap();
+        repo.commit(Some("HEAD"), &sig, &sig, msg, &tree, &[&parent])
+            .unwrap();
+    }
+
+    #[test]
+    fn configured_upstream_on_other_remote_is_used() {
+        let tmp = TempDir::new().unwrap();
+        let dir = camino::Utf8Path::from_path(tmp.path()).unwrap();
+        let repo = init_repo_with_commit(dir);
+        // Tracks `upstream/main` although the local branch is not called main
+        // and there is no origin at all.
+        track(&repo, "upstream", "main");
+        assert_eq!(ahead_behind(dir).unwrap(), Some((0, 0)));
+        commit_empty(&repo, "local only");
+        assert_eq!(ahead_behind(dir).unwrap(), Some((1, 0)));
+        assert!(is_ahead(dir).unwrap());
+        assert!(non_synchronized(dir).unwrap());
+    }
+
+    #[test]
+    fn falls_back_to_origin_when_no_upstream_configured() {
+        let tmp = TempDir::new().unwrap();
+        let dir = camino::Utf8Path::from_path(tmp.path()).unwrap();
+        let repo = init_repo_with_commit(dir);
+        let head = repo.head().unwrap();
+        let branch = head.shorthand().unwrap().to_string();
+        let oid = head.target().unwrap();
+        repo.reference(&format!("refs/remotes/origin/{branch}"), oid, true, "x")
+            .unwrap();
+        assert_eq!(ahead_behind(dir).unwrap(), Some((0, 0)));
+        assert!(!non_synchronized(dir).unwrap());
+    }
+
+    #[test]
+    fn detached_head_has_no_upstream() {
+        let tmp = TempDir::new().unwrap();
+        let dir = camino::Utf8Path::from_path(tmp.path()).unwrap();
+        let repo = init_repo_with_commit(dir);
+        let oid = repo.head().unwrap().target().unwrap();
+        repo.set_head_detached(oid).unwrap();
+        assert_eq!(ahead_behind(dir).unwrap(), None);
     }
 
     #[test]

@@ -23,6 +23,20 @@ pub fn leave_capture() -> Vec<u8> {
     CAPTURE_BUF.with(|cell| cell.borrow_mut().take().unwrap_or_default())
 }
 
+/// Print one line of a command's own output. It goes into the per-thread
+/// capture buffer when one is active (the parallel runner, `--no-output`)
+/// and straight to stdout otherwise, so command modules that format their
+/// own output (`grep`, `gh`, ...) stay in repo order under `-j` and are
+/// silenced by `--no-output` just like subprocess output.
+pub fn out_line(line: &str) {
+    if is_capturing() {
+        append_to_capture(line.as_bytes());
+        append_to_capture(b"\n");
+    } else {
+        println!("{line}");
+    }
+}
+
 fn is_capturing() -> bool {
     CAPTURE_BUF.with(|cell| cell.borrow().is_some())
 }
@@ -297,6 +311,15 @@ mod tests {
         let captured = leave_capture();
         let text = String::from_utf8_lossy(&captured);
         assert!(text.contains("hi"));
+    }
+
+    #[test]
+    fn out_line_goes_to_capture_when_active() {
+        enter_capture();
+        out_line("first");
+        out_line("second");
+        let captured = String::from_utf8(leave_capture()).unwrap();
+        assert_eq!(captured, "first\nsecond\n");
     }
 
     #[test]

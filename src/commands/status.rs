@@ -2,7 +2,7 @@ use camino::Utf8Path;
 
 use anyhow::{Context, Result};
 
-use crate::commands::count::{ahead_behind, open_repo};
+use crate::commands::count::{ahead_behind, ahead_behind_in, open_repo, status_options};
 use crate::subprocess_utils::capture_output;
 
 /// Returns `Some(output)` when the repo needs attention: `git status -s` shows
@@ -18,7 +18,7 @@ pub fn do_status(project: &Utf8Path) -> Result<Option<String>> {
                     output.push('\n');
                 }
                 let plural = if count == 1 { "" } else { "s" };
-                output.push_str(&format!("{direction} origin by {count} commit{plural}"));
+                output.push_str(&format!("{direction} upstream by {count} commit{plural}"));
             }
         }
     }
@@ -36,7 +36,7 @@ pub fn do_status(project: &Utf8Path) -> Result<Option<String>> {
 pub fn do_status_summary(project: &Utf8Path) -> Result<Option<String>> {
     let repo = open_repo(project)?;
     let statuses = repo
-        .statuses(None)
+        .statuses(Some(&mut status_options()))
         .with_context(|| format!("failed to get statuses for {}", project))?;
 
     let mut staged = 0u32;
@@ -83,7 +83,7 @@ pub fn do_status_summary(project: &Utf8Path) -> Result<Option<String>> {
             parts.push(format!("{count} {label}"));
         }
     }
-    if let Some((ahead, behind)) = ahead_behind(project)? {
+    if let Some((ahead, behind)) = ahead_behind_in(&repo)? {
         for (count, direction) in [(ahead, "ahead"), (behind, "behind")] {
             if count > 0 {
                 parts.push(format!("{direction} {count}"));

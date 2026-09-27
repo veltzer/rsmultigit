@@ -2,7 +2,7 @@ use camino::Utf8Path;
 
 use anyhow::{Context, Result};
 
-use crate::subprocess_utils::capture_output;
+use crate::subprocess_utils::{capture_output, out_line};
 
 /// Repos the gh commands can operate on: those with a remote on github.com.
 pub fn check_github(project: &Utf8Path) -> Result<bool> {
@@ -107,11 +107,11 @@ fn clean_deployments(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> 
     }
 
     let to_delete = select_deletions(&items, keep);
-    println!(
+    out_line(&format!(
         "deployments: {} found, deleting {}",
         items.len(),
         to_delete.len()
-    );
+    ));
     for id in to_delete {
         // GitHub refuses to delete an active deployment, so mark it
         // inactive first.
@@ -137,7 +137,7 @@ fn clean_deployments(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> 
                 "DELETE",
             ],
         )?;
-        println!("  deleted deployment {id}");
+        out_line(&format!("  deleted deployment {id}"));
     }
     Ok(())
 }
@@ -149,11 +149,11 @@ fn clean_releases(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> {
         .collect::<Result<_>>()?;
 
     let to_delete: Vec<u64> = ids.iter().skip(keep).copied().collect();
-    println!(
+    out_line(&format!(
         "releases: {} found, deleting {}",
         ids.len(),
         to_delete.len()
-    );
+    ));
     for id in to_delete {
         capture_output(
             project,
@@ -165,7 +165,7 @@ fn clean_releases(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> {
                 "DELETE",
             ],
         )?;
-        println!("  deleted release {id}");
+        out_line(&format!("  deleted release {id}"));
     }
     Ok(())
 }
@@ -186,11 +186,11 @@ fn clean_workflows(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> {
     }
 
     let to_delete = select_deletions(&items, keep);
-    println!(
+    out_line(&format!(
         "workflow runs: {} found, deleting {}",
         items.len(),
         to_delete.len()
-    );
+    ));
     for id in to_delete {
         capture_output(
             project,
@@ -202,7 +202,7 @@ fn clean_workflows(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> {
                 "DELETE",
             ],
         )?;
-        println!("  deleted workflow run {id}");
+        out_line(&format!("  deleted workflow run {id}"));
     }
     Ok(())
 }

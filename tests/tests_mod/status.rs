@@ -128,7 +128,7 @@ fn status_shows_repo_with_unpushed_commits() {
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
-        stdout.contains("ahead of origin by 1 commit"),
+        stdout.contains("ahead of upstream by 1 commit"),
         "verbose should explain the unpushed commit: {stdout}"
     );
 }

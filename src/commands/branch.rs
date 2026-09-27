@@ -2,7 +2,7 @@ use camino::Utf8Path;
 
 use anyhow::Result;
 
-use crate::subprocess_utils::{capture_output, check_call};
+use crate::subprocess_utils::{capture_output, check_call, out_line};
 
 /// Show local branches.
 pub fn branch_local(project: &Utf8Path) -> Result<bool> {
@@ -30,6 +30,6 @@ pub fn branch_github(project: &Utf8Path) -> Result<bool> {
             ".defaultBranchRef.name",
         ],
     )?;
-    println!("{output}");
+    out_line(&output);
     Ok(true)
 }

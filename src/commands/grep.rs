@@ -2,7 +2,7 @@ use camino::Utf8Path;
 
 use anyhow::Result;
 
-use crate::subprocess_utils::capture_output_allow_failure;
+use crate::subprocess_utils::{capture_output_allow_failure, out_line};
 
 /// Grep across the repository. Prefix output lines with the project name.
 /// `git grep` exit codes: 0 = match, 1 = no match, >=2 = error.
@@ -24,9 +24,9 @@ pub fn do_grep(project: &Utf8Path, regexp: &str, files_only: bool) -> Result<boo
 
             for line in stdout.lines() {
                 if files_only {
-                    println!("{project_name}/{line}");
+                    out_line(&format!("{project_name}/{line}"));
                 } else {
-                    println!("{project_name}: {line}");
+                    out_line(&format!("{project_name}: {line}"));
                 }
             }
             Ok(true)
