@@ -19,7 +19,8 @@ with native performance.
   repair drift
 - **Build orchestration** — run make, rsconstruct, cargo, or bootstrap across
   all projects, with each repo's `.venv` activated automatically
-- **Tooling passthrough** — `uv lock` / `uv sync`, `cargo build|clippy|fmt|test|update|...`,
+- **Tooling passthrough** — `uv lock|sync|build|publish`, `cargo build|clippy|fmt|test|update|...`,
+  `npm install|ci|update|audit|...`,
   `cargo release`, and `gh` cleanup on the repos where they apply
 - **Parallel execution** — `-j N` runs repos concurrently while output stays
   in repo order

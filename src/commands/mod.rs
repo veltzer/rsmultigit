@@ -19,6 +19,7 @@ pub mod grep;
 pub mod interactive;
 pub mod last_tag;
 pub mod log;
+pub mod npm;
 pub mod prune;
 pub mod pull;
 pub mod push;

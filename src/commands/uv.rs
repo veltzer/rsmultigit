@@ -33,3 +33,19 @@ pub fn lock(project: &Utf8Path, upgrade: bool, check: bool) -> Result<()> {
     check_call_clean_env(project, "uv", args)?;
     Ok(())
 }
+
+/// Build the sdist and wheel into `dist/`: `uv build`. Runs with a clean
+/// environment, as `sync` does.
+pub fn build(project: &Utf8Path) -> Result<()> {
+    check_call_clean_env(project, "uv", &["build"])?;
+    Ok(())
+}
+
+/// Upload whatever `uv build` left in `dist/` to the package index:
+/// `uv publish`. Credentials come from uv's own configuration (`UV_PUBLISH_*`,
+/// trusted publishing, keyring); rsmultigit passes nothing through. Runs with
+/// a clean environment, as `sync` does.
+pub fn publish(project: &Utf8Path) -> Result<()> {
+    check_call_clean_env(project, "uv", &["publish"])?;
+    Ok(())
+}

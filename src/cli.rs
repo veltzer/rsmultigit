@@ -64,7 +64,7 @@ pub struct Cli {
 
     /// Activate each repo's local .venv (prepend .venv/bin to PATH, set
     /// VIRTUAL_ENV) before running tool subprocesses. On by default; honoured
-    /// by `run`, `build`, `cargo` and `clean make`. Repos without a
+    /// by `run`, `build`, `cargo`, `npm` and `clean make`. Repos without a
     /// .venv run with the environment unchanged. Negate with --no-venv.
     ///
     /// Not honoured by `uv`, which selects its own target environment from
@@ -322,12 +322,14 @@ pub enum Commands {
         #[arg(value_enum)]
         what: UvWhat,
         /// Allow upgrading locked versions (`uv lock --upgrade`).
-        /// Only meaningful with `lock`; combining it with `sync` is an error.
+        /// Only meaningful with `lock`; combining it with any other
+        /// operation is an error.
         #[arg(long, default_value_t = false)]
         upgrade: bool,
         /// Assert the lockfile is up to date without writing it
         /// (`uv lock --check`; a stale lockfile is an error).
-        /// Only meaningful with `lock`; combining it with `sync` is an error.
+        /// Only meaningful with `lock`; combining it with any other
+        /// operation is an error.
         #[arg(long, default_value_t = false, conflicts_with = "upgrade")]
         check: bool,
     },
@@ -346,6 +348,17 @@ pub enum Commands {
         /// combining it with any other operation is an error.
         #[arg(long, default_value_t = false, conflicts_with = "release")]
         check: bool,
+    },
+    /// Run npm operations on projects that have a package.json file
+    Npm {
+        /// What npm operation to perform
+        #[arg(value_enum)]
+        what: NpmWhat,
+        /// Also apply the fixes (`npm audit fix`; rewrites package.json and
+        /// package-lock.json). Only meaningful with `audit`; combining it
+        /// with any other operation is an error.
+        #[arg(long, default_value_t = false)]
+        fix: bool,
     },
     /// Print version information
     Version,
@@ -374,6 +387,39 @@ pub enum UvWhat {
     Lock,
     /// Sync the project environment from the lockfile (`uv sync`)
     Sync,
+    /// Build the sdist and wheel into `dist/` (`uv build`)
+    Build,
+    /// Upload the distributions in `dist/` to the package index (`uv publish`)
+    Publish,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum NpmWhat {
+    /// Install dependencies from package.json, writing package-lock.json
+    /// (`npm install`)
+    Install,
+    /// Clean install exactly what package-lock.json says (`npm ci`)
+    Ci,
+    /// Update dependencies to the newest versions their declared ranges
+    /// allow, rewriting package-lock.json (`npm update`)
+    Update,
+    /// Report known vulnerabilities (`npm audit`; `--fix` also applies
+    /// the fixes)
+    Audit,
+    /// List dependencies with newer releases (`npm outdated`; exits
+    /// non-zero when any are outdated)
+    Outdated,
+    /// Run the test script (`npm test`)
+    Test,
+    /// Publish the package to the registry (`npm publish`)
+    Publish,
+}
+
+impl NpmWhat {
+    /// Whether `--fix` makes sense for this operation (only `audit`).
+    pub fn takes_fix(self) -> bool {
+        matches!(self, NpmWhat::Audit)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -770,7 +816,7 @@ mod tests {
         }
 
         // uv requires a what argument; --upgrade parses with lock
-        let uv_whats = ["lock", "sync"];
+        let uv_whats = ["lock", "sync", "build", "publish"];
         for what in uv_whats {
             let result = Cli::try_parse_from(["rsmultigit", "uv", what]);
             assert!(result.is_ok(), "uv {what} should parse");
@@ -806,6 +852,19 @@ mod tests {
         assert!(result.is_ok(), "cargo fmt --check should parse");
         let result = Cli::try_parse_from(["rsmultigit", "cargo"]);
         assert!(result.is_err(), "cargo without a what should not parse");
+
+        // npm requires a what argument; --fix parses with audit
+        let npm_whats = [
+            "install", "ci", "update", "audit", "outdated", "test", "publish",
+        ];
+        for what in npm_whats {
+            let result = Cli::try_parse_from(["rsmultigit", "npm", what]);
+            assert!(result.is_ok(), "npm {what} should parse");
+        }
+        let result = Cli::try_parse_from(["rsmultigit", "npm", "audit", "--fix"]);
+        assert!(result.is_ok(), "npm audit --fix should parse");
+        let result = Cli::try_parse_from(["rsmultigit", "npm"]);
+        assert!(result.is_err(), "npm without a what should not parse");
 
         // complete requires an argument
         let complete_shells = ["bash", "zsh", "fish", "elvish", "powershell"];
@@ -1043,6 +1102,41 @@ mod tests {
     fn parse_uv_lock_check_conflicts_with_upgrade() {
         let result = Cli::try_parse_from(["rsmultigit", "uv", "lock", "--check", "--upgrade"]);
         assert!(result.is_err(), "--check and --upgrade should conflict");
+    }
+
+    #[test]
+    fn parse_npm_audit_fix() {
+        let cli = parse(&["rsmultigit", "npm", "audit", "--fix"]);
+        match &cli.command {
+            Commands::Npm { what, fix } => {
+                assert_eq!(*what, NpmWhat::Audit);
+                assert!(*fix);
+            }
+            _ => panic!("expected Npm"),
+        }
+        let cli = parse(&["rsmultigit", "npm", "install"]);
+        match &cli.command {
+            Commands::Npm { what, fix } => {
+                assert_eq!(*what, NpmWhat::Install);
+                assert!(!*fix);
+            }
+            _ => panic!("expected Npm"),
+        }
+    }
+
+    #[test]
+    fn npm_fix_applies_to_audit_only() {
+        for what in [
+            NpmWhat::Install,
+            NpmWhat::Ci,
+            NpmWhat::Update,
+            NpmWhat::Outdated,
+            NpmWhat::Test,
+            NpmWhat::Publish,
+        ] {
+            assert!(!what.takes_fix(), "{what:?} should not take --fix");
+        }
+        assert!(NpmWhat::Audit.takes_fix());
     }
 
     #[test]

@@ -477,6 +477,22 @@ fn main() -> Result<()> {
                         commands::uv::sync,
                     )?;
                 }
+                UvWhat::Build => {
+                    runner::do_for_all_projects_with_check(
+                        &config,
+                        &projects,
+                        commands::uv::check_pyproject,
+                        commands::uv::build,
+                    )?;
+                }
+                UvWhat::Publish => {
+                    runner::do_for_all_projects_with_check(
+                        &config,
+                        &projects,
+                        commands::uv::check_pyproject,
+                        commands::uv::publish,
+                    )?;
+                }
             }
         }
 
@@ -503,6 +519,23 @@ fn main() -> Result<()> {
                 commands::build::check_cargo,
                 move |project: &Utf8Path| -> anyhow::Result<()> {
                     commands::cargo::run(project, venv, what, release, check)
+                },
+            )?;
+        }
+
+        Commands::Npm { what, fix } => {
+            let what = *what;
+            let fix = *fix;
+            if fix && !what.takes_fix() {
+                anyhow::bail!("--fix only applies to `npm audit`");
+            }
+            let venv = config.venv;
+            runner::do_for_all_projects_with_check(
+                &config,
+                &projects,
+                commands::npm::check_package_json,
+                move |project: &Utf8Path| -> anyhow::Result<()> {
+                    commands::npm::run(project, venv, what, fix)
                 },
             )?;
         }

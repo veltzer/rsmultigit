@@ -170,7 +170,9 @@ rsmultigit complete bash >> ~/.bash_completion
 | `cargo fmt [--check]` | Run `cargo fmt --all` on repos with `Cargo.toml` |
 | `cargo deny\|fetch\|update\|clean\|publish` | Run `cargo deny check`, `cargo fetch`, `cargo update`, `cargo clean` or `cargo publish` on repos with `Cargo.toml` |
 | `uv lock [--upgrade\|--check]` | Run `uv lock` on repos with `pyproject.toml` |
-| `uv sync` | Run `uv sync` on repos with `pyproject.toml` |
+| `uv sync\|build\|publish` | Run `uv sync`, `uv build` or `uv publish` on repos with `pyproject.toml` |
+| `npm install\|ci\|update\|outdated\|test\|publish` | Run the matching npm command on repos with `package.json` |
+| `npm audit [--fix]` | Run `npm audit` (or `npm audit fix`) on repos with `package.json` |
 | `rust publish [--type patch\|minor\|major]` | Run `cargo release` on repos with `Cargo.toml` |
 | `gh clean-all [--keep N]` | Delete old deployments, releases and workflow runs on GitHub repos |
 

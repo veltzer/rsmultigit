@@ -15,7 +15,7 @@ the subcommand name.
 | `--no-stop` | On error, print `error in <repo>: ...` to stderr and continue with the next repo instead of stopping |
 | `--short-circuit` | Stop at the first failing rule. Off by default; honoured by `check-same` and `check-exists` |
 | `-j`, `--jobs <N>` | Run up to N repos in parallel (default 1; 0 means one worker per CPU). Output is still printed in repo order |
-| `--venv` | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. On by default; honoured by `run`, `build`, `cargo` and `clean make`; not by `uv` |
+| `--venv` | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. On by default; honoured by `run`, `build`, `cargo`, `npm` and `clean make`; not by `uv` |
 | `--no-venv` | Turn `--venv` off: run tool subprocesses with the ambient environment |
 
 Example:
@@ -491,7 +491,55 @@ repo being synced, and passing it through makes `uv sync` warn
 (`does not match the project environment path`, after which the value is
 ignored) while the `uv pip` interface would silently target the wrong
 environment. The global `--venv`/`--no-venv` flag therefore does not apply
-to `uv`; `uv lock` behaves the same way.
+to `uv`; the other `uv` operations behave the same way.
+
+### `rsmultigit uv build`
+
+Run `uv build` in each Python project, producing the sdist and wheel under
+`dist/`.
+
+### `rsmultigit uv publish`
+
+Run `uv publish` in each Python project, uploading whatever `uv build` left
+in `dist/` to the package index. Credentials and the target index come from
+uv's own configuration (`UV_PUBLISH_TOKEN`, trusted publishing, keyring,
+`[[tool.uv.index]]`); rsmultigit passes nothing through.
+
+```bash
+rsmultigit uv build                   # Build every distribution
+rsmultigit uv publish                 # ... then upload them
+```
+
+## npm Commands
+
+Run [npm](https://docs.npmjs.com/cli/) operations across every repository
+that has a `package.json` at its root; other repositories are skipped. All
+of them honour `--venv`, so package.json scripts that shell out to tooling
+living in the repo's `.venv` find it on `PATH`.
+
+### `rsmultigit npm <what> [--fix]`
+
+| `what` | Runs | Notes |
+|--------|------|-------|
+| `install` | `npm install` | Installs from `package.json`, writing `package-lock.json` |
+| `ci` | `npm ci` | Clean install of exactly what `package-lock.json` says; fails if it disagrees with `package.json` |
+| `update` | `npm update` | Moves dependencies to the newest versions their declared ranges allow and rewrites `package-lock.json` |
+| `audit` | `npm audit` | Reports known vulnerabilities; exits non-zero when any are found. `--fix` runs `npm audit fix`, which rewrites `package.json` and `package-lock.json` |
+| `outdated` | `npm outdated` | Lists dependencies with newer releases; exits non-zero when any are outdated |
+| `test` | `npm test` | Runs the project's test script |
+| `publish` | `npm publish` | Publishes the package to the registry |
+
+`--fix` is accepted by `audit` only; on any other operation it is an error.
+`audit` and `outdated` report through their exit status, so combine them
+with the global `--no-stop` to survey the whole fleet instead of stopping at
+the first repo with findings.
+
+```bash
+rsmultigit npm update                    # Refresh every package-lock.json within ranges
+rsmultigit npm ci                        # Reproduce every lockfile exactly
+rsmultigit --no-stop npm outdated        # Which repos have newer releases available?
+rsmultigit npm audit --fix               # Apply the automatic vulnerability fixes
+```
 
 ## GitHub Commands
 
