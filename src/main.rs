@@ -400,7 +400,7 @@ fn main() -> Result<()> {
                 runner::do_for_all_projects_with_check(
                     &config,
                     &projects,
-                    commands::build::check_cargo,
+                    commands::rust::check_publishable,
                     |project: &Utf8Path| -> anyhow::Result<()> { release.run(project) },
                 )?;
             }

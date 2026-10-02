@@ -82,6 +82,41 @@ fn publish_runs_cargo_release_in_cargo_repos_with_the_token_from_pass() {
 }
 
 #[test]
+fn publish_skips_virtual_workspaces_and_crates_marked_publish_false() {
+    let tmp = setup_git_repos(&["crate-a", "demos", "scratch"]);
+    let tmp = utf8(&tmp);
+    fs::write(tmp.join("crate-a/Cargo.toml"), "[package]\nname = \"a\"\n").unwrap();
+    // A repo of examples: a root [workspace] of members, no [package].
+    fs::write(
+        tmp.join("demos/Cargo.toml"),
+        "[workspace]\nresolver = \"2\"\nmembers = [\"examples/hello\"]\n",
+    )
+    .unwrap();
+    // A real crate that says, in cargo's own words, that it never goes out.
+    fs::write(
+        tmp.join("scratch/Cargo.toml"),
+        "[package]\nname = \"bake-off\"\npublish = false\n",
+    )
+    .unwrap();
+    let bin = fake_bin(tmp);
+
+    let out = run(tmp, &bin, "", &["rust", "publish"], "");
+    assert!(out.status.success(), "stderr: {}", stderr_str(&out));
+    assert_eq!(
+        read(tmp.join("crate-a/cargo.log")),
+        "release patch --execute --no-confirm token=token-from-pass\n"
+    );
+    assert!(
+        !tmp.join("demos/cargo.log").exists(),
+        "virtual workspace was skipped"
+    );
+    assert!(
+        !tmp.join("scratch/cargo.log").exists(),
+        "publish = false crate was skipped"
+    );
+}
+
+#[test]
 fn publish_type_selects_the_level_and_pass_is_asked_once_for_the_fleet() {
     let tmp = setup_git_repos(&["crate-a", "crate-b"]);
     let tmp = utf8(&tmp);

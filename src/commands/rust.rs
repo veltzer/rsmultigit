@@ -7,6 +7,54 @@ use anyhow::{Context, Result, bail};
 
 use crate::subprocess_utils::check_call_with_env;
 
+/// Should `rust publish` release this project? Only a repo whose root
+/// `Cargo.toml` declares a `[package]` that cargo would publish. That is
+/// cargo's own vocabulary for "this is a crate meant for a registry", so no
+/// rsmultigit-specific marker is needed:
+///
+/// - A virtual workspace (a `[workspace]` of members with no root `[package]`)
+///   has nothing to version or publish and is skipped.
+/// - A package with `publish = false` (or `publish = []`, cargo's spelling of
+///   the same thing) is a scratch crate, skipped here just as `cargo publish`
+///   itself would refuse it.
+/// - `publish.workspace = true` defers to `[workspace.package].publish` in
+///   the same manifest, as cargo does.
+///
+/// A repo with no `Cargo.toml` is not a rust project at all, hence skipped.
+pub fn check_publishable(project: &Utf8Path) -> Result<bool> {
+    let manifest = project.join("Cargo.toml");
+    if !manifest.exists() {
+        return Ok(false);
+    }
+    let text = std::fs::read_to_string(&manifest).with_context(|| format!("reading {manifest}"))?;
+    let doc: toml::Table = toml::from_str(&text).with_context(|| format!("parsing {manifest}"))?;
+    Ok(manifest_is_publishable(&doc))
+}
+
+/// The decision behind [`check_publishable`], on an already-parsed manifest.
+fn manifest_is_publishable(doc: &toml::Table) -> bool {
+    let Some(package) = doc.get("package") else {
+        return false;
+    };
+    let mut publish = package.get("publish");
+    if let Some(table) = publish.and_then(toml::Value::as_table)
+        && table.get("workspace").and_then(toml::Value::as_bool) == Some(true)
+    {
+        publish = doc
+            .get("workspace")
+            .and_then(|ws| ws.get("package"))
+            .and_then(|pkg| pkg.get("publish"));
+    }
+    match publish {
+        None => true,
+        Some(toml::Value::Boolean(allowed)) => *allowed,
+        Some(toml::Value::Array(registries)) => !registries.is_empty(),
+        // Anything else is not a shape cargo accepts; leave it to cargo to
+        // complain rather than silently skipping a real crate.
+        Some(_) => true,
+    }
+}
+
 /// The environment variable `cargo publish` reads its crates.io token from.
 pub const TOKEN_VAR: &str = "CARGO_REGISTRY_TOKEN";
 
@@ -153,6 +201,69 @@ mod tests {
         assert!(
             err.to_string().contains("cargo install cargo-release"),
             "{err}"
+        );
+    }
+
+    fn publishable(manifest: &str) -> bool {
+        manifest_is_publishable(&toml::from_str(manifest).unwrap())
+    }
+
+    #[test]
+    fn a_plain_package_is_publishable() {
+        assert!(publishable(
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\n"
+        ));
+        assert!(publishable("[package]\nname = \"x\"\npublish = true\n"));
+        assert!(publishable(
+            "[package]\nname = \"x\"\npublish = [\"my-registry\"]\n"
+        ));
+    }
+
+    #[test]
+    fn a_virtual_workspace_is_not_publishable() {
+        assert!(!publishable(
+            "[workspace]\nresolver = \"2\"\nmembers = [\"a\", \"b\"]\n"
+        ));
+    }
+
+    #[test]
+    fn publish_false_opts_out() {
+        assert!(!publishable("[package]\nname = \"x\"\npublish = false\n"));
+        assert!(!publishable("[package]\nname = \"x\"\npublish = []\n"));
+    }
+
+    #[test]
+    fn publish_inherited_from_the_workspace_is_honoured() {
+        let inherited_false = "[workspace]\nmembers = [\".\"]\n\
+            [workspace.package]\npublish = false\n\
+            [package]\nname = \"x\"\npublish.workspace = true\n";
+        assert!(!publishable(inherited_false));
+        let inherited_unset = "[workspace]\nmembers = [\".\"]\n\
+            [package]\nname = \"x\"\npublish.workspace = true\n";
+        assert!(publishable(inherited_unset));
+    }
+
+    #[test]
+    fn check_publishable_reads_the_root_manifest() {
+        let tmp = tempfile::tempdir().unwrap();
+        let project = Utf8Path::from_path(tmp.path()).unwrap();
+        assert!(!check_publishable(project).unwrap(), "no Cargo.toml");
+        std::fs::write(
+            project.join("Cargo.toml"),
+            "[workspace]\nmembers = [\"examples/hello\"]\n",
+        )
+        .unwrap();
+        assert!(!check_publishable(project).unwrap(), "virtual workspace");
+        std::fs::write(
+            project.join("Cargo.toml"),
+            "[package]\nname = \"x\"\nversion = \"0.1.0\"\n",
+        )
+        .unwrap();
+        assert!(check_publishable(project).unwrap(), "real crate");
+        std::fs::write(project.join("Cargo.toml"), "[package\n").unwrap();
+        assert!(
+            check_publishable(project).is_err(),
+            "broken manifest is an error"
         );
     }
 

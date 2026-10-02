@@ -455,6 +455,21 @@ Release a new version of each Rust project by running
 the policy is the repo's `release.toml`). The default release type is
 `patch`.
 
+A repo is released only when its root `Cargo.toml` declares a `[package]`
+that cargo would publish. This is cargo's own vocabulary, so no
+rsmultigit-specific marker is needed:
+
+- A virtual workspace (a root `[workspace]` listing members, with no
+  `[package]`) has nothing to version or publish and is skipped. This is
+  what a repo of examples and exercises looks like.
+- A package with `publish = false` (or `publish = []`) is a scratch crate
+  that was never meant for crates.io; it is skipped here just as
+  `cargo publish` itself would refuse it. `publish.workspace = true` defers
+  to `[workspace.package].publish`, as in cargo.
+- A repo with no `Cargo.toml` is not a rust project and is skipped.
+
+Skipped repos are listed under `--verbose`, like every other skip.
+
 Before the first repo is touched, two things are checked once for the whole
 run:
 
