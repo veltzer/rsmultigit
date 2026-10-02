@@ -499,16 +499,18 @@ fn main() -> Result<()> {
         Commands::Cargo {
             what,
             release,
+            profile,
             check,
         } => {
             let what = *what;
             let release = *release;
             let check = *check;
-            if release && !what.takes_release() {
+            if (release || profile.is_some()) && !what.takes_release() {
                 anyhow::bail!(
-                    "--release only applies to `cargo build`, `check`, `clippy`, `test`, `nextest` and `doc`"
+                    "--release and --profile only apply to `cargo build`, `check`, `clippy`, `test`, `nextest` and `doc`"
                 );
             }
+            let profile = commands::cargo::Profile::from_flags(release, profile.as_deref());
             if check && !what.takes_check() {
                 anyhow::bail!("--check only applies to `cargo fmt`");
             }
@@ -518,7 +520,7 @@ fn main() -> Result<()> {
                 &projects,
                 commands::build::check_cargo,
                 move |project: &Utf8Path| -> anyhow::Result<()> {
-                    commands::cargo::run(project, venv, what, release, check)
+                    commands::cargo::run(project, venv, what, &profile, check)
                 },
             )?;
         }

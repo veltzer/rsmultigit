@@ -378,7 +378,7 @@ activation everywhere.
 | `bootstrap` | `python bootstrap.py` | all |
 | `make` | `make` | all |
 | `rsconstruct` | `rsconstruct --quiet build` | those with `rsconstruct.toml` |
-| `cargo` | `cargo build` then `cargo build --release` | those with `Cargo.toml` |
+| `cargo` | `cargo build --profile dev` then `cargo build --release` | those with `Cargo.toml` |
 
 Publishing is not a build method: see `rsmultigit cargo publish` below.
 
@@ -409,13 +409,13 @@ rsmultigit --no-venv build rsconstruct
 These commands operate only on repositories that have a `Cargo.toml` file
 and no `.disable` file. Other repositories are skipped.
 
-### `rsmultigit cargo <what> [--release] [--check]`
+### `rsmultigit cargo <what> [--release | --profile <name>] [--check]`
 
 Runs one cargo operation in each Rust project. All of them honour `--venv`.
 
 | `what` | Runs | Notes |
 |--------|------|-------|
-| `build` | `cargo build` | |
+| `build` | `cargo build --profile dev` then `cargo build --release` | Every profile, like `cargo_build.sh`; `--release` or `--profile` builds just that one |
 | `check` | `cargo check` | Type-check only, no artifacts |
 | `clippy` | `cargo clippy --all-targets -- -D warnings` | Same invocation as the fleet's `ci.yml`: warnings fail the run |
 | `fmt` | `cargo fmt --all` | `--check` only verifies and fails on unformatted code |
@@ -428,12 +428,19 @@ Runs one cargo operation in each Rust project. All of them honour `--venv`.
 | `clean` | `cargo clean` | Removes the `target` directory |
 | `publish` | `cargo publish` | Uploads the crate to crates.io; `rust publish` is the full release flow |
 
-`--release` appends `--release` and is accepted by the operations that
-compile under a profile: `build`, `check`, `clippy`, `test`, `nextest` and
-`doc`. `--check` is accepted by `fmt` only. Either flag on any other
-operation is an error, and the two flags are mutually exclusive.
+`--release` appends `--release` and `--profile <name>` appends
+`--profile <name>` (`dev`, `release`, or any custom profile the crate's
+`Cargo.toml` defines). Both are accepted by the operations that compile under
+a profile: `build`, `check`, `clippy`, `test`, `nextest` and `doc`. With
+neither, `build` compiles every profile the fleet ships, dev then release,
+and the other operations keep cargo's own default. `--check` is accepted by
+`fmt` only. A flag on any other operation is an error, and the three flags
+are mutually exclusive.
 
 ```bash
+rsmultigit cargo build                   # Every Rust repo, dev and release
+rsmultigit cargo build --profile dev     # Only the default (dev) profile
+rsmultigit cargo build --release         # Only release
 rsmultigit cargo fmt --check             # Is every Rust repo formatted?
 rsmultigit cargo clippy                  # Lint the fleet the way CI does
 rsmultigit -j 0 cargo nextest --release  # Release-mode tests, all cores

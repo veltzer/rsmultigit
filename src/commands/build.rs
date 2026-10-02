@@ -41,10 +41,16 @@ pub fn build_make(project: &Utf8Path, venv: bool) -> Result<()> {
     Ok(())
 }
 
+/// Every profile, dev then release: the same thing `rsmultigit cargo build`
+/// does with no profile flag.
 pub fn build_cargo(project: &Utf8Path, venv: bool) -> Result<()> {
-    check_call_maybe_ve(project, venv, "cargo", &["build"])?;
-    check_call_maybe_ve(project, venv, "cargo", &["build", "--release"])?;
-    Ok(())
+    super::cargo::run(
+        project,
+        venv,
+        crate::cli::CargoWhat::Build,
+        &super::cargo::Profile::All,
+        false,
+    )
 }
 
 pub fn build_rsconstruct(project: &Utf8Path, venv: bool) -> Result<()> {

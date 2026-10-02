@@ -340,13 +340,19 @@ pub enum Commands {
         what: CargoWhat,
         /// Build optimized artifacts (`--release`). Only meaningful with
         /// `build`, `check`, `clippy`, `test`, `nextest` and `doc`;
-        /// combining it with any other operation is an error.
-        #[arg(long, default_value_t = false)]
+        /// combining it with any other operation is an error. Without this
+        /// or `--profile`, `build` compiles every profile: dev, then release.
+        #[arg(long, default_value_t = false, conflicts_with = "profile")]
         release: bool,
+        /// Build under one named profile (`--profile <NAME>`: `dev`,
+        /// `release`, or a custom profile from Cargo.toml). Same operations
+        /// as `--release`; `cargo build --profile dev` builds only dev.
+        #[arg(long, value_name = "NAME")]
+        profile: Option<String>,
         /// Only check formatting without rewriting files (`cargo fmt --check`;
         /// unformatted code is an error). Only meaningful with `fmt`;
         /// combining it with any other operation is an error.
-        #[arg(long, default_value_t = false, conflicts_with = "release")]
+        #[arg(long, default_value_t = false, conflicts_with_all = ["release", "profile"])]
         check: bool,
     },
     /// Run npm operations on projects that have a package.json file
@@ -848,6 +854,21 @@ mod tests {
         }
         let result = Cli::try_parse_from(["rsmultigit", "cargo", "build", "--release"]);
         assert!(result.is_ok(), "cargo build --release should parse");
+        let result = Cli::try_parse_from(["rsmultigit", "cargo", "build", "--profile", "dev"]);
+        assert!(result.is_ok(), "cargo build --profile dev should parse");
+        // --release, --profile and --check are mutually exclusive
+        let result = Cli::try_parse_from([
+            "rsmultigit",
+            "cargo",
+            "build",
+            "--release",
+            "--profile",
+            "dev",
+        ]);
+        assert!(result.is_err(), "--release and --profile should conflict");
+        let result =
+            Cli::try_parse_from(["rsmultigit", "cargo", "fmt", "--check", "--profile", "dev"]);
+        assert!(result.is_err(), "--check and --profile should conflict");
         let result = Cli::try_parse_from(["rsmultigit", "cargo", "fmt", "--check"]);
         assert!(result.is_ok(), "cargo fmt --check should parse");
         let result = Cli::try_parse_from(["rsmultigit", "cargo"]);

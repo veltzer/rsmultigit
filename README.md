@@ -166,7 +166,8 @@ rsmultigit complete bash >> ~/.bash_completion
 | `build make` / `build bootstrap` | Run `make` or `python bootstrap.py` |
 | `build rsconstruct` | Run `rsconstruct --quiet build` on repos with `rsconstruct.toml` |
 | `build cargo` | Run `cargo build` (debug and release) on repos with `Cargo.toml` |
-| `cargo build\|check\|clippy\|test\|nextest\|doc [--release]` | Run the matching cargo command on repos with `Cargo.toml` (`clippy` as CI: `--all-targets -- -D warnings`) |
+| `cargo build [--release\|--profile <name>]` | Run `cargo build` on repos with `Cargo.toml`: every profile (dev, then release) by default, or just the one named |
+| `cargo check\|clippy\|test\|nextest\|doc [--release\|--profile <name>]` | Run the matching cargo command on repos with `Cargo.toml` (`clippy` as CI: `--all-targets -- -D warnings`) |
 | `cargo fmt [--check]` | Run `cargo fmt --all` on repos with `Cargo.toml` |
 | `cargo deny\|fetch\|update\|clean\|publish` | Run `cargo deny check`, `cargo fetch`, `cargo update`, `cargo clean` or `cargo publish` on repos with `Cargo.toml` |
 | `uv lock [--upgrade\|--check]` | Run `uv lock` on repos with `pyproject.toml` |
