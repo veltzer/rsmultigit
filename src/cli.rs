@@ -541,7 +541,8 @@ pub enum ResetWhat {
 
 #[derive(Clone, ValueEnum)]
 pub enum RustWhat {
-    /// Release a new version via `cargo release` (bump, commit, tag, push, publish)
+    /// Release a new version via `cargo release` (bump, commit, tag, push,
+    /// publish), with the crates.io token fetched from pass(1)
     Publish,
 }
 

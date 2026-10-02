@@ -20,6 +20,10 @@ pub struct CheckConfig {
     /// Spelled as on the command line (`rsconstruct`, `cargo`, ...).
     #[serde(default)]
     pub default_build_method: Option<BuildWhat>,
+    /// The pass(1) entry `rust publish` reads the crates.io token from when
+    /// `CARGO_REGISTRY_TOKEN` is not already set. Defaults to `keys/crates.io`.
+    #[serde(default = "crate::commands::rust::default_pass_entry")]
+    pub crates_io_pass_entry: String,
     #[serde(default)]
     pub check: Vec<Rule>,
     /// Presence-only rules, consumed by `check-exists`. Unlike `[[check]]`,
@@ -416,10 +420,21 @@ mod tests {
     }
 
     #[test]
+    fn crates_io_pass_entry_defaults_to_keys_crates_io() {
+        let cfg: CheckConfig = toml::from_str("repos = [\"x\"]\n").unwrap();
+        assert_eq!(cfg.crates_io_pass_entry, "keys/crates.io");
+
+        let cfg: CheckConfig =
+            toml::from_str("repos = [\"x\"]\ncrates_io_pass_entry = \"work/crates\"\n").unwrap();
+        assert_eq!(cfg.crates_io_pass_entry, "work/crates");
+    }
+
+    #[test]
     fn resolve_repos_requires_non_empty() {
         let cfg = CheckConfig {
             repos: vec![],
             default_build_method: None,
+            crates_io_pass_entry: crate::commands::rust::default_pass_entry(),
             check: vec![],
             exists: vec![],
         };
@@ -450,6 +465,7 @@ mod tests {
                 camino::Utf8Path::from_path(tmp.path()).unwrap()
             )],
             default_build_method: None,
+            crates_io_pass_entry: crate::commands::rust::default_pass_entry(),
             check: vec![],
             exists: vec![],
         };
@@ -474,6 +490,7 @@ mod tests {
                 format!("{}/*", camino::Utf8Path::from_path(tmp.path()).unwrap()),
             ],
             default_build_method: None,
+            crates_io_pass_entry: crate::commands::rust::default_pass_entry(),
             check: vec![],
             exists: vec![],
         };
@@ -490,6 +507,7 @@ mod tests {
                 camino::Utf8Path::from_path(tmp.path()).unwrap()
             )],
             default_build_method: None,
+            crates_io_pass_entry: crate::commands::rust::default_pass_entry(),
             check: vec![],
             exists: vec![],
         };

@@ -391,14 +391,17 @@ fn main() -> Result<()> {
         },
         Commands::Rust { what, release_type } => match what {
             RustWhat::Publish => {
-                let level = release_type.as_str();
+                // Preflight once: cargo-release present, crates.io token in
+                // hand. Only then start bumping versions.
+                let release = commands::rust::Release::prepare(
+                    release_type.as_str(),
+                    &file_config.crates_io_pass_entry,
+                )?;
                 runner::do_for_all_projects_with_check(
                     &config,
                     &projects,
                     commands::build::check_cargo,
-                    move |project: &Utf8Path| -> anyhow::Result<()> {
-                        commands::rust::publish(project, level)
-                    },
+                    |project: &Utf8Path| -> anyhow::Result<()> { release.run(project) },
                 )?;
             }
         },

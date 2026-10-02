@@ -82,6 +82,24 @@ pub fn check_call(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<()> {
     run_inheriting_or_capturing(cwd, cmd, args)
 }
 
+/// Like `check_call`, with `envs` set in the environment of that one child
+/// process (and whatever it spawns in turn). This is how a secret fetched at
+/// run time reaches a tool without touching disk: `rust publish` hands the
+/// crates.io token to `cargo release` this way.
+pub fn check_call_with_env(
+    cwd: &Utf8Path,
+    cmd: &str,
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> Result<()> {
+    let mut command = Command::new(cmd);
+    command
+        .args(args)
+        .current_dir(cwd)
+        .envs(envs.iter().copied());
+    run_command(command, cmd)
+}
+
 /// Run a command in `cwd` with any inherited virtualenv selection removed:
 /// `VIRTUAL_ENV` and `UV_PROJECT_ENVIRONMENT` are unset, so a tool that picks
 /// its target environment itself sees only `cwd`.

@@ -451,9 +451,24 @@ rsmultigit cargo update                  # Refresh every Cargo.lock
 
 Release a new version of each Rust project by running
 `cargo release <type> --execute --no-confirm`, which bumps the version in
-`Cargo.toml`, commits, tags, pushes, and publishes to crates.io. The default
-release type is `patch`. Requires
-[cargo-release](https://crates.io/crates/cargo-release) to be installed.
+`Cargo.toml`, commits, tags, pushes, and publishes to crates.io (the rest of
+the policy is the repo's `release.toml`). The default release type is
+`patch`.
+
+Before the first repo is touched, two things are checked once for the whole
+run:
+
+- [cargo-release](https://crates.io/crates/cargo-release) must be on `PATH`.
+  It is a separate crate, not part of the toolchain, so a rebuilt
+  `CARGO_HOME` loses it; the error names the fix
+  (`cargo install cargo-release`) instead of cargo's own
+  "no such command: release".
+- The crates.io token is fetched. If `CARGO_REGISTRY_TOKEN` is already set
+  in the environment it is used as is. Otherwise the first line of
+  `pass show <entry>` is taken, where `<entry>` is the config file's
+  `crates_io_pass_entry` (default `keys/crates.io`). The token is handed to
+  every `cargo release` process through its environment only, so it never
+  lands in `~/.cargo/credentials` or any other file.
 
 ```bash
 rsmultigit rust publish                  # Patch release (default)

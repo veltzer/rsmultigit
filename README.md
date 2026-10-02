@@ -75,6 +75,7 @@ consistency rules to enforce:
 ```toml
 repos = ["~/git/*"]                  # shell-expanded globs; non-git matches are ignored
 default_build_method = "rsconstruct" # what a bare `rsmultigit build` runs
+crates_io_pass_entry = "keys/crates.io" # where `rust publish` finds the crates.io token
 
 [[check]]                            # files that must be byte-identical
 name = "gitignore"
@@ -174,7 +175,7 @@ rsmultigit complete bash >> ~/.bash_completion
 | `uv sync\|build\|publish` | Run `uv sync`, `uv build` or `uv publish` on repos with `pyproject.toml` |
 | `npm install\|ci\|update\|outdated\|test\|publish` | Run the matching npm command on repos with `package.json` |
 | `npm audit [--fix]` | Run `npm audit` (or `npm audit fix`) on repos with `package.json` |
-| `rust publish [--type patch\|minor\|major]` | Run `cargo release` on repos with `Cargo.toml` |
+| `rust publish [--type patch\|minor\|major]` | Run `cargo release` on repos with `Cargo.toml`, crates.io token from pass(1) |
 | `gh clean-all [--keep N]` | Delete old deployments, releases and workflow runs on GitHub repos |
 
 ### Other

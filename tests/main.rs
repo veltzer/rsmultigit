@@ -17,6 +17,8 @@ mod inspect;
 mod remote;
 #[path = "tests_mod/run.rs"]
 mod run;
+#[path = "tests_mod/rust.rs"]
+mod rust;
 #[path = "tests_mod/status.rs"]
 mod status;
 #[path = "tests_mod/version.rs"]

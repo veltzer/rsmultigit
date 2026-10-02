@@ -62,6 +62,8 @@ tests/
                        local bare repository standing in for origin
     run.rs             run/exec, shell vs direct, --no-stop, --no-output,
                        parallel output ordering
+    rust.rs            rust publish against a fake cargo/cargo-release/pass on
+                       PATH: level, token from pass or environment, preflight
     status.rs          status summary, --verbose, dirty
     version.rs         version subcommand and --version flag
     worktree.rs        commit, checkout, stash, reset, diff, clean, gc,

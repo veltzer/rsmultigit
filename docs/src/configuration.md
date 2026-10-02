@@ -21,12 +21,14 @@ rsmultigit config-example
 ```toml
 repos = ["~/git/*"]
 default_build_method = "rsconstruct"
+crates_io_pass_entry = "keys/crates.io"
 ```
 
 | Key | Required | Meaning |
 |-----|----------|---------|
 | `repos` | yes | List of shell-expanded glob patterns. Matches that are not git repositories are dropped; the rest are deduplicated and sorted. See [Repository Discovery](discovery.md) |
 | `default_build_method` | no | What a bare `rsmultigit build` runs: `bootstrap`, `make`, `rsconstruct` or `cargo`, spelled as on the command line. A method given on the command line always wins. Without the key, `rsmultigit build` with no method is an error |
+| `crates_io_pass_entry` | no | The pass(1) entry `rsmultigit rust publish` reads the crates.io token from when `CARGO_REGISTRY_TOKEN` is not set in the environment. Default `keys/crates.io` |
 
 ## `[[check]]` rules: files that must be identical
 
