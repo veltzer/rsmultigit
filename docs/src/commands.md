@@ -601,6 +601,88 @@ rsmultigit gh clean-all              # Keep the 4 most recent of each
 rsmultigit gh clean-all --keep 10    # Keep the 10 most recent of each
 ```
 
+### `rsmultigit gh artifacts`
+
+List the assets attached to each repository's latest GitHub release as a
+NAME / SIZE / DOWNLOADS table. A data command: repositories without a
+release, or whose latest release has no assets, print nothing.
+
+```bash
+rsmultigit gh artifacts              # Who is downloading which binaries?
+```
+
+### `rsmultigit gh last-workflow-state`
+
+Print the conclusion of each repository's most recent workflow run
+(`success`, `failure`, `cancelled`, ...). A run that has not finished yet
+shows its status instead (`in_progress`, `queued`). A data command:
+repositories with no workflow runs print nothing.
+
+```bash
+rsmultigit gh last-workflow-state                    # One line per repo
+rsmultigit --terse gh last-workflow-state            # Just the repo names
+```
+
+### `rsmultigit gh open-site`
+
+Open each repository's GitHub Pages site in the browser with `xdg-open`,
+printing the URL first. A repository without a Pages site says
+`no GitHub Pages site` and is otherwise left alone. Every repository with
+a site gets a browser tab, so point the config at the repos you mean before
+running it across a large fleet.
+
+```bash
+rsmultigit gh open-site
+```
+
+### `rsmultigit gh sync-metadata [--dry-run]`
+
+Sync each repository's GitHub metadata from its `config/project.lua`,
+printing only what actually differs. Repositories without that file are
+skipped. The file is the source of truth for two fields:
+
+| `project.lua` | GitHub field |
+|---------------|--------------|
+| `DESCRIPTION_SHORT` | description |
+| `KEYWORDS` (a lua list) | topics (order-independent) |
+
+A field that is absent or empty locally is left alone on GitHub: "unset
+locally" is not the same as "clear it". The repository features follow a
+fixed fleet policy that is not read from the file and is always enforced:
+wiki off, issues on, projects off.
+
+The repository is addressed by its github.com remote, not by the file's
+`NAME`; a `NAME` that disagrees with the GitHub repository name is reported
+but never acted on. Only the topics that differ are sent (`--add-topic` /
+`--remove-topic`), so a topic present on both sides is never touched.
+
+Only the plain assignment subset of lua that `project.lua` uses is
+understood (`X = "..."`, `X = { "...", ... }`, `X = Y` aliases, `--`
+comments); anything else is an error naming the line.
+
+```bash
+rsmultigit gh sync-metadata --dry-run   # Show the differences, change nothing
+rsmultigit gh sync-metadata             # Show them and update GitHub
+```
+
+Sample output for one repository with every field out of step:
+
+```
+[demos-os-linux]
+description
+  local:  demos-os-linux is a project to demo and explore the Linux API
+  github: Linux demos
+topics
+  local:  api c demos linux
+  github: c demos linux old-topic
+features
+  want:   wiki=false issues=true projects=false
+  github: wiki=true issues=true projects=false
+```
+
+`--dry-run` is accepted by `sync-metadata` only; on any other `gh`
+operation it is an error rather than a silently ignored flag.
+
 ## Utility Commands
 
 These three need no config file, because they are how a fresh install

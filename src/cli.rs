@@ -233,8 +233,12 @@ pub enum Commands {
         #[arg(value_enum)]
         what: GhWhat,
         /// How many recent non-failed deployments/releases/workflow runs to keep
+        /// (`clean-all` only)
         #[arg(long, default_value_t = 4)]
         keep: usize,
+        /// Print what differs but change nothing on GitHub (`sync-metadata` only)
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
     },
     /// Grep across all repositories
     Grep {
@@ -384,6 +388,25 @@ pub enum GhWhat {
     /// only the --keep most recent non-failed of each (failed ones are
     /// always deleted)
     CleanAll,
+    /// List the assets of the latest GitHub release (name, size, downloads)
+    Artifacts,
+    /// Print the conclusion of the most recent workflow run
+    LastWorkflowState,
+    /// Open the repo's GitHub Pages site in the browser (`xdg-open`)
+    OpenSite,
+    /// Sync GitHub description, topics and feature policy (wiki off,
+    /// issues on, projects off) from config/project.lua, printing only
+    /// what differs
+    SyncMetadata,
+}
+
+impl GhWhat {
+    /// Whether `--dry-run` makes sense for this operation (only
+    /// `sync-metadata`). A dry run that silently went ahead and deleted
+    /// things would be worse than a usage error, so the others reject it.
+    pub fn takes_dry_run(self) -> bool {
+        matches!(self, GhWhat::SyncMetadata)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -836,7 +859,13 @@ mod tests {
         assert!(result.is_err(), "uv without a what should not parse");
 
         // gh requires a what argument
-        let gh_whats = ["clean-all"];
+        let gh_whats = [
+            "clean-all",
+            "artifacts",
+            "last-workflow-state",
+            "open-site",
+            "sync-metadata",
+        ];
         for what in gh_whats {
             let result = Cli::try_parse_from(["rsmultigit", "gh", what]);
             assert!(result.is_ok(), "gh {what} should parse");
@@ -1165,9 +1194,14 @@ mod tests {
     fn parse_gh_clean_all_defaults_to_keep_4() {
         let cli = parse(&["rsmultigit", "gh", "clean-all"]);
         match &cli.command {
-            Commands::Gh { what, keep } => {
+            Commands::Gh {
+                what,
+                keep,
+                dry_run,
+            } => {
                 assert!(matches!(what, GhWhat::CleanAll));
                 assert_eq!(*keep, 4);
+                assert!(!*dry_run);
             }
             _ => panic!("expected Gh"),
         }
@@ -1186,6 +1220,31 @@ mod tests {
     fn parse_gh_bad_keep_fails() {
         let result = Cli::try_parse_from(["rsmultigit", "gh", "clean-all", "--keep", "many"]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_gh_sync_metadata_dry_run() {
+        let cli = parse(&["rsmultigit", "gh", "sync-metadata", "--dry-run"]);
+        match &cli.command {
+            Commands::Gh { what, dry_run, .. } => {
+                assert!(matches!(what, GhWhat::SyncMetadata));
+                assert!(*dry_run);
+            }
+            _ => panic!("expected Gh"),
+        }
+    }
+
+    #[test]
+    fn gh_dry_run_applies_to_sync_metadata_only() {
+        for what in [
+            GhWhat::CleanAll,
+            GhWhat::Artifacts,
+            GhWhat::LastWorkflowState,
+            GhWhat::OpenSite,
+        ] {
+            assert!(!what.takes_dry_run(), "{what:?} should not take --dry-run");
+        }
+        assert!(GhWhat::SyncMetadata.takes_dry_run());
     }
 
     #[test]

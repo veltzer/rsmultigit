@@ -376,19 +376,51 @@ fn main() -> Result<()> {
             )?;
         }
 
-        Commands::Gh { what, keep } => match what {
-            GhWhat::CleanAll => {
-                let keep = *keep;
-                runner::do_for_all_projects_with_check(
-                    &config,
-                    &projects,
-                    commands::gh::check_github,
-                    move |project: &Utf8Path| -> anyhow::Result<()> {
-                        commands::gh::clean_all(project, keep)
-                    },
-                )?;
+        Commands::Gh {
+            what,
+            keep,
+            dry_run,
+        } => {
+            let dry_run = *dry_run;
+            if dry_run && !what.takes_dry_run() {
+                anyhow::bail!("--dry-run only applies to `gh sync-metadata`");
             }
-        },
+            match what {
+                GhWhat::CleanAll => {
+                    let keep = *keep;
+                    runner::do_for_all_projects_with_check(
+                        &config,
+                        &projects,
+                        commands::gh::check_github,
+                        move |project: &Utf8Path| -> anyhow::Result<()> {
+                            commands::gh::clean_all(project, keep)
+                        },
+                    )?;
+                }
+                GhWhat::Artifacts => {
+                    runner::print_if_data(&config, &projects, commands::gh::artifacts)?;
+                }
+                GhWhat::LastWorkflowState => {
+                    runner::print_if_data(&config, &projects, commands::gh::last_workflow_state)?;
+                }
+                GhWhat::OpenSite => {
+                    runner::do_for_all_projects_with_check(
+                        &config,
+                        &projects,
+                        commands::gh::check_github,
+                        commands::gh::open_site,
+                    )?;
+                }
+                GhWhat::SyncMetadata => {
+                    // A data runner, although it writes to GitHub: the point of
+                    // the command is to print only the repos where something
+                    // differs, and a silent repo is one that is already in sync.
+                    runner::print_if_data(&config, &projects, move |project: &Utf8Path| {
+                        commands::gh::sync_metadata(project, dry_run)
+                    })?;
+                }
+            }
+        }
         Commands::Rust { what, release_type } => match what {
             RustWhat::Publish => {
                 // Preflight once: cargo-release present, crates.io token in
