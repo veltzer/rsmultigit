@@ -26,7 +26,7 @@ default_build_method = "rsconstruct"
 | Key | Required | Meaning |
 |-----|----------|---------|
 | `repos` | yes | List of shell-expanded glob patterns. Matches that are not git repositories are dropped; the rest are deduplicated and sorted. See [Repository Discovery](discovery.md) |
-| `default_build_method` | no | What a bare `rsmultigit build` runs: `bootstrap`, `make`, `rsconstruct`, `cargo` or `cargo-publish`, spelled as on the command line. A method given on the command line always wins. Without the key, `rsmultigit build` with no method is an error |
+| `default_build_method` | no | What a bare `rsmultigit build` runs: `bootstrap`, `make`, `rsconstruct` or `cargo`, spelled as on the command line. A method given on the command line always wins. Without the key, `rsmultigit build` with no method is an error |
 
 ## `[[check]]` rules: files that must be identical
 
@@ -109,7 +109,7 @@ All flags are global: they may appear before or after the subcommand.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--venv` | on | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. Honoured by `run`, `build`, `cargo update` and `clean make`; repos without a `.venv` run unchanged. Not honoured by `uv`, which selects its own environment from the repo directory |
+| `--venv` | on | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. Honoured by `run`, `build`, `cargo` and `clean make`; repos without a `.venv` run unchanged. Not honoured by `uv`, which selects its own environment from the repo directory |
 | `--no-venv` | off | Turn the `.venv` activation off |
 
 ## Short-circuiting
@@ -130,7 +130,7 @@ rsmultigit --short-circuit check-exists      # same, for presence rules
 
 `rsmultigit build <method>` skips projects that contain a `.disable` file in
 their root. `build rsconstruct` additionally skips projects without an
-`rsconstruct.toml`, and `build cargo`, `build cargo-publish`, `cargo update`
-and `rust publish` skip projects without a `Cargo.toml`. The `uv` commands
+`rsconstruct.toml`, and `build cargo`, the `cargo` commands and
+`rust publish` skip projects without a `Cargo.toml`. The `uv` commands
 skip projects without a `pyproject.toml`, and `gh` commands skip repos with
 no github.com remote.

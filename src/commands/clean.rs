@@ -29,14 +29,3 @@ pub fn clean_git(project: &Utf8Path) -> Result<()> {
     check_call(project, "git", &["checkout", "."])?;
     Ok(())
 }
-
-/// Repos `clean cargo` applies to: those with a `Cargo.toml`.
-pub fn has_cargo_toml(project: &Utf8Path) -> Result<bool> {
-    Ok(project.join("Cargo.toml").exists())
-}
-
-/// Run `cargo clean` (see [`has_cargo_toml`] for the precondition).
-pub fn clean_cargo(project: &Utf8Path) -> Result<()> {
-    check_call(project, "cargo", &["clean"])?;
-    Ok(())
-}

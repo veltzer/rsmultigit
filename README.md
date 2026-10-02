@@ -14,7 +14,7 @@ Full documentation: <https://veltzer.github.io/rsmultigit/>
 - **Native git inspection** — status, dirty and sync checks use libgit2 in-process, with no `git` subprocess per repo
 - **Consistency checks** — `check-same` verifies that shared files (`.gitignore`, CI workflows, lint configs, ...) are byte-identical across the fleet, `check-exists` verifies that required files are present, and `--diff`, `--copy` and `--fix-missing` repair drift interactively
 - **Build orchestration** — make, rsconstruct, cargo, bootstrap, with each repo's `.venv` activated automatically
-- **Tooling passthrough** — `uv lock` / `uv sync` on Python projects, `cargo update` on Rust projects, `gh` cleanup on GitHub repos
+- **Tooling passthrough** — `uv lock` / `uv sync` on Python projects, `cargo build|check|clippy|fmt|test|nextest|doc|deny|fetch|update|clean|publish` on Rust projects, `gh` cleanup on GitHub repos
 - **Parallel execution** — `-j N` runs repos concurrently while keeping output in repo order
 - **Selective output** — only prints repos where something happened; `--verbose`, `--terse`, `--print-not` and `--no-header` control the rest
 - **Shell completions** — bash, zsh, fish, elvish, powershell, including dynamic completion of check names
@@ -154,7 +154,6 @@ rsmultigit complete bash >> ~/.bash_completion
 | `clean soft` | `git clean -fd` (removes untracked files only) |
 | `clean git` | `git checkout .` (discards unstaged changes) |
 | `clean make` | `make clean` |
-| `clean cargo` | `cargo clean` (skips repos without `Cargo.toml`) |
 | `prune` | Prune stale remote-tracking branches |
 | `gc` | Run git garbage collection |
 | `submodule-update` | `git submodule update --init --recursive` |
@@ -166,8 +165,10 @@ rsmultigit complete bash >> ~/.bash_completion
 | `build` | Build with the config file's `default_build_method` |
 | `build make` / `build bootstrap` | Run `make` or `python bootstrap.py` |
 | `build rsconstruct` | Run `rsconstruct --quiet build` on repos with `rsconstruct.toml` |
-| `build cargo` / `build cargo-publish` | Run `cargo build` (debug and release) or `cargo publish` on repos with `Cargo.toml` |
-| `cargo update` | Run `cargo update` on repos with `Cargo.toml` |
+| `build cargo` | Run `cargo build` (debug and release) on repos with `Cargo.toml` |
+| `cargo build\|check\|clippy\|test\|nextest\|doc [--release]` | Run the matching cargo command on repos with `Cargo.toml` (`clippy` as CI: `--all-targets -- -D warnings`) |
+| `cargo fmt [--check]` | Run `cargo fmt --all` on repos with `Cargo.toml` |
+| `cargo deny\|fetch\|update\|clean\|publish` | Run `cargo deny check`, `cargo fetch`, `cargo update`, `cargo clean` or `cargo publish` on repos with `Cargo.toml` |
 | `uv lock [--upgrade\|--check]` | Run `uv lock` on repos with `pyproject.toml` |
 | `uv sync` | Run `uv sync` on repos with `pyproject.toml` |
 | `rust publish [--type patch\|minor\|major]` | Run `cargo release` on repos with `Cargo.toml` |

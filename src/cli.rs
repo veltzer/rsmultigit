@@ -64,7 +64,7 @@ pub struct Cli {
 
     /// Activate each repo's local .venv (prepend .venv/bin to PATH, set
     /// VIRTUAL_ENV) before running tool subprocesses. On by default; honoured
-    /// by `run`, `build`, `cargo update` and `clean make`. Repos without a
+    /// by `run`, `build`, `cargo` and `clean make`. Repos without a
     /// .venv run with the environment unchanged. Negate with --no-venv.
     ///
     /// Not honoured by `uv`, which selects its own target environment from
@@ -336,6 +336,16 @@ pub enum Commands {
         /// What cargo operation to perform
         #[arg(value_enum)]
         what: CargoWhat,
+        /// Build optimized artifacts (`--release`). Only meaningful with
+        /// `build`, `check`, `clippy`, `test`, `nextest` and `doc`;
+        /// combining it with any other operation is an error.
+        #[arg(long, default_value_t = false)]
+        release: bool,
+        /// Only check formatting without rewriting files (`cargo fmt --check`;
+        /// unformatted code is an error). Only meaningful with `fmt`;
+        /// combining it with any other operation is an error.
+        #[arg(long, default_value_t = false, conflicts_with = "release")]
+        check: bool,
     },
     /// Print version information
     Version,
@@ -368,8 +378,51 @@ pub enum UvWhat {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum CargoWhat {
+    /// Compile the project (`cargo build`)
+    Build,
+    /// Type-check without producing artifacts (`cargo check`)
+    Check,
+    /// Lint as CI does (`cargo clippy --all-targets -- -D warnings`)
+    Clippy,
+    /// Format the code (`cargo fmt --all`; `--check` only verifies)
+    Fmt,
+    /// Run the tests with cargo's built-in runner (`cargo test`)
+    Test,
+    /// Run the tests with nextest (`cargo nextest run`)
+    Nextest,
+    /// Build the API docs for the crate itself (`cargo doc --no-deps`)
+    Doc,
+    /// Check licenses, bans and advisories (`cargo deny check`)
+    Deny,
+    /// Download dependencies without building (`cargo fetch`)
+    Fetch,
     /// Update dependencies (`cargo update`)
     Update,
+    /// Remove the target directory (`cargo clean`)
+    Clean,
+    /// Upload the crate to crates.io (`cargo publish`)
+    Publish,
+}
+
+impl CargoWhat {
+    /// Whether `--release` makes sense for this operation: the ones that
+    /// compile the crate under a profile. Mirrors cargo's own flag set.
+    pub fn takes_release(self) -> bool {
+        matches!(
+            self,
+            CargoWhat::Build
+                | CargoWhat::Check
+                | CargoWhat::Clippy
+                | CargoWhat::Test
+                | CargoWhat::Nextest
+                | CargoWhat::Doc
+        )
+    }
+
+    /// Whether `--check` makes sense for this operation (only `fmt`).
+    pub fn takes_check(self) -> bool {
+        matches!(self, CargoWhat::Fmt)
+    }
 }
 
 #[derive(Clone, ValueEnum)]
@@ -382,8 +435,6 @@ pub enum CleanWhat {
     Make,
     /// Discard unstaged working-tree changes (git checkout .)
     Git,
-    /// Run cargo clean (skip if no Cargo.toml)
-    Cargo,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -465,7 +516,7 @@ impl ReleaseType {
 
 /// Also deserializable so `default_build_method = "rsconstruct"` in
 /// ~/.config/rsmultigit/config.toml accepts exactly the spellings the
-/// command line does (kebab-case: `cargo-publish`).
+/// command line does (kebab-case, as `rsconstruct` and friends are).
 #[derive(Clone, Debug, PartialEq, Eq, ValueEnum, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BuildWhat {
@@ -477,8 +528,6 @@ pub enum BuildWhat {
     Rsconstruct,
     /// Run cargo build on projects that have a Cargo.toml file
     Cargo,
-    /// Run cargo publish on projects that have a Cargo.toml file
-    CargoPublish,
 }
 
 impl BuildWhat {
@@ -637,7 +686,7 @@ mod tests {
         }
 
         // clean requires a what argument
-        let clean_whats = ["hard", "soft", "make", "git", "cargo"];
+        let clean_whats = ["hard", "soft", "make", "git"];
         for what in clean_whats {
             let result = Cli::try_parse_from(["rsmultigit", "clean", what]);
             assert!(result.is_ok(), "clean {what} should parse");
@@ -702,11 +751,14 @@ mod tests {
 
         // build takes an optional what argument (falls back to the config
         // file's `default_build_method` when omitted)
-        let build_whats = ["bootstrap", "make", "rsconstruct", "cargo", "cargo-publish"];
+        let build_whats = ["bootstrap", "make", "rsconstruct", "cargo"];
         for what in build_whats {
             let result = Cli::try_parse_from(["rsmultigit", "build", what]);
             assert!(result.is_ok(), "build {what} should parse");
         }
+        // publishing and cleaning moved under `cargo`
+        assert!(Cli::try_parse_from(["rsmultigit", "build", "cargo-publish"]).is_err());
+        assert!(Cli::try_parse_from(["rsmultigit", "clean", "cargo"]).is_err());
         let result = Cli::try_parse_from(["rsmultigit", "build"]);
         assert!(result.is_ok(), "build without a method should parse");
 
@@ -740,11 +792,18 @@ mod tests {
         assert!(result.is_err(), "gh without a what should not parse");
 
         // cargo requires a what argument
-        let cargo_whats = ["update"];
+        let cargo_whats = [
+            "build", "check", "clippy", "fmt", "test", "nextest", "doc", "deny", "fetch", "update",
+            "clean", "publish",
+        ];
         for what in cargo_whats {
             let result = Cli::try_parse_from(["rsmultigit", "cargo", what]);
             assert!(result.is_ok(), "cargo {what} should parse");
         }
+        let result = Cli::try_parse_from(["rsmultigit", "cargo", "build", "--release"]);
+        assert!(result.is_ok(), "cargo build --release should parse");
+        let result = Cli::try_parse_from(["rsmultigit", "cargo", "fmt", "--check"]);
+        assert!(result.is_ok(), "cargo fmt --check should parse");
         let result = Cli::try_parse_from(["rsmultigit", "cargo"]);
         assert!(result.is_err(), "cargo without a what should not parse");
 
@@ -889,11 +948,11 @@ mod tests {
     fn parse_build_without_method() {
         let cli = parse(&["rsmultigit", "build"]);
         assert!(matches!(cli.command, Commands::Build { what: None }));
-        let cli = parse(&["rsmultigit", "build", "cargo-publish"]);
+        let cli = parse(&["rsmultigit", "build", "rsconstruct"]);
         assert!(matches!(
             cli.command,
             Commands::Build {
-                what: Some(BuildWhat::CargoPublish)
+                what: Some(BuildWhat::Rsconstruct)
             }
         ));
     }
@@ -909,12 +968,12 @@ mod tests {
             ("make", BuildWhat::Make),
             ("rsconstruct", BuildWhat::Rsconstruct),
             ("cargo", BuildWhat::Cargo),
-            ("cargo-publish", BuildWhat::CargoPublish),
         ] {
             let probe: Probe = toml::from_str(&format!("what = \"{text}\"")).unwrap();
             assert_eq!(probe.what, want, "{text}");
         }
-        assert!(toml::from_str::<Probe>("what = \"CargoPublish\"").is_err());
+        assert!(toml::from_str::<Probe>("what = \"Rsconstruct\"").is_err());
+        assert!(toml::from_str::<Probe>("what = \"cargo-publish\"").is_err());
         assert!(toml::from_str::<Probe>("what = \"ninja\"").is_err());
     }
 
@@ -922,7 +981,7 @@ mod tests {
     fn build_what_names_are_the_cli_spellings() {
         assert_eq!(
             BuildWhat::names(),
-            ["bootstrap", "make", "rsconstruct", "cargo", "cargo-publish"]
+            ["bootstrap", "make", "rsconstruct", "cargo"]
         );
     }
 

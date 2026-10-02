@@ -47,11 +47,6 @@ pub fn build_cargo(project: &Utf8Path, venv: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn build_cargo_publish(project: &Utf8Path, venv: bool) -> Result<()> {
-    check_call_maybe_ve(project, venv, "cargo", &["publish"])?;
-    Ok(())
-}
-
 pub fn build_rsconstruct(project: &Utf8Path, venv: bool) -> Result<()> {
     check_call_maybe_ve(project, venv, "rsconstruct", &["--quiet", "build"])?;
     Ok(())

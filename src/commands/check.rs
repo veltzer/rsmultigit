@@ -17,7 +17,7 @@ pub struct CheckConfig {
     pub repos: Vec<String>,
     /// Build method `rsmultigit build` uses when none is given on the command
     /// line, so a fleet that is all-rsconstruct can type `rsmultigit build`.
-    /// Spelled as on the command line (`rsconstruct`, `cargo-publish`, ...).
+    /// Spelled as on the command line (`rsconstruct`, `cargo`, ...).
     #[serde(default)]
     pub default_build_method: Option<BuildWhat>,
     #[serde(default)]

@@ -10,8 +10,8 @@ use anyhow::Result;
 use clap::Parser;
 
 use cli::{
-    BranchWhat, BuildWhat, CargoWhat, CleanWhat, Cli, Commands, CountWhat, GhWhat, ResetWhat,
-    RuleKind, RustWhat, StashWhat, TagWhat, UvWhat,
+    BranchWhat, BuildWhat, CleanWhat, Cli, Commands, CountWhat, GhWhat, ResetWhat, RuleKind,
+    RustWhat, StashWhat, TagWhat, UvWhat,
 };
 use commands::check_run::{self, CheckExistsOpts, CheckSameOpts};
 use config::AppConfig;
@@ -255,20 +255,12 @@ fn main() -> Result<()> {
                     },
                 )?;
             }
-            CleanWhat::Cargo => {
-                runner::do_for_all_projects_with_check(
-                    &config,
-                    &projects,
-                    commands::clean::has_cargo_toml,
-                    commands::clean::clean_cargo,
-                )?;
-            }
             _ => {
                 let clean_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
                     CleanWhat::Hard => commands::clean::clean_hard,
                     CleanWhat::Soft => commands::clean::clean_soft,
                     CleanWhat::Git => commands::clean::clean_git,
-                    CleanWhat::Make | CleanWhat::Cargo => unreachable!("handled above"),
+                    CleanWhat::Make => unreachable!("handled above"),
                 };
                 runner::do_for_all_projects(&config, &projects, clean_fn)?;
             }
@@ -441,10 +433,6 @@ fn main() -> Result<()> {
                     commands::build::build_rsconstruct,
                 ),
                 BuildWhat::Cargo => (commands::build::check_cargo, commands::build::build_cargo),
-                BuildWhat::CargoPublish => (
-                    commands::build::check_cargo,
-                    commands::build::build_cargo_publish,
-                ),
             };
             let venv = config.venv;
             runner::do_for_all_projects_with_check(
@@ -492,20 +480,31 @@ fn main() -> Result<()> {
             }
         }
 
-        Commands::Cargo { what } => {
-            let venv = config.venv;
-            match what {
-                CargoWhat::Update => {
-                    runner::do_for_all_projects_with_check(
-                        &config,
-                        &projects,
-                        commands::build::check_cargo,
-                        move |project: &Utf8Path| -> anyhow::Result<()> {
-                            commands::cargo::update(project, venv)
-                        },
-                    )?;
-                }
+        Commands::Cargo {
+            what,
+            release,
+            check,
+        } => {
+            let what = *what;
+            let release = *release;
+            let check = *check;
+            if release && !what.takes_release() {
+                anyhow::bail!(
+                    "--release only applies to `cargo build`, `check`, `clippy`, `test`, `nextest` and `doc`"
+                );
             }
+            if check && !what.takes_check() {
+                anyhow::bail!("--check only applies to `cargo fmt`");
+            }
+            let venv = config.venv;
+            runner::do_for_all_projects_with_check(
+                &config,
+                &projects,
+                commands::build::check_cargo,
+                move |project: &Utf8Path| -> anyhow::Result<()> {
+                    commands::cargo::run(project, venv, what, release, check)
+                },
+            )?;
         }
 
         Commands::CheckSame { .. } => unreachable!("handled above"),

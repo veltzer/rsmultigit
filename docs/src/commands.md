@@ -15,7 +15,7 @@ the subcommand name.
 | `--no-stop` | On error, print `error in <repo>: ...` to stderr and continue with the next repo instead of stopping |
 | `--short-circuit` | Stop at the first failing rule. Off by default; honoured by `check-same` and `check-exists` |
 | `-j`, `--jobs <N>` | Run up to N repos in parallel (default 1; 0 means one worker per CPU). Output is still printed in repo order |
-| `--venv` | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. On by default; honoured by `run`, `build`, `cargo update` and `clean make`; not by `uv` |
+| `--venv` | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. On by default; honoured by `run`, `build`, `cargo` and `clean make`; not by `uv` |
 | `--no-venv` | Turn `--venv` off: run tool subprocesses with the ambient environment |
 
 Example:
@@ -177,7 +177,8 @@ rsmultigit reset mixed      # Unstage changes
 | `soft` | `git clean -fd` | Removes untracked files only |
 | `git` | `git checkout .` | Discards unstaged working-tree changes |
 | `make` | `make clean` | Honours `--venv` |
-| `cargo` | `cargo clean` | Skips repos without `Cargo.toml` |
+
+`cargo clean` lives under the cargo command: `rsmultigit cargo clean`.
 
 ### `rsmultigit diff`
 
@@ -378,7 +379,8 @@ activation everywhere.
 | `make` | `make` | all |
 | `rsconstruct` | `rsconstruct --quiet build` | those with `rsconstruct.toml` |
 | `cargo` | `cargo build` then `cargo build --release` | those with `Cargo.toml` |
-| `cargo-publish` | `cargo publish` | those with `Cargo.toml` |
+
+Publishing is not a build method: see `rsmultigit cargo publish` below.
 
 ### Default build method
 
@@ -391,7 +393,7 @@ default_build_method = "rsconstruct"
 
 With that in place a bare `rsmultigit build` means
 `rsmultigit build rsconstruct`. The key accepts exactly the spellings the
-command line does (`cargo-publish`, not `CargoPublish`), and a method given
+command line does (`rsconstruct`, not `Rsconstruct`), and a method given
 on the command line always wins over the config file. Without the key, a
 bare `rsmultigit build` is an error that says how to fix it.
 
@@ -407,10 +409,36 @@ rsmultigit --no-venv build rsconstruct
 These commands operate only on repositories that have a `Cargo.toml` file
 and no `.disable` file. Other repositories are skipped.
 
-### `rsmultigit cargo update`
+### `rsmultigit cargo <what> [--release] [--check]`
 
-`cargo update` in each Rust project, refreshing `Cargo.lock`. Honours
-`--venv`.
+Runs one cargo operation in each Rust project. All of them honour `--venv`.
+
+| `what` | Runs | Notes |
+|--------|------|-------|
+| `build` | `cargo build` | |
+| `check` | `cargo check` | Type-check only, no artifacts |
+| `clippy` | `cargo clippy --all-targets -- -D warnings` | Same invocation as the fleet's `ci.yml`: warnings fail the run |
+| `fmt` | `cargo fmt --all` | `--check` only verifies and fails on unformatted code |
+| `test` | `cargo test` | cargo's built-in runner |
+| `nextest` | `cargo nextest run` | Requires [cargo-nextest](https://nexte.st) |
+| `doc` | `cargo doc --no-deps` | API docs for the crate itself |
+| `deny` | `cargo deny check` | Requires [cargo-deny](https://crates.io/crates/cargo-deny) |
+| `fetch` | `cargo fetch` | Download dependencies without building |
+| `update` | `cargo update` | Refreshes `Cargo.lock` |
+| `clean` | `cargo clean` | Removes the `target` directory |
+| `publish` | `cargo publish` | Uploads the crate to crates.io; `rust publish` is the full release flow |
+
+`--release` appends `--release` and is accepted by the operations that
+compile under a profile: `build`, `check`, `clippy`, `test`, `nextest` and
+`doc`. `--check` is accepted by `fmt` only. Either flag on any other
+operation is an error, and the two flags are mutually exclusive.
+
+```bash
+rsmultigit cargo fmt --check             # Is every Rust repo formatted?
+rsmultigit cargo clippy                  # Lint the fleet the way CI does
+rsmultigit -j 0 cargo nextest --release  # Release-mode tests, all cores
+rsmultigit cargo update                  # Refresh every Cargo.lock
+```
 
 ### `rsmultigit rust publish [--type <patch|minor|major>]`
 
