@@ -49,13 +49,21 @@ it renders the *short* help, where the operations appear as a bare
 *nothing* followed the command, so `rsmultigit gh --keep 3` still gets the
 `<WHAT>` error.
 
+A third gap: either rendering lists every flag as well, and since the
+global flags (`--terse`, `--no-header`, `-j`, `--venv`, ...) apply to every
+command, that is a dozen entries burying the five operations the user
+stopped to see.
+
 **What we do.** Every such variant carries `arg_required_else_help`, and
 `main::parse_cli` intercepts both outcomes (the help-on-empty error and a
-`MissingRequiredArgument` naming `<WHAT>`) to print the command's *long* help
-via `cli::long_help_for`, so each operation comes with its description. Exit
-status 2 on stderr, as clap would. The positional is called `what` on every
-such command; that name is the contract the intercept relies on. A missing
-free-form positional (`blame <FILE>`) keeps clap's own error.
+`MissingRequiredArgument` naming `<WHAT>`) to print the command's help via
+`cli::long_help_for`. That renders the command with a `help_template` of
+`{positionals}` only - so each operation comes with its long description and
+no flag is listed - and an `after_help` trailer pointing at `--help`, which
+keeps the full output. Exit status 2 on stderr, as clap would. The positional
+is called `what` on every such command; that name is the contract the
+intercept relies on. A missing free-form positional (`blame <FILE>`) keeps
+clap's own error.
 
 ## Aliases and shell completion
 

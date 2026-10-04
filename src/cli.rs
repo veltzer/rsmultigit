@@ -652,12 +652,21 @@ pub fn print_completions(shell: Shell) {
     }
 }
 
-/// The long help of the (sub)command that `args` (argv, program name
-/// included) names, for printing when such a command is invoked without the
-/// positional that selects its operation. clap's `arg_required_else_help`
-/// renders the short help there, which lists the choices as bare names;
-/// the long help adds each choice's description, which is what someone who
-/// stopped at `rsmultigit gh` is looking for.
+/// Help template for a command invoked without its operation word: the
+/// positionals (so `<WHAT>` with every choice described) and nothing else.
+/// Options stay out — on a command with the global flags that is a dozen
+/// entries which bury the choices the user actually stopped to see — and
+/// the trailer points at `--help`, where they remain.
+const OPERATIONS_HELP_TEMPLATE: &str =
+    "{before-help}{about-with-newline}\n{usage-heading} {usage}\n\n{positionals}{after-help}";
+
+/// The help of the (sub)command that `args` (argv, program name included)
+/// names, for printing when such a command is invoked without the positional
+/// that selects its operation. clap's `arg_required_else_help` renders the
+/// short help there, which lists the choices as bare names and then every
+/// flag; this renders the *long* description of each choice and *no* flags,
+/// which is what someone who stopped at `rsmultigit gh` is looking for.
+/// The top-level command (no subcommand named) keeps its normal long help.
 pub fn long_help_for<I, S>(args: I) -> String
 where
     I: IntoIterator<Item = S>,
@@ -678,13 +687,21 @@ where
             }
         }
     }
+    if path.is_empty() {
+        return cmd.render_long_help().to_string();
+    }
+    let full_name = format!("{} {}", cmd.get_name(), path.join(" "));
     let mut cur = &mut cmd;
     for name in &path {
         cur = cur
             .find_subcommand_mut(name)
             .expect("subcommand path was taken from this very Command");
     }
-    cur.render_long_help().to_string()
+    cur.clone()
+        .help_template(OPERATIONS_HELP_TEMPLATE)
+        .after_help(format!("Run `{full_name} --help` for the options."))
+        .render_long_help()
+        .to_string()
 }
 
 /// Bash snippet appended to `rsmultigit complete bash`. Wraps clap's generated
@@ -832,6 +849,46 @@ mod tests {
         assert!(
             help.contains("Print the conclusion of the most recent workflow run"),
             "long help should describe each choice: {help}"
+        );
+    }
+
+    #[test]
+    fn long_help_for_leaves_the_flags_to_help() {
+        // The flags - the command's own and the global ones - would bury the
+        // choices, so the bare invocation lists only the operations and says
+        // where the flags are.
+        for sub in ["gh", "count", "cargo"] {
+            let help = long_help_for(["rsmultigit", sub]);
+            // Rendered option lines; a description may well mention a flag
+            // (`clean-all` talks about --keep), and that is fine.
+            for flag in [
+                "Options:",
+                "--keep <KEEP>",
+                "--no-header\n",
+                "-j, --jobs",
+                "--venv\n",
+                "-h, --help",
+            ] {
+                assert!(
+                    !help.contains(flag),
+                    "bare `{sub}` should not list `{flag}`: {help}"
+                );
+            }
+            assert!(
+                help.contains(&format!("Run `rsmultigit {sub} --help` for the options.")),
+                "bare `{sub}` should point at --help: {help}"
+            );
+        }
+        // `--help` itself is untouched.
+        let mut cmd = Cli::command();
+        let full = cmd
+            .find_subcommand_mut("gh")
+            .unwrap()
+            .render_long_help()
+            .to_string();
+        assert!(
+            full.contains("Options:") && full.contains("--keep"),
+            "{full}"
         );
     }
 
