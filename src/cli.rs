@@ -85,6 +85,12 @@ pub struct Cli {
     pub command: Commands,
 }
 
+// Every variant whose required positional picks the operation (`gh <WHAT>`,
+// `count <WHAT>`, ...) carries `arg_required_else_help`, so invoking the
+// command bare prints its help instead of clap's "required arguments were not
+// provided" error. The error names only `<WHAT>`; the help lists the choices.
+// `main` upgrades that help to the long form (see `long_help_for`), so each
+// choice comes with its one-line description.
 #[derive(Subcommand)]
 pub enum Commands {
     /// Show the age of the last commit per repo
@@ -97,6 +103,7 @@ pub enum Commands {
         file: String,
     },
     /// Branch operations
+    #[command(arg_required_else_help = true)]
     Branch {
         /// What branch info to show
         #[arg(value_enum)]
@@ -188,6 +195,7 @@ pub enum Commands {
         allow_empty: bool,
     },
     /// Clean repositories
+    #[command(arg_required_else_help = true)]
     Clean {
         /// What kind of clean to perform
         #[arg(value_enum)]
@@ -214,6 +222,7 @@ pub enum Commands {
     /// Redirect to ~/.config/rsmultigit/config.toml to bootstrap a new install.
     ConfigExample,
     /// Count repositories matching a condition
+    #[command(arg_required_else_help = true)]
     Count {
         /// What to count
         #[arg(value_enum)]
@@ -228,6 +237,7 @@ pub enum Commands {
     /// Run git garbage collection
     Gc,
     /// GitHub operations (via the `gh` CLI) on repos with a github.com remote
+    #[command(arg_required_else_help = true)]
     Gh {
         /// What GitHub operation to perform
         #[arg(value_enum)]
@@ -281,6 +291,7 @@ pub enum Commands {
     /// Show remote URLs
     Remote,
     /// Reset operations
+    #[command(arg_required_else_help = true)]
     Reset {
         /// What kind of reset to perform
         #[arg(value_enum)]
@@ -294,6 +305,7 @@ pub enum Commands {
         command: Vec<String>,
     },
     /// Rust operations on projects that have a Cargo.toml file
+    #[command(arg_required_else_help = true)]
     Rust {
         /// What rust operation to perform
         #[arg(value_enum)]
@@ -305,6 +317,7 @@ pub enum Commands {
     /// Show the size of the .git directory per repo
     Size,
     /// Stash operations
+    #[command(arg_required_else_help = true)]
     Stash {
         /// What stash operation to perform
         #[arg(value_enum)]
@@ -315,12 +328,14 @@ pub enum Commands {
     /// Update submodules recursively
     SubmoduleUpdate,
     /// List tags
+    #[command(arg_required_else_help = true)]
     Tag {
         /// What tags to show
         #[arg(value_enum)]
         what: TagWhat,
     },
     /// Run uv operations on projects that have a pyproject.toml file
+    #[command(arg_required_else_help = true)]
     Uv {
         /// What uv operation to perform
         #[arg(value_enum)]
@@ -338,6 +353,7 @@ pub enum Commands {
         check: bool,
     },
     /// Run cargo operations on projects that have a Cargo.toml file
+    #[command(arg_required_else_help = true)]
     Cargo {
         /// What cargo operation to perform
         #[arg(value_enum)]
@@ -360,6 +376,7 @@ pub enum Commands {
         check: bool,
     },
     /// Run npm operations on projects that have a package.json file
+    #[command(arg_required_else_help = true)]
     Npm {
         /// What npm operation to perform
         #[arg(value_enum)]
@@ -635,6 +652,41 @@ pub fn print_completions(shell: Shell) {
     }
 }
 
+/// The long help of the (sub)command that `args` (argv, program name
+/// included) names, for printing when such a command is invoked without the
+/// positional that selects its operation. clap's `arg_required_else_help`
+/// renders the short help there, which lists the choices as bare names;
+/// the long help adds each choice's description, which is what someone who
+/// stopped at `rsmultigit gh` is looking for.
+pub fn long_help_for<I, S>(args: I) -> String
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<str>,
+{
+    let mut cmd = Cli::command();
+    cmd.build();
+    let mut path: Vec<String> = Vec::new();
+    {
+        let mut cur = &cmd;
+        for arg in args.into_iter().skip(1) {
+            match cur.find_subcommand(arg.as_ref()) {
+                Some(sub) => {
+                    path.push(sub.get_name().to_string());
+                    cur = sub;
+                }
+                None => break,
+            }
+        }
+    }
+    let mut cur = &mut cmd;
+    for name in &path {
+        cur = cur
+            .find_subcommand_mut(name)
+            .expect("subcommand path was taken from this very Command");
+    }
+    cur.render_long_help().to_string()
+}
+
 /// Bash snippet appended to `rsmultigit complete bash`. Wraps clap's generated
 /// `_rsmultigit` function so that tabbing after `check-same --checks` or
 /// `check-exists --checks` completes the rule names returned by
@@ -734,6 +786,64 @@ mod tests {
                 what: CountWhat::Dirty
             }
         ));
+    }
+
+    #[test]
+    fn bare_operation_commands_show_help_not_missing_argument() {
+        // Every command whose positional selects the operation prints its
+        // help when given bare, so the user sees the choices.
+        let bare = [
+            "branch", "clean", "count", "gh", "reset", "rust", "stash", "tag", "uv", "cargo", "npm",
+        ];
+        for sub in bare {
+            let err = match Cli::try_parse_from(["rsmultigit", sub]) {
+                Err(err) => err,
+                Ok(_) => panic!("bare `{sub}` should not parse"),
+            };
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand,
+                "bare `{sub}` should display help, got: {err}"
+            );
+            let rendered = err.to_string();
+            assert!(
+                rendered.contains("possible values:"),
+                "help for bare `{sub}` should list the choices: {rendered}"
+            );
+        }
+    }
+
+    #[test]
+    fn long_help_for_lists_each_choice_with_its_description() {
+        let help = long_help_for(["rsmultigit", "gh"]);
+        assert!(
+            help.contains("Usage: rsmultigit gh"),
+            "usage line should carry the full command path: {help}"
+        );
+        for name in [
+            "clean-all",
+            "artifacts",
+            "last-workflow-state",
+            "open-site",
+            "sync-metadata",
+        ] {
+            assert!(help.contains(name), "gh help should list `{name}`: {help}");
+        }
+        assert!(
+            help.contains("Print the conclusion of the most recent workflow run"),
+            "long help should describe each choice: {help}"
+        );
+    }
+
+    #[test]
+    fn long_help_for_stops_at_the_deepest_subcommand_named() {
+        // Trailing non-subcommand words (flags, typos) do not derail the lookup.
+        let help = long_help_for(["rsmultigit", "count", "--verbose"]);
+        assert!(help.contains("Usage: rsmultigit count"), "{help}");
+        // No subcommand at all falls back to the top-level help.
+        let help = long_help_for(["rsmultigit"]);
+        assert!(help.contains("Usage: rsmultigit"), "{help}");
+        assert!(help.contains("Commands:"), "{help}");
     }
 
     #[test]

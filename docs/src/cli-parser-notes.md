@@ -34,6 +34,29 @@ new subcommand has to be added to the grouping table as well as to the enum,
 and the table can silently drift out of sync. Not worth it for a cosmetic win
 unless the flat help becomes actively painful.
 
+## Commands that demand an operation word
+
+**What we wanted.** `rsmultigit gh` (and `count`, `clean`, `cargo`, `uv`,
+`npm`, ... every command whose first positional is a `ValueEnum` picking the
+operation) must list the operations when invoked without one. clap's default
+is an error that only says `<WHAT>` is required, which leaves the user to go
+and ask `--help` for what `<WHAT>` may be.
+
+**What clap supports.** `#[command(arg_required_else_help = true)]` on the
+variant turns the bare invocation into a help display. Two gaps remain:
+it renders the *short* help, where the operations appear as a bare
+`[possible values: ...]` list without descriptions, and it only fires when
+*nothing* followed the command, so `rsmultigit gh --keep 3` still gets the
+`<WHAT>` error.
+
+**What we do.** Every such variant carries `arg_required_else_help`, and
+`main::parse_cli` intercepts both outcomes (the help-on-empty error and a
+`MissingRequiredArgument` naming `<WHAT>`) to print the command's *long* help
+via `cli::long_help_for`, so each operation comes with its description. Exit
+status 2 on stderr, as clap would. The positional is called `what` on every
+such command; that name is the contract the intercept relies on. A missing
+free-form positional (`blame <FILE>`) keeps clap's own error.
+
 ## Aliases and shell completion
 
 **What we wanted.** `alias mg=rsmultigit` should preserve tab completion.

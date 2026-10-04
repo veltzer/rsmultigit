@@ -8,6 +8,7 @@ use camino::Utf8Path;
 
 use anyhow::Result;
 use clap::Parser;
+use clap::error::{ContextKind, ContextValue, ErrorKind};
 
 use cli::{
     BranchWhat, BuildWhat, CleanWhat, Cli, Commands, CountWhat, GhWhat, ResetWhat, RuleKind,
@@ -16,8 +17,41 @@ use cli::{
 use commands::check_run::{self, CheckExistsOpts, CheckSameOpts};
 use config::AppConfig;
 
+/// `Cli::parse()`, except that a command invoked without the positional that
+/// selects its operation (`rsmultigit gh`, `rsmultigit gh --keep 3`) gets the
+/// long help of that command, so every choice is listed with its description.
+/// clap alone would print the short help for the bare form (choices as bare
+/// names) and a "required arguments were not provided: <WHAT>" error for the
+/// form with options, neither of which tells the user what to type. Same
+/// stream and exit status as clap uses for those cases.
+fn parse_cli() -> Cli {
+    match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(err) if is_missing_operation(&err) => {
+            let args: Vec<String> = std::env::args().collect();
+            eprint!("{}", cli::long_help_for(&args));
+            std::process::exit(2);
+        }
+        Err(err) => err.exit(),
+    }
+}
+
+/// Whether `err` says the operation-selecting positional (`<WHAT>` on every
+/// such command, see `Commands` in cli.rs) is missing: either nothing at all
+/// followed the command, or only options did.
+fn is_missing_operation(err: &clap::Error) -> bool {
+    match err.kind() {
+        ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => true,
+        ErrorKind::MissingRequiredArgument => matches!(
+            err.get(ContextKind::InvalidArg),
+            Some(ContextValue::Strings(missing)) if missing.iter().any(|arg| arg == "<WHAT>")
+        ),
+        _ => false,
+    }
+}
+
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let cli = parse_cli();
 
     // Handle commands that don't need project discovery
     if let Commands::Complete { shell } = &cli.command {

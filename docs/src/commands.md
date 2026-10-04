@@ -35,6 +35,11 @@ the repo was skipped by a precondition such as a missing `Cargo.toml`).
 `--verbose` prints the header for those repos too, `--no-header` drops the
 header everywhere, and `--terse` reduces the output to bare repo paths.
 
+Commands that take an operation word (`count dirty`, `gh clean-all`,
+`cargo clippy`, ...) print their help, with every operation and its
+description, when the word is left out - `rsmultigit gh` is the quickest way
+to see what `gh` can do.
+
 ## Count Commands
 
 `rsmultigit count <what>` tests each repo with libgit2 (no subprocess),
