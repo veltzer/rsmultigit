@@ -6,7 +6,7 @@ A Rust CLI tool for managing multiple Git repositories at once. Reads the list o
 
 ## Configuration
 
-rsmultigit requires a config file at `~/.config/rsmultigit/config.toml`. Tests override this via the `RSMULTIGIT_CONFIG` env var. Run `rsmultigit config-example` to print a worked example; its source is `assets/config-example.toml` (embedded at compile time via `include_str!`).
+rsmultigit requires a config file at `~/.config/rsmultigit/config.toml`. Tests override this via the `RSMULTIGIT_CONFIG` env var. Run `rsmultigit config-example` to print a worked example; its source is `assets/config-example.toml` (embedded at compile time via `include_str!`). `rsmultigit setup` (`commands/setup.rs`, prompts via `inquire`) writes a minimal config interactively; every question has a flag (`--repos-dir`, `--build`/`--no-build`, `--overwrite`) so tests drive it without a terminal.
 
 - `repos = [...]` — list of shell-expanded globs. Matches that aren't git repos are filtered out.
 - `default_build_method = "..."` — optional; what a bare `rsmultigit build` runs (same spellings as the CLI: `bootstrap`, `make`, `rsconstruct`, `cargo`). Deserialized straight into `cli::BuildWhat`, so the CLI enum and the config key can never drift. An explicit method on the command line wins.

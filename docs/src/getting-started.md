@@ -6,7 +6,16 @@ Every rsmultigit command reads `~/.config/rsmultigit/config.toml` to learn
 which repositories to operate on. There is no `--config` flag and no
 directory scanning: the file is the single source of truth.
 
-Bootstrap it from the built-in example, then edit the `repos` list:
+The quickest start is the interactive setup, which asks where your
+repositories are (with tab completion), checks that git repos are really
+there, and lets you pick the default build tool from a menu:
+
+```bash
+rsmultigit setup
+```
+
+Or bootstrap the file from the fully commented built-in example and edit the
+`repos` list by hand:
 
 ```bash
 mkdir -p ~/.config/rsmultigit

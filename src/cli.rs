@@ -314,6 +314,28 @@ pub enum Commands {
         #[arg(long = "type", value_enum, default_value_t = ReleaseType::Patch)]
         release_type: ReleaseType,
     },
+    /// Write a first ~/.config/rsmultigit/config.toml for a new install.
+    /// Asks which directory holds the git repositories (with tab completion)
+    /// and which build tool a bare `rsmultigit build` should run, checks that
+    /// the directory really contains git repos, and writes the config. Each
+    /// question is skipped when its answer is given as an option; with every
+    /// answer given, nothing is asked, so the command works in scripts.
+    Setup {
+        /// Directory whose direct subdirectories are the git repositories
+        /// (answers the first question)
+        #[arg(long, value_name = "DIR")]
+        repos_dir: Option<String>,
+        /// Default build method for a bare `rsmultigit build` (answers the
+        /// second question)
+        #[arg(long, value_enum, value_name = "METHOD", conflicts_with = "no_build")]
+        build: Option<BuildWhat>,
+        /// Set no default build method (answers the second question)
+        #[arg(long, default_value_t = false)]
+        no_build: bool,
+        /// Replace an existing config file without asking
+        #[arg(long, default_value_t = false)]
+        overwrite: bool,
+    },
     /// Show the size of the .git directory per repo
     Size,
     /// Stash operations
@@ -610,7 +632,7 @@ impl ReleaseType {
 /// Also deserializable so `default_build_method = "rsconstruct"` in
 /// ~/.config/rsmultigit/config.toml accepts exactly the spellings the
 /// command line does (kebab-case, as `rsconstruct` and friends are).
-#[derive(Clone, Debug, PartialEq, Eq, ValueEnum, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum BuildWhat {
     /// Run bootstrap across all projects
@@ -922,6 +944,7 @@ mod tests {
             "gc",
             "submodule-update",
             "version",
+            "setup",
         ];
         for sub in subcommands {
             let result = Cli::try_parse_from(["rsmultigit", sub]);

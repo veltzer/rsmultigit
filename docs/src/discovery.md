@@ -49,5 +49,5 @@ The location is fixed at `~/.config/rsmultigit/config.toml` and there is no
 `--config` flag. The `RSMULTIGIT_CONFIG` environment variable overrides the
 path; the integration tests use it to point the binary at a temporary config.
 
-Three commands need no config at all, because they are how a fresh install
-bootstraps one: `config-example`, `complete`, and `version`.
+Four commands need no config at all, because they are how a fresh install
+bootstraps one: `setup`, `config-example`, `complete`, and `version`.

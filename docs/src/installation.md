@@ -70,8 +70,14 @@ commands, and whichever build tool a `build` method names.
 
 ## First run
 
-rsmultigit needs a config file before it will do anything. Create one from
-the built-in example and edit the `repos` list:
+rsmultigit needs a config file before it will do anything. Create one
+interactively:
+
+```bash
+rsmultigit setup
+```
+
+or from the built-in example, then edit the `repos` list:
 
 ```bash
 mkdir -p ~/.config/rsmultigit

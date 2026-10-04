@@ -79,6 +79,27 @@ fn main() -> Result<()> {
         print!("{}", include_str!("../assets/config-example.toml"));
         return Ok(());
     }
+    if let Commands::Setup {
+        repos_dir,
+        build,
+        no_build,
+        overwrite,
+    } = &cli.command
+    {
+        // Same: setup is what writes the config file in the first place, so
+        // it runs before anything tries to read one.
+        let opts = commands::setup::SetupOpts {
+            repos_dir: repos_dir.clone(),
+            build: match (build, no_build) {
+                (Some(m), _) => Some(Some(*m)),
+                (None, true) => Some(None),
+                (None, false) => None,
+            },
+            overwrite: *overwrite,
+        };
+        let config_path = commands::check::default_config_path()?;
+        return commands::setup::run(&opts, &config_path, &mut std::io::stdout().lock());
+    }
 
     let config = AppConfig::from(&cli);
 
@@ -476,7 +497,7 @@ fn main() -> Result<()> {
         Commands::Build { what } => {
             // Command line wins; otherwise fall back to the config file's
             // `default_build_method`; otherwise it's a usage error.
-            let what = match what.clone().or(file_config.default_build_method.clone()) {
+            let what = match what.or(file_config.default_build_method) {
                 Some(what) => what,
                 None => anyhow::bail!(
                     "build: no build method given and `default_build_method` is not set in {config_path}\n\
@@ -616,6 +637,7 @@ fn main() -> Result<()> {
         Commands::CheckAll { .. } => unreachable!("handled above"),
         Commands::Complete { .. } => unreachable!("handled above"),
         Commands::ConfigExample => unreachable!("handled above"),
+        Commands::Setup { .. } => unreachable!("handled above"),
         Commands::Version => unreachable!("handled above"),
     }
 

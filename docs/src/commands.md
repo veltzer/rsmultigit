@@ -690,8 +690,50 @@ operation it is an error rather than a silently ignored flag.
 
 ## Utility Commands
 
-These three need no config file, because they are how a fresh install
+These four need no config file, because they are how a fresh install
 bootstraps one.
+
+### `rsmultigit setup`
+
+Write a first `~/.config/rsmultigit/config.toml` by answering two questions
+in the terminal:
+
+1. **Which directory holds your git repositories.** A text prompt with tab
+   completion over directories, defaulting to `~/git` when it exists. The
+   answer is checked before it is accepted: it must be a directory with at
+   least one git repository directly under it, the same test the `repos`
+   glob applies later.
+2. **Which build tool a bare `rsmultigit build` runs.** A menu of the
+   supported methods (`bootstrap`, `make`, `rsconstruct`, `cargo`) plus
+   `none`, each row showing how many of the repos found carry that tool's
+   file (`bootstrap.py`, `Makefile`, `rsconstruct.toml`, `Cargo.toml`). The
+   cursor starts on the most common one.
+
+The config is written with `repos = ["<dir>/*"]` (the home directory
+contracted to `~`) and, unless `none` was picked, `default_build_method`.
+An existing file is replaced only after a confirmation.
+
+Each question is skipped when its answer is given as an option, and with
+every answer given nothing is asked at all, so the command also works in
+scripts and without a terminal:
+
+```bash
+rsmultigit setup                                        # fully interactive
+rsmultigit setup --repos-dir ~/src                      # asks only the build tool
+rsmultigit setup --repos-dir ~/src --build cargo        # asks nothing
+rsmultigit setup --repos-dir ~/src --no-build           # no default_build_method
+rsmultigit setup --repos-dir ~/src --build make --overwrite   # replace without asking
+```
+
+| Option | Meaning |
+|--------|---------|
+| `--repos-dir <DIR>` | Directory whose direct subdirectories are the repositories |
+| `--build <METHOD>` | Set `default_build_method`; excludes `--no-build` |
+| `--no-build` | Write no `default_build_method` |
+| `--overwrite` | Replace an existing config file without asking |
+
+Without a terminal, a question that still needs asking is an error naming
+the option that answers it; nothing is written in that case.
 
 ### `rsmultigit config-example`
 

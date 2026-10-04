@@ -61,8 +61,15 @@ cargo build --release
 
 ## Configuration
 
-rsmultigit reads `~/.config/rsmultigit/config.toml` on every run. Bootstrap
-it from the built-in example:
+rsmultigit reads `~/.config/rsmultigit/config.toml` on every run. Create it
+interactively (it asks where your repositories are and which build tool you
+use, with tab completion and a menu):
+
+```bash
+rsmultigit setup
+```
+
+or bootstrap it from the fully commented built-in example:
 
 ```bash
 mkdir -p ~/.config/rsmultigit
@@ -185,6 +192,7 @@ rsmultigit complete bash >> ~/.bash_completion
 ### Other
 | Command | Description |
 |---------|-------------|
+| `setup [--repos-dir <DIR>] [--build <METHOD>\|--no-build] [--overwrite]` | Interactively write a first config file: pick the repositories directory and the default build tool |
 | `config-example` | Print a sample config file to stdout |
 | `complete <shell>` | Generate shell completion scripts |
 | `version` | Print detailed version information |

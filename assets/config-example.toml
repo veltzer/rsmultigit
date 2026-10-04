@@ -4,6 +4,9 @@
 #   mkdir -p ~/.config/rsmultigit
 #   rsmultigit config-example > ~/.config/rsmultigit/config.toml
 #
+# `rsmultigit setup` writes a minimal config interactively instead (it asks
+# for the repositories directory and the default build tool).
+#
 # The config location is fixed — there is no --config flag. Every rsmultigit
 # command reads this file to decide which repositories to operate on.
 #

@@ -19,6 +19,8 @@ mod remote;
 mod run;
 #[path = "tests_mod/rust.rs"]
 mod rust;
+#[path = "tests_mod/setup.rs"]
+mod setup;
 #[path = "tests_mod/status.rs"]
 mod status;
 #[path = "tests_mod/version.rs"]

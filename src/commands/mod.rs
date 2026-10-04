@@ -27,6 +27,7 @@ pub mod remote;
 pub mod reset;
 pub mod run;
 pub mod rust;
+pub mod setup;
 pub mod size;
 pub mod stash;
 pub mod status;

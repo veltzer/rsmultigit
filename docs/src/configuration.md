@@ -7,10 +7,11 @@ operate on and *which invariants* to check; the flags say *how* to run and
 
 The location is fixed and there is no `--config` flag. `RSMULTIGIT_CONFIG`
 overrides the path (the test suite uses it). A missing or unparsable file is
-an error for every command except `config-example`, `complete` and
+an error for every command except `setup`, `config-example`, `complete` and
 `version`.
 
-Print a fully commented starting point with:
+Write a first config interactively with `rsmultigit setup`, or print a fully
+commented starting point with:
 
 ```bash
 rsmultigit config-example
