@@ -38,6 +38,24 @@ fn headers_suppressed(config: &AppConfig) -> bool {
     config.no_header || config.terse
 }
 
+/// Report a per-repo error under `--no-stop` and count it, so the run can
+/// carry on past it and still fail at the end (see [`no_stop_outcome`]).
+fn report_no_stop(project: &Utf8Path, e: &anyhow::Error, failed: &mut usize) {
+    eprintln!("error in {}: {e:#}", project);
+    *failed += 1;
+}
+
+/// The final result of a `--no-stop` run: errors were reported as they
+/// happened, but a run in which any repo failed must not exit 0, or scripts
+/// cannot tell it from a clean one.
+fn no_stop_outcome(failed: usize, total: usize) -> Result<()> {
+    if failed == 0 {
+        Ok(())
+    } else {
+        anyhow::bail!("{failed} of {total} repos failed")
+    }
+}
+
 /// The current directory as a UTF-8 path, for resolving relative repo paths.
 fn current_dir() -> Result<Utf8PathBuf> {
     let cwd = std::env::current_dir().context("failed to get current directory")?;
@@ -165,6 +183,7 @@ where
     let total = projects.len() as u32;
     // on_result runs only on the calling thread, so a plain counter suffices.
     let mut count = 0u32;
+    let mut failed = 0usize;
     let jobs = resolve_jobs(config);
 
     for_each_project_ordered(
@@ -176,7 +195,7 @@ where
                 Ok(m) => m,
                 Err(e) => {
                     if config.no_stop {
-                        eprintln!("error in {}: {e:#}", project);
+                        report_no_stop(project, &e, &mut failed);
                         return Ok(());
                     }
                     return Err(e);
@@ -194,7 +213,7 @@ where
     )?;
 
     println!("{count}/{total}");
-    Ok(())
+    no_stop_outcome(failed, projects.len())
 }
 
 /// Runner for "do for all projects" commands.
@@ -225,6 +244,7 @@ where
 {
     let base = current_dir()?;
     let jobs = resolve_jobs(config);
+    let mut failed = 0usize;
 
     // Serial fast path: action writes live to inherited stdout/stderr. With
     // --no-output the action runs under capture and the buffer is dropped,
@@ -243,7 +263,7 @@ where
                     Ok(p) => p,
                     Err(e) => {
                         if config.no_stop {
-                            eprintln!("error in {}: {e:#}", project);
+                            report_no_stop(project, &e, &mut failed);
                             continue;
                         }
                         return Err(e);
@@ -267,13 +287,13 @@ where
             };
             if let Err(e) = outcome.with_context(|| format!("error in project {}", project)) {
                 if config.no_stop {
-                    eprintln!("error in {}: {e:#}", project);
+                    report_no_stop(project, &e, &mut failed);
                 } else {
                     return Err(e);
                 }
             }
         }
-        return Ok(());
+        return no_stop_outcome(failed, projects.len());
     }
 
     // Parallel path: subprocess output is captured per-thread by subprocess_utils
@@ -320,7 +340,7 @@ where
                 }
                 Err(e) => {
                     if config.no_stop {
-                        eprintln!("error in {}: {e:#}", project);
+                        report_no_stop(project, &e, &mut failed);
                         Ok(())
                     } else {
                         Err(e)
@@ -328,7 +348,8 @@ where
                 }
             }
         },
-    )
+    )?;
+    no_stop_outcome(failed, projects.len())
 }
 
 /// Attach a failed action's captured subprocess output to its error, so a
@@ -348,6 +369,7 @@ where
 {
     let base = current_dir()?;
     let jobs = resolve_jobs(config);
+    let mut failed = 0usize;
     let projects_vec: Vec<Utf8PathBuf> = projects.to_vec();
 
     for_each_project_ordered(
@@ -388,7 +410,7 @@ where
                 }
                 Err(e) => {
                     if config.no_stop {
-                        eprintln!("error in {}: {e:#}", project);
+                        report_no_stop(project, &e, &mut failed);
                         Ok(())
                     } else {
                         Err(e)
@@ -396,7 +418,8 @@ where
                 }
             }
         },
-    )
+    )?;
+    no_stop_outcome(failed, projects.len())
 }
 
 #[cfg(test)]
@@ -534,8 +557,50 @@ mod tests {
             counter.fetch_add(1, Ordering::SeqCst);
             anyhow::bail!("fail")
         });
-        assert!(result.is_ok());
+        // Every repo ran, but the run as a whole still fails.
+        assert_eq!(result.unwrap_err().to_string(), "3 of 3 repos failed");
         assert_eq!(counter.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn do_for_all_no_stop_counts_only_the_failures() {
+        let tmp = TempDir::new().unwrap();
+        let projects = make_dirs(
+            camino::Utf8Path::from_path(tmp.path()).unwrap(),
+            &["a", "b", "c"],
+        );
+        let mut config = default_config();
+        config.no_stop = true;
+
+        let result = do_for_all_projects(&config, &projects, |p| {
+            if p.file_name() == Some("b") {
+                anyhow::bail!("fail")
+            }
+            Ok(())
+        });
+        assert_eq!(result.unwrap_err().to_string(), "1 of 3 repos failed");
+    }
+
+    #[test]
+    fn do_count_no_stop_fails_after_counting() {
+        let tmp = TempDir::new().unwrap();
+        let projects = make_dirs(
+            camino::Utf8Path::from_path(tmp.path()).unwrap(),
+            &["a", "b"],
+        );
+        let mut config = default_config();
+        config.no_stop = true;
+
+        let counter = AtomicU32::new(0);
+        let result = do_count(&config, &projects, |p| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            if p.file_name() == Some("a") {
+                anyhow::bail!("fail")
+            }
+            Ok(true)
+        });
+        assert_eq!(result.unwrap_err().to_string(), "1 of 2 repos failed");
+        assert_eq!(counter.load(Ordering::SeqCst), 2);
     }
 
     #[test]
@@ -601,7 +666,7 @@ mod tests {
             counter.fetch_add(1, Ordering::SeqCst);
             anyhow::bail!("fail")
         });
-        assert!(result.is_ok());
+        assert_eq!(result.unwrap_err().to_string(), "4 of 4 repos failed");
         assert_eq!(counter.load(Ordering::SeqCst), 4);
     }
 
@@ -643,7 +708,7 @@ mod tests {
             counter.fetch_add(1, Ordering::SeqCst);
             anyhow::bail!("fail")
         });
-        assert!(result.is_ok());
+        assert_eq!(result.unwrap_err().to_string(), "2 of 2 repos failed");
         assert_eq!(counter.load(Ordering::SeqCst), 2);
     }
 

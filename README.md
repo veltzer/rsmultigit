@@ -102,9 +102,9 @@ for every field.
 
 ```bash
 rsmultigit status                 # one-line summary of every repo that needs attention
-rsmultigit -j 8 pull              # pull all repos, 8 at a time
+rsmultigit -j 8 git pull          # pull all repos, 8 at a time
 rsmultigit count dirty            # count repos with uncommitted changes
-rsmultigit grep "TODO"            # git grep across all repos
+rsmultigit git grep "TODO"        # git grep across all repos
 rsmultigit check-same             # verify shared files are identical everywhere
 rsmultigit check-same --diff      # ... and show what differs
 rsmultigit build                  # build every repo with the configured default method
@@ -125,47 +125,42 @@ rsmultigit complete bash >> ~/.bash_completion
 | `list-repos` | Print the path of every configured repo |
 | `age` | Show the age of the last commit per repo |
 | `authors` | Show commit authors per repo |
-| `config <key>` | Show a git config value across all repos |
 | `size` | Show the size of the `.git` directory per repo |
 | `last-tag` | Show the most recent tag per repo |
-| `tag local` / `tag remote` | List local or remote tags |
-| `tag has-local` / `tag has-remote` | Count repos that have local or remote tags |
-| `branch local` / `branch remote` / `branch github` | Show local, remote, or GitHub default branches |
-| `remote` | Show remote URLs |
-| `log [--count N]` | Show recent commits (default 10) |
-| `diff` | Show `git diff` for all repositories |
-| `blame <file>` | Run `git blame` on a file (skips repos without it) |
-| `grep [-l] <regexp>` | Grep across all repositories |
 
-### Consistency checks
+### Git
+Each runs the git command of the same name in every repo; `rsmultigit git`
+alone lists them.
+
 | Command | Description |
 |---------|-------------|
-| `check-same` | Verify that `[[check]]` files are byte-identical across repos |
-| `check-same --diff` | Also show a unified diff between differing groups |
-| `check-same --copy` | Interactively copy one group's content over another |
-| `check-same --fix-missing` | Interactively create files missing from `must_have` repos |
-| `check-exists` | Verify that `[[exists]]` files are present in every selected repo |
-| `check-all` | Run both checks; exit non-zero if either fails |
-| `list-checks [check\|exists]` | Print every rule name of one kind (used by shell completion) |
+| `git pull [--quiet]` | Pull all repositories |
+| `git push` | Push repositories that are ahead of their upstream |
+| `git fetch` | Fetch from origin |
+| `git commit -m <msg>` | Stage and commit all changes with a shared message |
+| `git checkout <branch>` | Checkout a branch across all repositories |
+| `git stash push` / `git stash pop` | Stash or pop working-tree changes |
+| `git reset hard` / `git reset soft` / `git reset mixed` | Reset HEAD across all repositories |
+| `git restore` | `git restore .` (discards unstaged changes to tracked files) |
+| `git clean hard` | `git clean -ffxd` (removes untracked and ignored files) |
+| `git clean soft` | `git clean -fd` (removes untracked files only) |
+| `git diff` | Show the diff of every repo |
+| `git log [--count N]` | Show recent commits (default 10) |
+| `git blame <file>` | `git blame` in every repo that has the file |
+| `git grep [-l] <regexp>` | `git grep` across all repositories |
+| `git config <key>` | Show a git config value across all repos |
+| `git branch local` / `git branch remote` / `git branch github` | Show local, remote, or GitHub default branches |
+| `git tag local` / `git tag remote` | List local or remote tags |
+| `git tag has-local` / `git tag has-remote` | Count repos that have local or remote tags |
+| `git remote` | Show remote URLs |
+| `git remote-prune` | Prune stale remote-tracking branches (`git remote prune origin`) |
+| `git gc` | Run git garbage collection |
+| `git submodule-update` | `git submodule update --init --recursive` |
 
-### Operations
+### Running commands
 | Command | Description |
 |---------|-------------|
-| `pull [--quiet]` | Pull all repositories |
-| `push` | Push repositories that are ahead of their upstream |
-| `fetch` | Fetch from origin |
-| `commit -m <msg>` | Stage and commit all changes with a shared message |
-| `checkout <branch>` | Checkout a branch across all repositories |
-| `stash push` / `stash pop` | Stash or pop working-tree changes |
-| `reset hard` / `reset soft` / `reset mixed` | Reset HEAD across all repositories |
-| `restore` | `git restore .` (discards unstaged changes to tracked files) |
-| `clean hard` | `git clean -ffxd` (removes untracked and ignored files) |
-| `clean soft` | `git clean -fd` (removes untracked files only) |
-| `clean make` | `make clean` |
-| `prune` | Prune stale remote-tracking branches |
-| `gc` | Run git garbage collection |
-| `submodule-update` | `git submodule update --init --recursive` |
-| `run <cmd...>` (alias `exec`) | Run an arbitrary command in every repo |
+| `run <cmd...>` (alias `exec`) | Run an arbitrary command in every repo (`run make clean` for `make clean`) |
 
 ### Build and tooling
 | Command | Description |
@@ -208,7 +203,7 @@ All global options work before or after the subcommand.
 | `--no-header` | Suppress the `[repo]` header line before per-repo output |
 | `--no-output` | Suppress command output, keep the `[repo]` headers |
 | `--print-not` | Invert selection: print repos that do NOT match |
-| `--no-stop` | Report errors and continue instead of stopping at the first one |
+| `--no-stop` | Report errors and continue instead of stopping at the first one; still exits non-zero if any repo failed |
 | `--short-circuit` | Stop at the first failing rule (`check-same`, `check-exists`) |
 | `-j, --jobs <N>` | Run N repos in parallel (default 1; 0 means all CPUs) |
 | `--venv` / `--no-venv` | Activate each repo's `.venv` before running tools (default on) |

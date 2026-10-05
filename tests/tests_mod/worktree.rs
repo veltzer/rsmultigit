@@ -12,7 +12,7 @@ fn commit_commits_dirty_repos_and_skips_clean_ones() {
     let dir = utf8(&tmp);
     fs::write(dir.join("dirty/new.txt"), "x").unwrap();
 
-    let output = run_rsmultigit(dir, &["commit", "-m", "shared message"]);
+    let output = run_rsmultigit(dir, &["git", "commit", "-m", "shared message"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     let stdout = stdout_str(&output);
     assert!(stdout.contains("dirty]"), "{stdout}");
@@ -38,7 +38,7 @@ fn checkout_switches_every_repo_to_the_branch() {
     for name in ["a", "b"] {
         git(&dir.join(name), &["branch", "topic"]);
     }
-    let output = run_rsmultigit(dir, &["checkout", "topic"]);
+    let output = run_rsmultigit(dir, &["git", "checkout", "topic"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     for name in ["a", "b"] {
         assert_eq!(current_branch(&dir.join(name)), "topic");
@@ -53,11 +53,11 @@ fn stash_push_then_pop_round_trips_changes() {
     commit_file(&repo, "f.txt", "original", "add f");
     fs::write(repo.join("f.txt"), "changed").unwrap();
 
-    let output = run_rsmultigit(dir, &["stash", "push"]);
+    let output = run_rsmultigit(dir, &["git", "stash", "push"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert_eq!(fs::read_to_string(repo.join("f.txt")).unwrap(), "original");
 
-    let output = run_rsmultigit(dir, &["stash", "pop"]);
+    let output = run_rsmultigit(dir, &["git", "stash", "pop"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert_eq!(fs::read_to_string(repo.join("f.txt")).unwrap(), "changed");
 }
@@ -70,14 +70,14 @@ fn reset_hard_discards_and_reset_mixed_unstages() {
     commit_file(&repo, "f.txt", "original", "add f");
 
     fs::write(repo.join("f.txt"), "changed").unwrap();
-    let output = run_rsmultigit(dir, &["reset", "hard"]);
+    let output = run_rsmultigit(dir, &["git", "reset", "hard"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert_eq!(fs::read_to_string(repo.join("f.txt")).unwrap(), "original");
 
     fs::write(repo.join("f.txt"), "staged").unwrap();
     git(&repo, &["add", "f.txt"]);
     assert_eq!(git(&repo, &["diff", "--cached", "--name-only"]), "f.txt");
-    let output = run_rsmultigit(dir, &["reset", "mixed"]);
+    let output = run_rsmultigit(dir, &["git", "reset", "mixed"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert_eq!(git(&repo, &["diff", "--cached", "--name-only"]), "");
     assert_eq!(git(&repo, &["diff", "--name-only"]), "f.txt");
@@ -97,7 +97,7 @@ fn restore_discards_unstaged_but_keeps_staged_and_untracked() {
     fs::write(repo.join("f.txt"), "changed").unwrap();
     fs::write(repo.join("new.txt"), "untracked").unwrap();
 
-    let output = run_rsmultigit(dir, &["restore"]);
+    let output = run_rsmultigit(dir, &["git", "restore"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert_eq!(fs::read_to_string(repo.join("f.txt")).unwrap(), "original");
     assert_eq!(fs::read_to_string(repo.join("g.txt")).unwrap(), "staged");
@@ -112,7 +112,7 @@ fn diff_shows_the_change_under_the_repo_header() {
     commit_file(&repo, "f.txt", "original\n", "add f");
     fs::write(repo.join("f.txt"), "modified\n").unwrap();
 
-    let output = run_rsmultigit(dir, &["diff"]);
+    let output = run_rsmultigit(dir, &["git", "diff"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     let stdout = stdout_str(&output);
     assert!(stdout.starts_with(&format!("[{repo}]")), "{stdout}");
@@ -126,7 +126,7 @@ fn diff_shows_the_change_under_the_repo_header() {
 fn gc_and_submodule_update_succeed_on_plain_repos() {
     let tmp = setup_git_repos(&["a", "b"]);
     let dir = utf8(&tmp);
-    for cmd in [["gc"], ["submodule-update"]] {
+    for cmd in [["git", "gc"], ["git", "submodule-update"]] {
         let output = run_rsmultigit(dir, &cmd);
         assert!(output.status.success(), "{cmd:?}: {}", stderr_str(&output));
         let stdout = stdout_str(&output);
@@ -146,12 +146,12 @@ fn clean_soft_removes_untracked_but_keeps_ignored() {
     fs::write(repo.join("untracked.txt"), "x").unwrap();
     fs::write(repo.join("ignored.txt"), "x").unwrap();
 
-    let output = run_rsmultigit(dir, &["clean", "soft"]);
+    let output = run_rsmultigit(dir, &["git", "clean", "soft"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert!(!repo.join("untracked.txt").exists());
     assert!(repo.join("ignored.txt").exists());
 
-    let output = run_rsmultigit(dir, &["clean", "hard"]);
+    let output = run_rsmultigit(dir, &["git", "clean", "hard"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert!(!repo.join("ignored.txt").exists());
 }

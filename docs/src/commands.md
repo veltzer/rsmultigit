@@ -12,18 +12,18 @@ the subcommand name.
 | `--no-header` | Suppress the `[repo]` header line printed before per-repo output |
 | `--no-output` | Suppress command output, keeping only the `[repo]` headers. Action commands run their subprocesses with output captured and discarded; a failing repo's output is still attached to its error |
 | `--print-not` | Invert selection: print the repos that do NOT match |
-| `--no-stop` | On error, print `error in <repo>: ...` to stderr and continue with the next repo instead of stopping |
+| `--no-stop` | On error, print `error in <repo>: ...` to stderr and continue with the next repo instead of stopping. The run still exits non-zero (`N of M repos failed`) if any repo failed |
 | `--short-circuit` | Stop at the first failing rule. Off by default; honoured by `check-same` and `check-exists` |
 | `-j`, `--jobs <N>` | Run up to N repos in parallel (default 1; 0 means one worker per CPU). Output is still printed in repo order |
-| `--venv` | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. On by default; honoured by `run`, `build`, `cargo`, `npm` and `clean make`; not by `uv` |
+| `--venv` | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. On by default; honoured by `run`, `build`, `cargo` and `npm`; not by `uv` |
 | `--no-venv` | Turn `--venv` off: run tool subprocesses with the ambient environment |
 
 Example:
 
 ```bash
 rsmultigit --terse count dirty               # Just print "3/50"
-rsmultigit --no-stop pull                    # Pull all, report failures, keep going
-rsmultigit -j 8 fetch                        # Fetch eight repos at a time
+rsmultigit --no-stop git pull                # Pull all, report failures, keep going
+rsmultigit -j 8 git fetch                    # Fetch eight repos at a time
 rsmultigit --short-circuit check-same        # Stop at the first broken rule
 ```
 
@@ -91,7 +91,7 @@ with libgit2.
 rsmultigit status
 # [/home/me/git/myrepo]
 # 2 modified, 1 untracked, ahead 1
-rsmultigit --verbose status                  # Full per-file `git status -s` instead
+rsmultigit --verbose status              # Full per-file `git status -s` instead
 ```
 
 ### `rsmultigit dirty`
@@ -112,15 +112,6 @@ The age of the last commit as a relative date (`3 days ago`).
 
 `git shortlog -sne HEAD`: authors with commit counts and emails.
 
-### `rsmultigit config <KEY>`
-
-A git config value per repo. Repos where the key is unset are skipped.
-
-```bash
-rsmultigit config user.email
-rsmultigit config remote.origin.url
-```
-
 ### `rsmultigit size`
 
 Size of the `.git` directory per repo, in human-readable units. Symlinks are
@@ -131,120 +122,137 @@ not followed.
 The most recent tag reachable from HEAD (`git describe --tags --abbrev=0`).
 Repos without tags are skipped.
 
-## Action Commands
+## Git Commands
 
-These commands run an action in each repo. The `[repo]` header is printed
-for repos where the action ran; with `--verbose` it is printed for skipped
-repos too.
+### `rsmultigit git <command>`
 
-### `rsmultigit pull [--quiet]`
+The git operations, grouped under `git` so the top level holds rsmultigit's
+own reports and tool runners. Each runs the git command of the same name in
+every repo. `rsmultigit git` alone lists them. Action commands print the
+`[repo]` header for repos where the action ran; with `--verbose` it is
+printed for skipped repos too.
+
+### `rsmultigit git config <KEY>`
+
+A git config value per repo. Repos where the key is unset are skipped.
+
+```bash
+rsmultigit git config user.email
+rsmultigit git config remote.origin.url
+```
+
+### `rsmultigit git pull [--quiet]`
 
 `git pull` in every repo. `--quiet` is forwarded to git.
 
-### `rsmultigit push`
+### `rsmultigit git push`
 
 `git push` in every repo that is ahead of its upstream (the configured
 tracking branch, else `origin/<branch>`). Repos with nothing to push, or
 with no upstream, are skipped.
 
-### `rsmultigit fetch`
+### `rsmultigit git fetch`
 
 `git fetch` in every repo.
 
-### `rsmultigit commit -m <MESSAGE>`
+### `rsmultigit git commit -m <MESSAGE>`
 
 `git add -A` then `git commit -m <MESSAGE>` in every repo that has changes.
 Clean repos are skipped.
 
-### `rsmultigit checkout <BRANCH>`
+### `rsmultigit git checkout <BRANCH>`
 
 `git checkout <BRANCH>` in every repo.
 
-### `rsmultigit stash push` / `rsmultigit stash pop`
+### `rsmultigit git stash push` / `rsmultigit git stash pop`
 
 Stash, or pop the most recent stash, in every repo.
 
-### `rsmultigit reset hard|soft|mixed`
+### `rsmultigit git reset hard|soft|mixed`
 
 `git reset --<mode> HEAD` in every repo.
 
 ```bash
-rsmultigit reset hard       # Discard all changes
-rsmultigit reset soft       # Keep changes staged
-rsmultigit reset mixed      # Unstage changes
+rsmultigit git reset hard   # Discard all changes
+rsmultigit git reset soft   # Keep changes staged
+rsmultigit git reset mixed  # Unstage changes
 ```
 
-### `rsmultigit restore`
+### `rsmultigit git restore`
 
 `git restore .` in every repo: discards unstaged changes to tracked files,
 leaving staged changes and untracked files alone. (Formerly `clean git`; it
 removes nothing untracked, so it was never a clean.)
 
-### `rsmultigit clean <what>`
+### `rsmultigit git clean <what>`
 
 | What | Runs | Notes |
 |------|------|-------|
 | `hard` | `git clean -ffxd` | Removes untracked **and ignored** files |
 | `soft` | `git clean -fd` | Removes untracked files only |
-| `make` | `make clean` | Honours `--venv` |
 
-`cargo clean` lives under the cargo command: `rsmultigit cargo clean`.
+`cargo clean` lives under the cargo command: `rsmultigit git cargo clean`.
 
-### `rsmultigit diff`
+### `rsmultigit git diff`
 
 `git diff` in every repo.
 
-### `rsmultigit log [--count N]`
+### `rsmultigit git log [--count N]`
 
 `git log --oneline -n N` in every repo (default 10).
 
 ```bash
-rsmultigit log
-rsmultigit log --count 5
+rsmultigit git log
+rsmultigit git log --count 5
 ```
 
-### `rsmultigit blame <FILE>`
+### `rsmultigit git blame <FILE>`
 
 `git blame <FILE>` in every repo that contains the file; others are skipped.
 
-### `rsmultigit grep [-l|--files] <REGEXP>`
+### `rsmultigit git grep [-l|--files] <REGEXP>`
 
-`git grep -n <REGEXP>` in every repo. Each output line is prefixed with the
+`git grep -n -e <REGEXP>` in every repo, so a pattern starting with `-` is
+searched for rather than read as an option. Each output line is prefixed with the
 repo name; `-l` prints matching filenames only. Repos with no match print
 nothing; `--terse` lists just the repos that matched and `--print-not` the
 ones that did not.
 
 ```bash
-rsmultigit grep "TODO"
-rsmultigit grep -l "TODO"
+rsmultigit git grep "TODO"
+rsmultigit git grep -l "TODO"
 ```
 
-### `rsmultigit branch local|remote|github`
+### `rsmultigit git branch local|remote|github`
 
 `git branch`, `git branch -r`, or the GitHub default branch via
 `gh repo view` (requires the `gh` CLI).
 
-### `rsmultigit tag local|remote|has-local|has-remote`
+### `rsmultigit git tag local|remote|has-local|has-remote`
 
 `local` and `remote` list tags (`git tag`, `git ls-remote --tags origin`).
 `has-local` and `has-remote` behave like `count` commands: they print the
 repos that have any tags, then a `matched/total` line.
 
-### `rsmultigit remote`
+### `rsmultigit git remote`
 
 `git remote -v` in every repo.
 
-### `rsmultigit prune`
+### `rsmultigit git remote-prune`
 
-`git remote prune origin` in every repo.
+`git remote prune origin` in every repo: drops remote-tracking branches
+whose upstream branch is gone. Not called `prune`, since `git prune` is
+git's unrelated object pruning.
 
-### `rsmultigit gc`
+### `rsmultigit git gc`
 
 `git gc` in every repo.
 
-### `rsmultigit submodule-update`
+### `rsmultigit git submodule-update`
 
 `git submodule update --init --recursive` in every repo.
+
+## Running Arbitrary Commands
 
 ### `rsmultigit run <COMMAND...>` (alias: `rsmultigit exec`)
 
@@ -269,7 +277,11 @@ rsmultigit --no-venv run which python  # ambient python everywhere
 These commands evaluate the `[[check]]` and `[[exists]]` rules in the config
 file. See [Configuration](configuration.md) for the rule fields. Unlike every
 other command, output is organised by **rule**, not by repo: each rule prints
-a `[rule-name]` header followed by its verdict.
+a header line followed by its verdict. The header is `[rule-name]` followed
+by the rule's properties as `key=value` pairs (`path` and `select` always;
+`exclude`, `marker`, `marker_absent` when set; `enabled=false` and
+`must_have=true` only when they differ from the default), so a failure can
+be read against its rule without opening the config. `--no-header` drops it.
 
 ### `rsmultigit check-same`
 
@@ -278,9 +290,9 @@ group the repos by content. A rule passes when there is at most one group
 and, for `must_have = true` rules, no selected repo lacks the file.
 
 ```text
-[gitignore]
+[gitignore] path=.gitignore select=*
 ok (212 files)
-[workflow-build-yml]
+[workflow-build-yml] path=.github/workflows/build.yml select=* marker_absent=.noci must_have=true
 34 files, 2 groups (1 missing, 3 skipped)
   group A (31 files):
     /home/me/git/alpha/.github/workflows/build.yml
@@ -308,8 +320,8 @@ empty rule almost always means a stale `select` or `path`.
 | `--only-failed` | Drop the `ok (N files)` lines; print failing rules only |
 | `--allow-empty` | Let a rule that matches no files pass as `ok (0 files)` instead of failing |
 | `--diff` | After reporting a failing rule, print a unified diff between representatives of the differing groups. With exactly two groups this is automatic; with more, it prompts for the pair and offers to diff another |
-| `--copy` | After reporting a failing rule, prompt for a "from" group and a "to" group, confirm, then overwrite every file in the "to" group with the "from" representative (preserving each destination's file mode). Exit code is always 0 |
-| `--fix-missing` | For rules with `must_have` violations, prompt for a group to seed from, confirm, then create the file in each violating repo (creating parent directories as needed). Exit code is always 0 |
+| `--copy` | After reporting a failing rule, prompt for a "from" group and a "to" group, confirm, then overwrite every file in the "to" group with the "from" representative (preserving each destination's file mode). Exit code is 0 even when rules still differ; a file that could not be written makes it non-zero |
+| `--fix-missing` | For rules with `must_have` violations, prompt for a group to seed from, confirm, then create the file in each violating repo (creating parent directories as needed). Exit code is 0 even when rules still differ; a file that could not be created makes it non-zero |
 
 The interactive prompts accept a group letter (`A`, `B`, ...), `s` to skip
 the rule, or `q` to quit the whole run; confirmations default to no. EOF on
@@ -335,9 +347,9 @@ For each enabled `[[exists]]` rule, assert that every selected repo contains
 files that must exist but legitimately differ per repo (a README, say).
 
 ```text
-[readme-present]
+[readme-present] path=README.md select=*
 ok (212 repos)
-[license-present]
+[license-present] path=LICENSE select=*
 212 repos, 2 missing LICENSE
   missing in:
     /home/me/git/alpha

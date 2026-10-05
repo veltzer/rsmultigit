@@ -40,14 +40,14 @@ path, and `main.rs` picks the runner.
 
 ### `do_count`
 
-For `count <what>` and `tag has-local` / `tag has-remote`. Calls a boolean
+For `count <what>` and `git tag has-local` / `git tag has-remote`. Calls a boolean
 test function on each repo (libgit2, no subprocess), prints the path of each
 match, then a final `matched/total` line. `--print-not` inverts the test,
 `--terse` drops the per-repo lines.
 
 ### `do_for_all_projects` and `do_for_all_projects_with_check`
 
-For action commands (`pull`, `clean`, `diff`, `run`, `build`, ...). Runs
+For action commands (`git pull`, `git clean`, `git diff`, `run`, `build`, ...). Runs
 an action in each repo directory. The `_with_check` variant runs a cheap
 precondition first (is there a `Cargo.toml`? is the branch ahead? does the
 file exist?) and skips repos where it fails: no header, no output. That
@@ -55,11 +55,12 @@ predicate is the only place a skip can be decided, because the serial path
 prints the `[repo]` header before the action so the action's live output
 lands under it. The header is printed for repos where the action ran, or
 for every repo with `--verbose`. `--no-stop` turns a failing repo into a
-stderr line instead of a fatal error.
+stderr line instead of a fatal error; the failures are counted, and the
+run returns an error (`N of M repos failed`) at the end if there were any.
 
 ### `print_if_data`
 
-For data commands (`status`, `dirty`, `grep`, `age`, `size`, ...). Calls a
+For data commands (`status`, `dirty`, `git grep`, `age`, `size`, ...). Calls a
 function returning `Option<String>` per repo and prints the header plus data
 only when it is `Some`, so a repo with nothing to say prints nothing. `--verbose` and `--print-not`
 also print the header for `None` repos; `--terse` prints only the repo
@@ -79,7 +80,7 @@ inherited stdout. In the parallel path each worker thread enables a
 thread-local capture buffer (`subprocess_utils::enter_capture`) before
 running the action, so `check_call` and friends collect the child's stdout
 and stderr into it instead of inheriting the parent's streams, and command
-modules that format their own lines (`gh`, `branch github`) route them
+modules that format their own lines (`gh`, `git branch github`) route them
 through `subprocess_utils::out_line`, which lands in the same buffer. The buffer
 travels back with the result and is replayed on the main thread under the
 repo's header. In the serial path nothing is captured and children write
@@ -162,7 +163,7 @@ Three helpers in `subprocess_utils.rs` implement this:
 | Helper | Environment | Used by |
 |---|---|---|
 | `check_call` | inherited, unchanged | plain commands with no venv stake |
-| `check_call_ve_env` | `.venv/bin` prepended to `PATH`, `VIRTUAL_ENV` set | `run`, `build`, `clean make` |
+| `check_call_ve_env` | `.venv/bin` prepended to `PATH`, `VIRTUAL_ENV` set | `run`, `build`, `cargo`, `npm` |
 | `check_call_clean_env` | `VIRTUAL_ENV` and `UV_PROJECT_ENVIRONMENT` removed | `uv` |
 
 Commands honouring `--venv` do not call the first two directly: they call
@@ -216,7 +217,7 @@ It still parses there (it is a global flag) but has no effect.
 All functions return `anyhow::Result`, with `.context()` naming the repo the
 error came from. The `--no-stop` flag controls whether an error in one repo
 is fatal (default) or printed to stderr as `error in <repo>: ...` before
-moving on. In the parallel path a failing repo's captured output is attached
+moving on; a `--no-stop` run with any such error still exits non-zero. In the parallel path a failing repo's captured output is attached
 to the error so it is not lost.
 
 ## Build script

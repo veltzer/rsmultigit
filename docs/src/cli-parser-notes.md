@@ -23,7 +23,11 @@ Upstream tracks this as an unresolved feature request
 ([clap-rs/clap#4416](https://github.com/clap-rs/clap/issues/4416), open as of
 clap 4.6).
 
-**What we do.** Keep the flat alphabetical list in `--help`. Document the
+**What we do.** Keep the flat alphabetical list in `--help`, and keep it
+short by nesting: the git wrappers (`pull`, `push`, `reset`, `restore`, ...)
+live under a `git` subcommand group, so the top level holds rsmultigit's own
+reports and tool runners. A real subcommand level is the one kind of grouping
+clap renders. Document the
 intended categories in the README / these docs for human readers. The enum
 arms themselves stay ungrouped because adding source-level categories without
 corresponding help-output categories would just be noise.
@@ -36,7 +40,7 @@ unless the flat help becomes actively painful.
 
 ## Commands that demand an operation word
 
-**What we wanted.** `rsmultigit gh` (and `count`, `clean`, `cargo`, `uv`,
+**What we wanted.** `rsmultigit gh` (and `count`, `git clean`, `cargo`, `uv`,
 `npm`, ... every command whose first positional is a `ValueEnum` picking the
 operation) must list the operations when invoked without one. clap's default
 is an error that only says `<WHAT>` is required, which leaves the user to go
@@ -62,8 +66,14 @@ stopped to see.
 no flag is listed - and an `after_help` trailer pointing at `--help`, which
 keeps the full output. Exit status 2 on stderr, as clap would. The positional
 is called `what` on every such command; that name is the contract the
-intercept relies on. A missing free-form positional (`blame <FILE>`) keeps
-clap's own error.
+intercept relies on. A missing free-form positional (`git blame <FILE>`)
+keeps clap's own error.
+
+A group of subcommands (`git`) gets the same treatment: the variant carries
+`arg_required_else_help` (and `disable_help_subcommand`, so no `help` entry
+pads the list), the intercept also catches `MissingSubcommand` (the
+`rsmultigit git --no-stop` form), and `long_help_for` switches to a
+`{subcommands}` template when the command it lands on has subcommands.
 
 ## Aliases and shell completion
 
@@ -112,8 +122,8 @@ a version string vs humans debugging an install).
 they can appear *before or after* the subcommand:
 
 ```bash
-rsmultigit --jobs 8 pull           # works
-rsmultigit pull --jobs 8            # also works
+rsmultigit --jobs 8 git pull       # works
+rsmultigit git pull --jobs 8        # also works
 ```
 
 Subcommand-specific flags (e.g. `pull --quiet`, `grep -l`) are declared on the

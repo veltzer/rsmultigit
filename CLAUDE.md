@@ -51,8 +51,8 @@ build.rs                 # Embeds git metadata at compile time
 All commands use one of three patterns in `runner.rs`:
 
 1. **`do_count`** — Boolean test per repo using git2 (no subprocess). Prints count summary. Used by: `count dirty/untracked/synchronized`.
-2. **`do_for_all_projects`** — Runs an action (`Result<()>`) in each repo dir; the `_with_check` variant runs a cheap predicate first and skips repos where it is false. Skips are decided only there, never inside the action, because the serial path prints the header before the action runs. Used by: `pull, push, fetch, clean, build`, etc.
-3. **`print_if_data`** — Calls data function returning `Option<String>`, prints only if Some. Used by: `status, dirty, grep, age, authors, size`.
+2. **`do_for_all_projects`** — Runs an action (`Result<()>`) in each repo dir; the `_with_check` variant runs a cheap predicate first and skips repos where it is false. Skips are decided only there, never inside the action, because the serial path prints the header before the action runs. Used by: `git pull/push/fetch/clean`, `build`, etc.
+3. **`print_if_data`** — Calls data function returning `Option<String>`, prints only if Some. Used by: `status, dirty, git grep, age, authors, size`.
 
 ## Key Conventions
 

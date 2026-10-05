@@ -9,7 +9,11 @@ use sha2::{Digest, Sha256};
 
 use crate::cli::BuildWhat;
 
+// Every config struct denies unknown fields: a misspelled key (`must_hav`,
+// `exlude`) would otherwise be dropped silently, and the rule would quietly
+// check something other than what was written.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CheckConfig {
     /// Glob patterns (with shell expansion) identifying repo roots.
     /// Non-git directories matching the pattern are filtered out.
@@ -40,6 +44,7 @@ pub struct CheckConfig {
 /// thing — but has no content dimension, so no `must_have` field either:
 /// requiring the file *is* the whole rule.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ExistsRule {
     pub name: String,
     pub select: String,
@@ -84,6 +89,7 @@ impl ExistsResult {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Rule {
     pub name: String,
     pub select: String,
@@ -355,6 +361,36 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn misspelled_config_keys_are_rejected() {
+        let cases = [
+            ("top level", "repo = []\n", "repo"),
+            (
+                "[[check]]",
+                "[[check]]\nname = \"a\"\nselect = \"*\"\npath = \"f\"\nmust_hav = true\n",
+                "must_hav",
+            ),
+            (
+                "[[exists]]",
+                "[[exists]]\nname = \"a\"\nselect = \"*\"\npath = \"f\"\nexlude = \"x\"\n",
+                "exlude",
+            ),
+        ];
+        for (where_, text, key) in cases {
+            let err = toml::from_str::<CheckConfig>(text).unwrap_err().to_string();
+            assert!(
+                err.contains(&format!("unknown field `{key}`")),
+                "{where_}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn config_example_uses_only_known_keys() {
+        let text = include_str!("../../assets/config-example.toml");
+        toml::from_str::<CheckConfig>(text).unwrap();
+    }
 
     fn write(path: &Utf8Path, content: &str) {
         if let Some(parent) = path.parent() {

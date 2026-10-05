@@ -61,16 +61,16 @@ Each prints the matching repos followed by a `matched/total` line.
 ## Pulling all repos
 
 ```bash
-rsmultigit pull
-rsmultigit pull --quiet
-rsmultigit -j 8 pull               # eight repos at a time
+rsmultigit git pull
+rsmultigit git pull --quiet
+rsmultigit -j 8 git pull           # eight repos at a time
 ```
 
 ## Searching across repos
 
 ```bash
-rsmultigit grep "TODO"
-rsmultigit grep -l "TODO"          # filenames only
+rsmultigit git grep "TODO"
+rsmultigit git grep -l "TODO"      # filenames only
 ```
 
 ## Running any command
@@ -119,5 +119,5 @@ By default, rsmultigit stops on the first error. To report errors and keep
 going:
 
 ```bash
-rsmultigit --no-stop pull
+rsmultigit --no-stop git pull
 ```

@@ -104,7 +104,7 @@ All flags are global: they may appear before or after the subcommand.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--no-stop` | off | Report errors on stderr and continue instead of stopping at the first one |
+| `--no-stop` | off | Report errors on stderr and continue instead of stopping at the first one; still exits non-zero if any repo failed |
 | `--short-circuit` | off | Stop at the first negative result. Honoured by `check-same` and `check-exists`; other commands accept it and ignore it |
 | `-j`, `--jobs <N>` | 1 | Number of repos to process concurrently; 0 means one per CPU. Output is buffered per repo and printed in repo order |
 
@@ -112,7 +112,7 @@ All flags are global: they may appear before or after the subcommand.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--venv` | on | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. Honoured by `run`, `build`, `cargo` and `clean make`; repos without a `.venv` run unchanged. Not honoured by `uv`, which selects its own environment from the repo directory |
+| `--venv` | on | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. Honoured by `run`, `build`, `cargo` and `npm`; repos without a `.venv` run unchanged. Not honoured by `uv`, which selects its own environment from the repo directory |
 | `--no-venv` | off | Turn the `.venv` activation off |
 
 ## Short-circuiting

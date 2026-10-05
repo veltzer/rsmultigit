@@ -13,7 +13,8 @@ pub fn do_grep(project: &Utf8Path, regexp: &str, files_only: bool) -> Result<Opt
     if files_only {
         args.push("-l");
     }
-    args.push(regexp);
+    // `-e` keeps a pattern that starts with `-` from being read as an option.
+    args.extend(["-e", regexp]);
 
     let (code, stdout, stderr) = capture_output_allow_failure(project, "git", &args)?;
 

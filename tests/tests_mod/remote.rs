@@ -19,7 +19,7 @@ fn push_pushes_only_repos_that_are_ahead() {
     commit_file(&dir.join("ahead"), "new.txt", "x", "local only");
     let local_tip = git(&dir.join("ahead"), &["rev-parse", "HEAD"]);
 
-    let output = run_rsmultigit(dir, &["push"]);
+    let output = run_rsmultigit(dir, &["git", "push"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     let stdout = stdout_str(&output);
     assert!(
@@ -52,7 +52,7 @@ fn fetch_updates_tracking_ref_and_status_reports_behind() {
     git(&clone, &["push", "-q", "origin", "HEAD"]);
     let head_before = git(&repo, &["rev-parse", "HEAD"]);
 
-    let output = run_rsmultigit(dir, &["fetch"]);
+    let output = run_rsmultigit(dir, &["git", "fetch"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert_eq!(
         git(&repo, &["rev-parse", "HEAD"]),
@@ -84,7 +84,7 @@ fn pull_fast_forwards_to_the_remote() {
     commit_file(&clone, "elsewhere.txt", "hello", "made elsewhere");
     git(&clone, &["push", "-q", "origin", "HEAD"]);
 
-    let output = run_rsmultigit(dir, &["pull", "--quiet"]);
+    let output = run_rsmultigit(dir, &["git", "pull", "--quiet"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert_eq!(
         git(&repo, &["rev-parse", "HEAD"]),
@@ -112,7 +112,7 @@ fn prune_drops_remote_tracking_branches_deleted_upstream() {
     assert!(git(&repo, &["branch", "-r"]).contains("origin/feature"));
     git(&clone, &["push", "-q", "origin", "--delete", "feature"]);
 
-    let output = run_rsmultigit(dir, &["prune"]);
+    let output = run_rsmultigit(dir, &["git", "remote-prune"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert!(!git(&repo, &["branch", "-r"]).contains("origin/feature"));
 }
@@ -125,7 +125,7 @@ fn remote_and_branch_remote_show_origin() {
     let bare = utf8(&bares).join("repo");
     add_bare_origin(&dir.join("repo"), &bare);
 
-    let output = run_rsmultigit(dir, &["remote"]);
+    let output = run_rsmultigit(dir, &["git", "remote"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -133,7 +133,7 @@ fn remote_and_branch_remote_show_origin() {
         "{stdout}"
     );
 
-    let output = run_rsmultigit(dir, &["branch", "remote"]);
+    let output = run_rsmultigit(dir, &["git", "branch", "remote"]);
     assert!(output.status.success());
     let branch = current_branch(&dir.join("repo"));
     assert!(stdout_str(&output).contains(&format!("origin/{branch}")));
@@ -150,11 +150,11 @@ fn tag_remote_and_has_remote_see_pushed_tags() {
     git(&dir.join("tagged"), &["tag", "v1.0"]);
     git(&dir.join("tagged"), &["push", "-q", "origin", "v1.0"]);
 
-    let output = run_rsmultigit(dir, &["tag", "remote"]);
+    let output = run_rsmultigit(dir, &["git", "tag", "remote"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert!(stdout_str(&output).contains("refs/tags/v1.0"));
 
-    let output = run_rsmultigit(dir, &["tag", "has-remote"]);
+    let output = run_rsmultigit(dir, &["git", "tag", "has-remote"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     let stdout = stdout_str(&output);
     assert!(stdout.contains("tagged"), "{stdout}");

@@ -56,10 +56,25 @@ fn run_failing_command_stops_by_default() {
 }
 
 #[test]
-fn run_failing_command_continues_with_no_stop() {
-    let tmp = setup_git_repos(&["repo1", "repo2"]);
-    let output = run_rsmultigit(utf8(&tmp), &["--no-stop", "run", "false"]);
-    assert!(output.status.success());
+fn run_failing_command_continues_with_no_stop_but_exits_non_zero() {
+    for jobs in ["1", "2"] {
+        let tmp = setup_git_repos(&["repo1", "repo2"]);
+        let dir = utf8(&tmp);
+        let output = run_rsmultigit(
+            dir,
+            &["-j", jobs, "--no-stop", "run", "touch", "x", "missing/y"],
+        );
+        // Both repos ran despite the first failing...
+        assert!(dir.join("repo1/x").exists(), "jobs={jobs}");
+        assert!(dir.join("repo2/x").exists(), "jobs={jobs}");
+        // ...and the run still reports the failures.
+        assert!(!output.status.success(), "jobs={jobs}");
+        assert!(
+            stderr_str(&output).contains("2 of 2 repos failed"),
+            "jobs={jobs}: {}",
+            stderr_str(&output)
+        );
+    }
 }
 
 #[test]
@@ -109,11 +124,34 @@ fn parallel_grep_output_stays_in_repo_order() {
             assert!(ok);
         }
     }
-    let output = run_rsmultigit(dir, &["-j", "4", "grep", "needle"]);
+    let output = run_rsmultigit(dir, &["-j", "4", "git", "grep", "needle"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     let expected: Vec<String> = names
         .iter()
         .map(|n| format!("[{}]\n{n}: f.txt:1:needle", dir.join(n)))
         .collect();
     assert_eq!(stdout_str(&output), expected.join("\n"));
+}
+
+/// A pattern starting with `-` is a pattern, not a `git grep` option
+/// (`-foo` would otherwise be `-f oo`, "read patterns from file oo").
+#[test]
+fn grep_pattern_starting_with_dash_is_searched_for() {
+    let tmp = setup_git_repos(&["r1"]);
+    let dir = utf8(&tmp);
+    let repo = dir.join("r1");
+    std::fs::write(repo.join("f.txt"), "x -foo y\n").unwrap();
+    let ok = std::process::Command::new("git")
+        .args(["add", "f.txt"])
+        .current_dir(&repo)
+        .status()
+        .unwrap()
+        .success();
+    assert!(ok);
+    let output = run_rsmultigit(dir, &["git", "grep", "--", "-foo"]);
+    assert!(output.status.success(), "{}", stderr_str(&output));
+    assert_eq!(
+        stdout_str(&output),
+        format!("[{repo}]\nr1: f.txt:1:x -foo y")
+    );
 }

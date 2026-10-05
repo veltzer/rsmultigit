@@ -48,7 +48,8 @@ pub struct Cli {
     #[arg(long, global = true, default_value_t = false)]
     pub print_not: bool,
 
-    /// Do not stop on errors
+    /// Do not stop on errors: report each failing repo and carry on, then
+    /// exit non-zero if any repo failed
     #[arg(long, global = true, default_value_t = false)]
     pub no_stop: bool,
 
@@ -64,7 +65,7 @@ pub struct Cli {
 
     /// Activate each repo's local .venv (prepend .venv/bin to PATH, set
     /// VIRTUAL_ENV) before running tool subprocesses. On by default; honoured
-    /// by `run`, `build`, `cargo`, `npm` and `clean make`. Repos without a
+    /// by `run`, `build`, `cargo` and `npm`. Repos without a
     /// .venv run with the environment unchanged. Negate with --no-venv.
     ///
     /// Not honoured by `uv`, which selects its own target environment from
@@ -97,29 +98,12 @@ pub enum Commands {
     Age,
     /// Show unique commit authors per repo
     Authors,
-    /// Run git blame on a file across all repositories
-    Blame {
-        /// File path to blame
-        file: String,
-    },
-    /// Branch operations
-    #[command(arg_required_else_help = true)]
-    Branch {
-        /// What branch info to show
-        #[arg(value_enum)]
-        what: BranchWhat,
-    },
     /// Build projects
     Build {
         /// What build system to use. Optional when the config file sets
         /// `default_build_method`; a value given here always wins over it.
         #[arg(value_enum)]
         what: Option<BuildWhat>,
-    },
-    /// Checkout a branch across all repositories
-    Checkout {
-        /// Branch name to checkout
-        branch: String,
     },
     /// Check that files declared in ~/.config/rsmultigit/config.toml are identical across repos
     CheckSame {
@@ -194,29 +178,11 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         allow_empty: bool,
     },
-    /// Clean repositories
-    #[command(arg_required_else_help = true)]
-    Clean {
-        /// What kind of clean to perform
-        #[arg(value_enum)]
-        what: CleanWhat,
-    },
-    /// Commit all changes across all repositories
-    Commit {
-        /// Commit message
-        #[arg(short, long)]
-        message: String,
-    },
     /// Generate shell completion scripts
     Complete {
         /// Shell to generate completions for
         #[arg(value_enum)]
         shell: Shell,
-    },
-    /// Show a git config value across all repos
-    Config {
-        /// Git config key to show
-        key: String,
     },
     /// Print a sample rsmultigit config.toml to stdout.
     /// Redirect to ~/.config/rsmultigit/config.toml to bootstrap a new install.
@@ -228,14 +194,8 @@ pub enum Commands {
         #[arg(value_enum)]
         what: CountWhat,
     },
-    /// Show diff for all repositories
-    Diff,
     /// Show dirty repositories
     Dirty,
-    /// Fetch from origin for all repositories
-    Fetch,
-    /// Run git garbage collection
-    Gc,
     /// GitHub operations (via the `gh` CLI) on repos with a github.com remote
     #[command(arg_required_else_help = true)]
     Gh {
@@ -250,13 +210,12 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         dry_run: bool,
     },
-    /// Grep across all repositories
-    Grep {
-        /// Regular expression to search for
-        regexp: String,
-        /// Only show filenames
-        #[arg(short = 'l', long, default_value_t = false)]
-        files: bool,
+    /// Git operations across all repositories (each runs the git command of
+    /// the same name)
+    #[command(arg_required_else_help = true, disable_help_subcommand = true)]
+    Git {
+        #[command(subcommand)]
+        command: GitCommand,
     },
     /// Show the most recent tag per repo
     LastTag,
@@ -272,33 +231,6 @@ pub enum Commands {
         #[arg(value_enum, default_value_t = RuleKind::Check)]
         kind: RuleKind,
     },
-    /// Show recent commits
-    Log {
-        /// Number of commits to show
-        #[arg(long, default_value_t = 10)]
-        count: u32,
-    },
-    /// Prune stale remote-tracking branches
-    Prune,
-    /// Pull all repositories
-    Pull {
-        /// Pass --quiet to git pull
-        #[arg(long, default_value_t = false)]
-        quiet: bool,
-    },
-    /// Push all repositories
-    Push,
-    /// Show remote URLs
-    Remote,
-    /// Reset operations
-    #[command(arg_required_else_help = true)]
-    Reset {
-        /// What kind of reset to perform
-        #[arg(value_enum)]
-        what: ResetWhat,
-    },
-    /// Discard unstaged changes to tracked files (git restore .)
-    Restore,
     /// Run an arbitrary command across all repositories
     #[command(alias = "exec")]
     Run {
@@ -340,24 +272,8 @@ pub enum Commands {
     },
     /// Show the size of the .git directory per repo
     Size,
-    /// Stash operations
-    #[command(arg_required_else_help = true)]
-    Stash {
-        /// What stash operation to perform
-        #[arg(value_enum)]
-        what: StashWhat,
-    },
     /// Show status of repositories
     Status,
-    /// Update submodules recursively
-    SubmoduleUpdate,
-    /// List tags
-    #[command(arg_required_else_help = true)]
-    Tag {
-        /// What tags to show
-        #[arg(value_enum)]
-        what: TagWhat,
-    },
     /// Run uv operations on projects that have a pyproject.toml file
     #[command(arg_required_else_help = true)]
     Uv {
@@ -413,6 +329,106 @@ pub enum Commands {
     },
     /// Print version information
     Version,
+}
+
+/// The `git` subcommands: each runs the git command of the same name in
+/// every repo. Kept in a group of their own so the top level holds
+/// rsmultigit's own reports and tool runners rather than a mirror of git.
+#[derive(Subcommand)]
+pub enum GitCommand {
+    /// Run git blame on a file across all repositories
+    Blame {
+        /// File path to blame
+        file: String,
+    },
+    /// Branch operations
+    #[command(arg_required_else_help = true)]
+    Branch {
+        /// What branch info to show
+        #[arg(value_enum)]
+        what: BranchWhat,
+    },
+    /// Checkout a branch across all repositories
+    Checkout {
+        /// Branch name to checkout
+        branch: String,
+    },
+    /// Remove untracked files (git clean)
+    #[command(arg_required_else_help = true)]
+    Clean {
+        /// What kind of clean to perform
+        #[arg(value_enum)]
+        what: CleanWhat,
+    },
+    /// Commit all changes across all repositories
+    Commit {
+        /// Commit message
+        #[arg(short, long)]
+        message: String,
+    },
+    /// Show a git config value across all repos
+    Config {
+        /// Git config key to show
+        key: String,
+    },
+    /// Show diff for all repositories
+    Diff,
+    /// Fetch from origin for all repositories
+    Fetch,
+    /// Run git garbage collection
+    Gc,
+    /// Grep across all repositories
+    Grep {
+        /// Regular expression to search for
+        regexp: String,
+        /// Only show filenames
+        #[arg(short = 'l', long, default_value_t = false)]
+        files: bool,
+    },
+    /// Show recent commits
+    Log {
+        /// Number of commits to show
+        #[arg(long, default_value_t = 10)]
+        count: u32,
+    },
+    /// Pull all repositories
+    Pull {
+        /// Pass --quiet to git pull
+        #[arg(long, default_value_t = false)]
+        quiet: bool,
+    },
+    /// Push all repositories
+    Push,
+    /// Show remote URLs
+    Remote,
+    // Not named `prune`: `git prune` is git's object pruning, a different thing.
+    /// Prune stale remote-tracking branches (git remote prune origin)
+    RemotePrune,
+    /// Reset operations
+    #[command(arg_required_else_help = true)]
+    Reset {
+        /// What kind of reset to perform
+        #[arg(value_enum)]
+        what: ResetWhat,
+    },
+    /// Discard unstaged changes to tracked files (git restore .)
+    Restore,
+    /// Stash operations
+    #[command(arg_required_else_help = true)]
+    Stash {
+        /// What stash operation to perform
+        #[arg(value_enum)]
+        what: StashWhat,
+    },
+    /// Update submodules recursively
+    SubmoduleUpdate,
+    /// List tags
+    #[command(arg_required_else_help = true)]
+    Tag {
+        /// What tags to show
+        #[arg(value_enum)]
+        what: TagWhat,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -547,8 +563,6 @@ pub enum CleanWhat {
     Hard,
     /// Soft-clean: remove untracked files only (git clean -fd)
     Soft,
-    /// Run make clean
-    Make,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -682,6 +696,10 @@ pub fn print_completions(shell: Shell) {
 const OPERATIONS_HELP_TEMPLATE: &str =
     "{before-help}{about-with-newline}\n{usage-heading} {usage}\n\n{positionals}{after-help}";
 
+/// The same for a command whose operations are subcommands (`git`): the
+/// subcommand list takes the place of the positionals.
+const SUBCOMMANDS_HELP_TEMPLATE: &str = "{before-help}{about-with-newline}\n{usage-heading} {usage}\n\nCommands:\n{subcommands}{after-help}";
+
 /// The help of the (sub)command that `args` (argv, program name included)
 /// names, for printing when such a command is invoked without the positional
 /// that selects its operation. clap's `arg_required_else_help` renders the
@@ -719,8 +737,13 @@ where
             .find_subcommand_mut(name)
             .expect("subcommand path was taken from this very Command");
     }
+    let template = if cur.has_subcommands() {
+        SUBCOMMANDS_HELP_TEMPLATE
+    } else {
+        OPERATIONS_HELP_TEMPLATE
+    };
     cur.clone()
-        .help_template(OPERATIONS_HELP_TEMPLATE)
+        .help_template(template)
         .after_help(format!("Run `{full_name} --help` for the options."))
         .render_long_help()
         .to_string()
@@ -831,11 +854,24 @@ mod tests {
     fn bare_operation_commands_show_help_not_missing_argument() {
         // Every command whose positional selects the operation prints its
         // help when given bare, so the user sees the choices.
-        let bare = [
-            "branch", "clean", "count", "gh", "reset", "rust", "stash", "tag", "uv", "cargo", "npm",
+        let bare: [&[&str]; 11] = [
+            &["count"],
+            &["gh"],
+            &["rust"],
+            &["uv"],
+            &["cargo"],
+            &["npm"],
+            &["git", "branch"],
+            &["git", "clean"],
+            &["git", "reset"],
+            &["git", "stash"],
+            &["git", "tag"],
         ];
-        for sub in bare {
-            let err = match Cli::try_parse_from(["rsmultigit", sub]) {
+        for words in bare {
+            let sub = words.join(" ");
+            let err = match Cli::try_parse_from(
+                std::iter::once("rsmultigit").chain(words.iter().copied()),
+            ) {
                 Err(err) => err,
                 Ok(_) => panic!("bare `{sub}` should not parse"),
             };
@@ -935,15 +971,6 @@ mod tests {
             "authors",
             "size",
             "last-tag",
-            "pull",
-            "push",
-            "fetch",
-            "diff",
-            "remote",
-            "prune",
-            "gc",
-            "submodule-update",
-            "restore",
             "version",
             "setup",
         ];
@@ -951,11 +978,33 @@ mod tests {
             let result = Cli::try_parse_from(["rsmultigit", sub]);
             assert!(result.is_ok(), "subcommand {sub} should parse");
         }
+        let git_subcommands = [
+            "pull",
+            "push",
+            "fetch",
+            "diff",
+            "remote",
+            "remote-prune",
+            "gc",
+            "submodule-update",
+            "restore",
+        ];
+        for sub in git_subcommands {
+            let result = Cli::try_parse_from(["rsmultigit", "git", sub]);
+            assert!(result.is_ok(), "subcommand git {sub} should parse");
+            // The git operations left the top level.
+            assert!(
+                Cli::try_parse_from(["rsmultigit", sub]).is_err(),
+                "top-level {sub} should be gone"
+            );
+        }
+        // `prune` would read as git's object pruning; it is `remote-prune`.
+        assert!(Cli::try_parse_from(["rsmultigit", "git", "prune"]).is_err());
 
         // clean requires a what argument
-        let clean_whats = ["hard", "soft", "make"];
+        let clean_whats = ["hard", "soft"];
         for what in clean_whats {
-            let result = Cli::try_parse_from(["rsmultigit", "clean", what]);
+            let result = Cli::try_parse_from(["rsmultigit", "git", "clean", what]);
             assert!(result.is_ok(), "clean {what} should parse");
         }
 
@@ -969,50 +1018,50 @@ mod tests {
         // branch requires a what argument
         let branch_whats = ["local", "remote", "github"];
         for what in branch_whats {
-            let result = Cli::try_parse_from(["rsmultigit", "branch", what]);
+            let result = Cli::try_parse_from(["rsmultigit", "git", "branch", what]);
             assert!(result.is_ok(), "branch {what} should parse");
         }
 
         // tag requires a what argument
         let tag_whats = ["local", "remote", "has-local", "has-remote"];
         for what in tag_whats {
-            let result = Cli::try_parse_from(["rsmultigit", "tag", what]);
+            let result = Cli::try_parse_from(["rsmultigit", "git", "tag", what]);
             assert!(result.is_ok(), "tag {what} should parse");
         }
 
         // reset requires a what argument
         let reset_whats = ["hard", "soft", "mixed"];
         for what in reset_whats {
-            let result = Cli::try_parse_from(["rsmultigit", "reset", what]);
+            let result = Cli::try_parse_from(["rsmultigit", "git", "reset", what]);
             assert!(result.is_ok(), "reset {what} should parse");
         }
 
         // log accepts optional --count
-        let result = Cli::try_parse_from(["rsmultigit", "log"]);
+        let result = Cli::try_parse_from(["rsmultigit", "git", "log"]);
         assert!(result.is_ok(), "log should parse without args");
-        let result = Cli::try_parse_from(["rsmultigit", "log", "--count", "5"]);
+        let result = Cli::try_parse_from(["rsmultigit", "git", "log", "--count", "5"]);
         assert!(result.is_ok(), "log --count 5 should parse");
 
         // checkout requires a branch
-        let result = Cli::try_parse_from(["rsmultigit", "checkout", "main"]);
+        let result = Cli::try_parse_from(["rsmultigit", "git", "checkout", "main"]);
         assert!(result.is_ok(), "checkout main should parse");
 
         // commit requires -m
-        let result = Cli::try_parse_from(["rsmultigit", "commit", "-m", "test"]);
+        let result = Cli::try_parse_from(["rsmultigit", "git", "commit", "-m", "test"]);
         assert!(result.is_ok(), "commit -m test should parse");
 
         // config requires a key
-        let result = Cli::try_parse_from(["rsmultigit", "config", "user.email"]);
+        let result = Cli::try_parse_from(["rsmultigit", "git", "config", "user.email"]);
         assert!(result.is_ok(), "config user.email should parse");
 
         // blame requires a file
-        let result = Cli::try_parse_from(["rsmultigit", "blame", "README.md"]);
+        let result = Cli::try_parse_from(["rsmultigit", "git", "blame", "README.md"]);
         assert!(result.is_ok(), "blame README.md should parse");
 
         // stash requires a what argument
         let stash_whats = ["push", "pop"];
         for what in stash_whats {
-            let result = Cli::try_parse_from(["rsmultigit", "stash", what]);
+            let result = Cli::try_parse_from(["rsmultigit", "git", "stash", what]);
             assert!(result.is_ok(), "stash {what} should parse");
         }
 
@@ -1025,7 +1074,7 @@ mod tests {
         }
         // publishing and cleaning moved under `cargo`
         assert!(Cli::try_parse_from(["rsmultigit", "build", "cargo-publish"]).is_err());
-        assert!(Cli::try_parse_from(["rsmultigit", "clean", "cargo"]).is_err());
+        assert!(Cli::try_parse_from(["rsmultigit", "git", "clean", "cargo"]).is_err());
         let result = Cli::try_parse_from(["rsmultigit", "build"]);
         assert!(result.is_ok(), "build without a method should parse");
 
@@ -1157,9 +1206,11 @@ mod tests {
 
     #[test]
     fn parse_grep_with_regexp() {
-        let cli = parse(&["rsmultigit", "grep", "TODO"]);
+        let cli = parse(&["rsmultigit", "git", "grep", "TODO"]);
         match &cli.command {
-            Commands::Grep { regexp, files } => {
+            Commands::Git {
+                command: GitCommand::Grep { regexp, files },
+            } => {
                 assert_eq!(regexp, "TODO");
                 assert!(!files);
             }
@@ -1169,9 +1220,11 @@ mod tests {
 
     #[test]
     fn parse_grep_with_files_flag() {
-        let cli = parse(&["rsmultigit", "grep", "--files", "TODO"]);
+        let cli = parse(&["rsmultigit", "git", "grep", "--files", "TODO"]);
         match &cli.command {
-            Commands::Grep { regexp, files } => {
+            Commands::Git {
+                command: GitCommand::Grep { regexp, files },
+            } => {
                 assert_eq!(regexp, "TODO");
                 assert!(files);
             }
@@ -1181,9 +1234,11 @@ mod tests {
 
     #[test]
     fn parse_grep_with_short_files_flag() {
-        let cli = parse(&["rsmultigit", "grep", "-l", "TODO"]);
+        let cli = parse(&["rsmultigit", "git", "grep", "-l", "TODO"]);
         match &cli.command {
-            Commands::Grep { regexp, files } => {
+            Commands::Git {
+                command: GitCommand::Grep { regexp, files },
+            } => {
                 assert_eq!(regexp, "TODO");
                 assert!(files);
             }
@@ -1193,9 +1248,11 @@ mod tests {
 
     #[test]
     fn parse_pull_quiet() {
-        let cli = parse(&["rsmultigit", "pull", "--quiet"]);
+        let cli = parse(&["rsmultigit", "git", "pull", "--quiet"]);
         match &cli.command {
-            Commands::Pull { quiet } => assert!(quiet),
+            Commands::Git {
+                command: GitCommand::Pull { quiet },
+            } => assert!(quiet),
             _ => panic!("expected Pull"),
         }
     }

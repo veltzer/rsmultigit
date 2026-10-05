@@ -34,7 +34,7 @@ fn log_count_limits_the_lines_per_repo() {
     for i in 1..=3 {
         commit_file(&repo, "f.txt", &i.to_string(), &format!("commit {i}"));
     }
-    let output = run_rsmultigit(dir, &["log", "--count", "2"]);
+    let output = run_rsmultigit(dir, &["git", "log", "--count", "2"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     let stdout = stdout_str(&output);
     let lines: Vec<&str> = stdout.lines().skip(1).collect();
@@ -49,7 +49,7 @@ fn blame_skips_repos_without_the_file() {
     let dir = utf8(&tmp);
     commit_file(&dir.join("has"), "f.txt", "line one\n", "add f");
 
-    let output = run_rsmultigit(dir, &["blame", "f.txt"]);
+    let output = run_rsmultigit(dir, &["git", "blame", "f.txt"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     let stdout = stdout_str(&output);
     assert!(stdout.contains("has]"), "{stdout}");
@@ -73,12 +73,12 @@ fn last_tag_and_tag_has_local_see_only_tagged_repos() {
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert_eq!(stdout_str(&output), format!("[{tagged}]\nv0.2"));
 
-    let output = run_rsmultigit(dir, &["tag", "local"]);
+    let output = run_rsmultigit(dir, &["git", "tag", "local"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("v0.1\nv0.2"), "{stdout}");
 
-    let output = run_rsmultigit(dir, &["tag", "has-local"]);
+    let output = run_rsmultigit(dir, &["git", "tag", "has-local"]);
     assert!(output.status.success());
     assert_eq!(stdout_str(&output), format!("{tagged}\n1/2"));
 }
@@ -117,14 +117,14 @@ fn age_authors_and_branch_local_report_per_repo() {
         stdout_str(&output)
     );
 
-    let output = run_rsmultigit(dir, &["branch", "local"]);
+    let output = run_rsmultigit(dir, &["git", "branch", "local"]);
     assert!(
         stdout_str(&output).contains(&format!("* {branch}")),
         "{}",
         stdout_str(&output)
     );
 
-    let output = run_rsmultigit(dir, &["config", "user.name"]);
+    let output = run_rsmultigit(dir, &["git", "config", "user.name"]);
     assert_eq!(stdout_str(&output), format!("[{repo}]\nTest"));
 }
 
@@ -147,7 +147,7 @@ fn check_exists_and_check_all_end_to_end() {
     assert_eq!(
         stdout_str(&output),
         format!(
-            "[rd]\n2 repos, 1 missing README.md\n  missing in:\n    {}",
+            "[rd] path=README.md select=*\n2 repos, 1 missing README.md\n  missing in:\n    {}",
             dir.join("b")
         )
     );
@@ -163,7 +163,12 @@ fn check_exists_and_check_all_end_to_end() {
     let output = run_rsmultigit_with_env(dir, &["check-all"], &env);
     assert_eq!(output.status.code(), Some(1));
     let stdout = stdout_str(&output);
-    assert!(stdout.starts_with("[gi]\nok (2 files)\n[rd]\n"), "{stdout}");
+    assert!(
+        stdout.starts_with(
+            "[gi] path=.gitignore select=*\nok (2 files)\n[rd] path=README.md select=*\n"
+        ),
+        "{stdout}"
+    );
 
     fs::write(dir.join("b/README.md"), "b").unwrap();
     let output = run_rsmultigit_with_env(dir, &["check-all", "--only-failed"], &env);

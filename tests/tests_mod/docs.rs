@@ -25,29 +25,36 @@ fn help_section(help: &str, heading: &str) -> Vec<String> {
 #[test]
 fn every_subcommand_has_a_heading_in_the_command_reference() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let output = run_rsmultigit(crate::common::utf8(&tmp), &["--help"]);
-    assert!(output.status.success());
-    let subcommands = help_section(&stdout_str(&output), "Commands:");
-    assert!(subcommands.len() > 30, "parsed {subcommands:?}");
-
     let docs = commands_md();
     let headings: Vec<&str> = docs.lines().filter(|l| l.starts_with('#')).collect();
-    let missing: Vec<&String> = subcommands
-        .iter()
-        .filter(|name| name.as_str() != "help")
-        .filter(|name| {
-            // `rsmultigit config ` must not be satisfied by `config-example`.
-            let with_space = format!("`rsmultigit {name} ");
-            let with_tick = format!("`rsmultigit {name}`");
-            !headings
-                .iter()
-                .any(|h| h.contains(&with_space) || h.contains(&with_tick))
-        })
-        .collect();
-    assert!(
-        missing.is_empty(),
-        "subcommands without a `rsmultigit <name>` heading in docs/src/commands.md: {missing:?}"
-    );
+    // The top level, then the `git` group, whose subcommands are documented
+    // under `rsmultigit git <name>` headings.
+    for (args, prefix, at_least) in [
+        (&["--help"][..], "rsmultigit", 20),
+        (&["git", "--help"][..], "rsmultigit git", 15),
+    ] {
+        let output = run_rsmultigit(crate::common::utf8(&tmp), args);
+        assert!(output.status.success());
+        let subcommands = help_section(&stdout_str(&output), "Commands:");
+        assert!(subcommands.len() > at_least, "parsed {subcommands:?}");
+
+        let missing: Vec<&String> = subcommands
+            .iter()
+            .filter(|name| name.as_str() != "help")
+            .filter(|name| {
+                // `rsmultigit config ` must not be satisfied by `config-example`.
+                let with_space = format!("`{prefix} {name} ");
+                let with_tick = format!("`{prefix} {name}`");
+                !headings
+                    .iter()
+                    .any(|h| h.contains(&with_space) || h.contains(&with_tick))
+            })
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "subcommands without a `{prefix} <name>` heading in docs/src/commands.md: {missing:?}"
+        );
+    }
 }
 
 #[test]

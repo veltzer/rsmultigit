@@ -21,6 +21,36 @@ use crate::config::AppConfig;
 pub trait NamedRule {
     fn name(&self) -> &str;
     fn enabled(&self) -> bool;
+    /// The rule's properties as `key=value` pairs for the report header.
+    /// Optional fields appear only when set, flags only when they differ
+    /// from their default, so the line shows exactly what the config says.
+    fn properties(&self) -> Vec<(&'static str, String)>;
+}
+
+/// The selection fields `[[check]]` and `[[exists]]` share, in config order.
+fn selection_properties(
+    path: &str,
+    select: &str,
+    exclude: Option<&String>,
+    marker: Option<&String>,
+    marker_absent: Option<&String>,
+    enabled: bool,
+) -> Vec<(&'static str, String)> {
+    let mut props = vec![("path", path.to_string()), ("select", select.to_string())];
+    let optional = [
+        ("exclude", exclude),
+        ("marker", marker),
+        ("marker_absent", marker_absent),
+    ];
+    props.extend(
+        optional
+            .into_iter()
+            .filter_map(|(k, v)| Some((k, v?.clone()))),
+    );
+    if !enabled {
+        props.push(("enabled", "false".to_string()));
+    }
+    props
 }
 
 impl NamedRule for Rule {
@@ -30,6 +60,20 @@ impl NamedRule for Rule {
     fn enabled(&self) -> bool {
         self.enabled
     }
+    fn properties(&self) -> Vec<(&'static str, String)> {
+        let mut props = selection_properties(
+            &self.path,
+            &self.select,
+            self.exclude.as_ref(),
+            self.marker.as_ref(),
+            self.marker_absent.as_ref(),
+            self.enabled,
+        );
+        if self.must_have {
+            props.push(("must_have", "true".to_string()));
+        }
+        props
+    }
 }
 
 impl NamedRule for ExistsRule {
@@ -38,6 +82,16 @@ impl NamedRule for ExistsRule {
     }
     fn enabled(&self) -> bool {
         self.enabled
+    }
+    fn properties(&self) -> Vec<(&'static str, String)> {
+        selection_properties(
+            &self.path,
+            &self.select,
+            self.exclude.as_ref(),
+            self.marker.as_ref(),
+            self.marker_absent.as_ref(),
+            self.enabled,
+        )
     }
 }
 
@@ -100,11 +154,16 @@ fn quoted_list<S: std::fmt::Debug>(items: impl IntoIterator<Item = S>) -> String
         .join(", ")
 }
 
-/// Print the `[name]` line that introduces a rule's report, unless
-/// `--no-header` suppressed it.
-fn rule_header<W: Write>(app: &AppConfig, out: &mut W, name: &str) -> Result<()> {
+/// Print the line that introduces a rule's report, unless `--no-header`
+/// suppressed it: `[name]` followed by the rule's properties, so a failure
+/// can be read against its rule without opening the config.
+fn rule_header<W: Write, R: NamedRule>(app: &AppConfig, out: &mut W, rule: &R) -> Result<()> {
     if !app.no_header {
-        writeln!(out, "[{name}]")?;
+        write!(out, "[{}]", rule.name())?;
+        for (key, value) in rule.properties() {
+            write!(out, " {key}={value}")?;
+        }
+        writeln!(out)?;
     }
     Ok(())
 }
@@ -150,7 +209,10 @@ pub struct CheckSameOpts<'a> {
 ///
 /// When `do_copy` or `do_fix_missing` is set, interactive prompts are served
 /// from `input`, and the exit code is 0 regardless of mismatches: these are
-/// tools to fix drift, not pass/fail checks.
+/// tools to fix drift, not pass/fail checks. A file they fail to write is
+/// another matter: the run carries on to the remaining files, then ends with
+/// an error counting the failed writes, since a fix that did not land is not
+/// a success.
 ///
 /// With the global `--short-circuit` flag, evaluation stops as soon as the
 /// first rule is found broken: the remaining rules are neither evaluated nor
@@ -183,6 +245,7 @@ pub fn run_check_same<R: BufRead, W: Write>(
 
     let mut any_mismatch = false;
     let mut empty_rules: Vec<String> = Vec::new();
+    let mut failed_writes = 0usize;
 
     for rule in rules {
         let result = check::evaluate_rule(rule, projects)?;
@@ -196,7 +259,7 @@ pub fn run_check_same<R: BufRead, W: Write>(
             if app.terse {
                 writeln!(out, "{}", result.name)?;
             } else {
-                rule_header(app, out, &result.name)?;
+                rule_header(app, out, rule)?;
                 let suffix = if result.skipped.is_empty() {
                     String::new()
                 } else {
@@ -212,7 +275,7 @@ pub fn run_check_same<R: BufRead, W: Write>(
 
         if result.is_consistent() {
             if !only_failed && !app.terse {
-                rule_header(app, out, &result.name)?;
+                rule_header(app, out, rule)?;
                 writeln!(out, "ok ({} files)", result.total_files)?;
             }
             continue;
@@ -228,7 +291,7 @@ pub fn run_check_same<R: BufRead, W: Write>(
             continue;
         }
 
-        rule_header(app, out, &result.name)?;
+        rule_header(app, out, rule)?;
         let mut suffix_parts: Vec<String> = Vec::new();
         if !result.must_have_violations.is_empty() {
             suffix_parts.push(format!("{} missing", result.must_have_violations.len()));
@@ -267,10 +330,12 @@ pub fn run_check_same<R: BufRead, W: Write>(
                 quit |= run_diff(&result, &mut *input, &mut *out)? == FlowControl::Quit;
             }
             if do_copy && !quit {
-                quit |= run_copy(&result, &mut *input, &mut *out)? == FlowControl::Quit;
+                quit |= run_copy(&result, &mut *input, &mut *out, &mut failed_writes)?
+                    == FlowControl::Quit;
             }
             if do_fix_missing && !quit && !result.must_have_violations.is_empty() {
-                quit |= run_fix_missing(&result, &mut *input, &mut *out)? == FlowControl::Quit;
+                quit |= run_fix_missing(&result, &mut *input, &mut *out, &mut failed_writes)?
+                    == FlowControl::Quit;
             }
             if quit {
                 break;
@@ -288,6 +353,13 @@ pub fn run_check_same<R: BufRead, W: Write>(
         "stale select/path?",
         &empty_rules,
     )?;
+
+    if failed_writes > 0 {
+        let noun = if failed_writes == 1 { "file" } else { "files" };
+        anyhow::bail!(
+            "check-same: {failed_writes} {noun} could not be written (see the error lines above)"
+        );
+    }
 
     if do_copy || do_fix_missing {
         Ok(0)
@@ -345,7 +417,7 @@ pub fn run_check_exists<W: Write>(
             if app.terse {
                 writeln!(out, "{}", result.name)?;
             } else {
-                rule_header(app, out, &result.name)?;
+                rule_header(app, out, rule)?;
                 writeln!(out, "no repos selected")?;
             }
             if app.short_circuit {
@@ -356,7 +428,7 @@ pub fn run_check_exists<W: Write>(
 
         if result.is_satisfied() {
             if !only_failed && !app.terse {
-                rule_header(app, out, &result.name)?;
+                rule_header(app, out, rule)?;
                 writeln!(out, "ok ({} repos)", result.total_repos())?;
             }
             continue;
@@ -372,7 +444,7 @@ pub fn run_check_exists<W: Write>(
             continue;
         }
 
-        rule_header(app, out, &result.name)?;
+        rule_header(app, out, rule)?;
         writeln!(
             out,
             "{} repos, {} missing {}",
@@ -482,10 +554,12 @@ fn emit_pair_diff<W: Write>(result: &RuleResult, a_idx: usize, b_idx: usize, wri
 /// Run the interactive copy flow for a rule: prompt for "from" and "to" groups,
 /// confirm, then overwrite every file in the "to" group with the content of a
 /// representative from the "from" group (preserving the destination's mode).
+/// Each file that cannot be written is reported and counted in `failed`.
 fn run_copy<R: BufRead, W: Write>(
     result: &RuleResult,
     reader: &mut R,
     writer: &mut W,
+    failed: &mut usize,
 ) -> Result<FlowControl> {
     let n = result.groups.len();
     let from = match pick_group(&mut *reader, &mut *writer, "copy from group?", n, None)? {
@@ -513,7 +587,8 @@ fn run_copy<R: BufRead, W: Write>(
 
     for dst in dst_group {
         if let Err(e) = copy_preserving_mode(src, dst) {
-            let _ = writeln!(writer, "  error: {src} -> {dst}: {e}");
+            let _ = writeln!(writer, "  error: {src} -> {dst}: {e:#}");
+            *failed += 1;
         } else {
             let _ = writeln!(writer, "  copied -> {dst}");
         }
@@ -540,10 +615,13 @@ fn copy_preserving_mode(src: &Utf8Path, dst: &Utf8Path) -> Result<()> {
 ///
 /// When the rule has zero content groups (no repo has the file at all) there's
 /// nothing to seed from: print a note and skip.
+///
+/// Each file that cannot be created is reported and counted in `failed`.
 fn run_fix_missing<R: BufRead, W: Write>(
     result: &RuleResult,
     reader: &mut R,
     writer: &mut W,
+    failed: &mut usize,
 ) -> Result<FlowControl> {
     if result.groups.is_empty() {
         let _ = writeln!(
@@ -584,6 +662,7 @@ fn run_fix_missing<R: BufRead, W: Write>(
             && let Err(e) = std::fs::create_dir_all(parent)
         {
             let _ = writeln!(writer, "  error: failed to create directory {parent}: {e}");
+            *failed += 1;
             continue;
         }
         match std::fs::copy(src, &dst) {
@@ -592,6 +671,7 @@ fn run_fix_missing<R: BufRead, W: Write>(
             }
             Err(e) => {
                 let _ = writeln!(writer, "  error: {src} -> {dst}: {e}");
+                *failed += 1;
             }
         }
     }
@@ -616,6 +696,28 @@ mod tests {
             enabled,
             must_have: false,
         }
+    }
+
+    #[test]
+    fn rule_header_lists_set_properties_only() {
+        let mut out = Vec::new();
+        rule_header(&AppConfig::default(), &mut out, &rule("plain", true)).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), "[plain] path=f select=*\n");
+
+        let full = Rule {
+            exclude: Some("rs-old".into()),
+            marker: Some("Cargo.toml".into()),
+            marker_absent: Some(".noci".into()),
+            must_have: true,
+            ..rule("full", false)
+        };
+        let mut out = Vec::new();
+        rule_header(&AppConfig::default(), &mut out, &full).unwrap();
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "[full] path=f select=* exclude=rs-old marker=Cargo.toml \
+             marker_absent=.noci enabled=false must_have=true\n"
+        );
     }
 
     fn names<R: NamedRule>(rules: &[&R]) -> Vec<String> {
@@ -755,7 +857,7 @@ mod tests {
             "",
         );
         assert_eq!(code.unwrap(), 0);
-        assert_eq!(out, "[gi]\nok (2 files)\n");
+        assert_eq!(out, "[gi] path=.gitignore select=*\nok (2 files)\n");
     }
 
     #[test]
@@ -770,7 +872,9 @@ mod tests {
         );
         assert_eq!(code.unwrap(), 1);
         assert!(
-            out.starts_with("[gi]\n3 files, 2 groups\n  group A (2 files):\n"),
+            out.starts_with(
+                "[gi] path=.gitignore select=*\n3 files, 2 groups\n  group A (2 files):\n"
+            ),
             "{out}"
         );
         assert!(out.contains("  group B (1 files):\n"), "{out}");
@@ -799,7 +903,10 @@ mod tests {
             &same_opts(),
             "",
         );
-        assert_eq!(out, "[gi]\nno files matched (1 skipped)\n");
+        assert_eq!(
+            out,
+            "[gi] path=.gitignore select=*\nno files matched (1 skipped)\n"
+        );
         let msg = format!("{:#}", code.unwrap_err());
         assert!(
             msg.contains("check-same: 1 rule matched no files: \"gi\""),
@@ -812,7 +919,7 @@ mod tests {
         };
         let (code, out) = run_same(&AppConfig::default(), &config(ONE_CHECK), &fleet, &opts, "");
         assert_eq!(code.unwrap(), 0);
-        assert_eq!(out, "[gi]\nok (0 files)\n");
+        assert_eq!(out, "[gi] path=.gitignore select=*\nok (0 files)\n");
     }
 
     #[test]
@@ -889,6 +996,31 @@ mod tests {
     }
 
     #[test]
+    fn check_same_fix_missing_fails_when_a_file_cannot_be_written() {
+        let fleet = make_fleet("sub/f", &[Some("x\n"), None, None]);
+        // A plain file where the missing file's directory should go: the
+        // directory cannot be created, whoever runs the test.
+        fs::write(fleet.repos[1].join("sub"), "in the way").unwrap();
+        let cfg =
+            config("[[check]]\nname = \"f\"\nselect = \"*\"\npath = \"sub/f\"\nmust_have = true\n");
+        let opts = CheckSameOpts {
+            do_fix_missing: true,
+            ..same_opts()
+        };
+        let (code, out) = run_same(&AppConfig::default(), &cfg, &fleet, &opts, "A\ny\n");
+        assert_eq!(
+            code.unwrap_err().to_string(),
+            "check-same: 1 file could not be written (see the error lines above)"
+        );
+        assert!(out.contains("error: failed to create directory"), "{out}");
+        // The failure did not stop the remaining repo from being fixed.
+        assert_eq!(
+            fs::read_to_string(fleet.repos[2].join("sub/f")).unwrap(),
+            "x\n"
+        );
+    }
+
+    #[test]
     fn check_exists_reports_ok_and_missing() {
         let fleet = make_fleet("README.md", &[Some("a"), Some("b")]);
         let (code, out) = run_exists(
@@ -898,7 +1030,7 @@ mod tests {
             &exists_opts(),
         );
         assert_eq!(code.unwrap(), 0);
-        assert_eq!(out, "[rd]\nok (2 repos)\n");
+        assert_eq!(out, "[rd] path=README.md select=*\nok (2 repos)\n");
 
         let fleet = make_fleet("README.md", &[Some("a"), None]);
         let (code, out) = run_exists(
@@ -911,7 +1043,7 @@ mod tests {
         assert_eq!(
             out,
             format!(
-                "[rd]\n2 repos, 1 missing README.md\n  missing in:\n    {}\n",
+                "[rd] path=README.md select=*\n2 repos, 1 missing README.md\n  missing in:\n    {}\n",
                 fleet.repos[1]
             )
         );
@@ -977,7 +1109,7 @@ mod tests {
         let fleet = make_fleet("README.md", &[Some("a")]);
         let cfg = config(&ONE_EXISTS.replace("select = \"*\"", "select = \"zz*\""));
         let (code, out) = run_exists(&AppConfig::default(), &cfg, &fleet, &exists_opts());
-        assert_eq!(out, "[rd]\nno repos selected\n");
+        assert_eq!(out, "[rd] path=README.md select=zz*\nno repos selected\n");
         let msg = format!("{:#}", code.unwrap_err());
         assert!(
             msg.contains("check-exists: 1 rule selected no repos: \"rd\""),
@@ -990,7 +1122,7 @@ mod tests {
         };
         let (code, out) = run_exists(&AppConfig::default(), &cfg, &fleet, &opts);
         assert_eq!(code.unwrap(), 0);
-        assert_eq!(out, "[rd]\nok (0 repos)\n");
+        assert_eq!(out, "[rd] path=README.md select=zz*\nok (0 repos)\n");
     }
 
     #[test]

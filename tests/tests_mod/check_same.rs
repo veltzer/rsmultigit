@@ -35,7 +35,10 @@ path = ".gitignore"
 
     let output = run(utf8(&tmp), &cfg, &["check-same"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
-    assert_eq!(stdout_str(&output), "[gi]\nok (3 files)");
+    assert_eq!(
+        stdout_str(&output),
+        "[gi] path=.gitignore select=*\nok (3 files)"
+    );
 }
 
 #[test]
@@ -901,7 +904,10 @@ path = ".gitignore"
         stdout_str(&output),
         stderr_str(&output)
     );
-    assert_eq!(stdout_str(&output), "[gi]\nok (0 files)");
+    assert_eq!(
+        stdout_str(&output),
+        "[gi] path=.gitignore select=*\nok (0 files)"
+    );
     assert!(
         !stderr_str(&output).contains("matched no files"),
         "--allow-empty must suppress the trailing error"

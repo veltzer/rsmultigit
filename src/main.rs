@@ -4,15 +4,15 @@ mod config;
 mod runner;
 mod subprocess_utils;
 
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 
 use anyhow::Result;
 use clap::Parser;
 use clap::error::{ContextKind, ContextValue, ErrorKind};
 
 use cli::{
-    BranchWhat, BuildWhat, CleanWhat, Cli, Commands, CountWhat, GhWhat, ResetWhat, RuleKind,
-    RustWhat, StashWhat, TagWhat, UvWhat,
+    BranchWhat, BuildWhat, CleanWhat, Cli, Commands, CountWhat, GhWhat, GitCommand, ResetWhat,
+    RuleKind, RustWhat, StashWhat, TagWhat, UvWhat,
 };
 use commands::check_run::{self, CheckExistsOpts, CheckSameOpts};
 use config::AppConfig;
@@ -37,11 +37,12 @@ fn parse_cli() -> Cli {
 }
 
 /// Whether `err` says the operation-selecting positional (`<WHAT>` on every
-/// such command, see `Commands` in cli.rs) is missing: either nothing at all
-/// followed the command, or only options did.
+/// such command, see `Commands` in cli.rs) or the operation subcommand (on a
+/// group like `git`) is missing: either nothing at all followed the command,
+/// or only options did.
 fn is_missing_operation(err: &clap::Error) -> bool {
     match err.kind() {
-        ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => true,
+        ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand | ErrorKind::MissingSubcommand => true,
         ErrorKind::MissingRequiredArgument => matches!(
             err.get(ContextKind::InvalidArg),
             Some(ContextValue::Strings(missing)) if missing.iter().any(|arg| arg == "<WHAT>")
@@ -256,12 +257,6 @@ fn main() -> Result<()> {
         Commands::Authors => {
             runner::print_if_data(&config, &projects, commands::authors::do_authors)?;
         }
-        Commands::Config { key } => {
-            let key = key.clone();
-            runner::print_if_data(&config, &projects, move |project: &Utf8Path| {
-                commands::config::do_config(project, &key)
-            })?;
-        }
         Commands::Size => {
             runner::print_if_data(&config, &projects, commands::size::do_size)?;
         }
@@ -270,157 +265,7 @@ fn main() -> Result<()> {
         }
 
         // ── do_for_all_projects ──
-        Commands::Branch { what } => {
-            let branch_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
-                BranchWhat::Local => commands::branch::branch_local,
-                BranchWhat::Remote => commands::branch::branch_remote,
-                BranchWhat::Github => commands::branch::branch_github,
-            };
-            runner::do_for_all_projects(&config, &projects, branch_fn)?;
-        }
-        Commands::Pull { quiet } => {
-            let quiet = *quiet;
-            runner::do_for_all_projects(
-                &config,
-                &projects,
-                move |project: &Utf8Path| -> anyhow::Result<()> {
-                    commands::pull::do_pull(project, quiet)
-                },
-            )?;
-        }
-        Commands::Push => {
-            runner::do_for_all_projects_with_check(
-                &config,
-                &projects,
-                commands::count::is_ahead,
-                commands::push::do_push,
-            )?;
-        }
-        Commands::Fetch => {
-            runner::do_for_all_projects(&config, &projects, commands::fetch::do_fetch)?;
-        }
-        Commands::Clean { what } => match what {
-            CleanWhat::Make => {
-                let venv = config.venv;
-                runner::do_for_all_projects(
-                    &config,
-                    &projects,
-                    move |project: &Utf8Path| -> anyhow::Result<()> {
-                        commands::clean::clean_make(project, venv)
-                    },
-                )?;
-            }
-            _ => {
-                let clean_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
-                    CleanWhat::Hard => commands::clean::clean_hard,
-                    CleanWhat::Soft => commands::clean::clean_soft,
-                    CleanWhat::Make => unreachable!("handled above"),
-                };
-                runner::do_for_all_projects(&config, &projects, clean_fn)?;
-            }
-        },
-        Commands::Stash { what } => {
-            let stash_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
-                StashWhat::Push => commands::stash::stash_push,
-                StashWhat::Pop => commands::stash::stash_pop,
-            };
-            runner::do_for_all_projects(&config, &projects, stash_fn)?;
-        }
-        Commands::Restore => {
-            runner::do_for_all_projects(&config, &projects, commands::restore::restore)?;
-        }
-        Commands::Reset { what } => {
-            let reset_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
-                ResetWhat::Hard => commands::reset::reset_hard,
-                ResetWhat::Soft => commands::reset::reset_soft,
-                ResetWhat::Mixed => commands::reset::reset_mixed,
-            };
-            runner::do_for_all_projects(&config, &projects, reset_fn)?;
-        }
-        Commands::Diff => {
-            runner::do_for_all_projects(&config, &projects, commands::diff::do_diff)?;
-        }
-        Commands::Log { count } => {
-            let count = *count;
-            runner::do_for_all_projects(
-                &config,
-                &projects,
-                move |project: &Utf8Path| -> anyhow::Result<()> {
-                    commands::log::do_log(project, count)
-                },
-            )?;
-        }
-        Commands::Tag { what } => match what {
-            TagWhat::Local | TagWhat::Remote => {
-                let tag_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
-                    TagWhat::Local => commands::tag::tag_local,
-                    TagWhat::Remote => commands::tag::tag_remote,
-                    _ => unreachable!(),
-                };
-                runner::do_for_all_projects(&config, &projects, tag_fn)?;
-            }
-            TagWhat::HasLocal | TagWhat::HasRemote => {
-                let test_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
-                    TagWhat::HasLocal => commands::tag::tag_has_local,
-                    TagWhat::HasRemote => commands::tag::tag_has_remote,
-                    _ => unreachable!(),
-                };
-                runner::do_count(&config, &projects, test_fn)?;
-            }
-        },
-        Commands::Remote => {
-            runner::do_for_all_projects(&config, &projects, commands::remote::do_remote)?;
-        }
-        Commands::Prune => {
-            runner::do_for_all_projects(&config, &projects, commands::prune::do_prune)?;
-        }
-        Commands::Gc => {
-            runner::do_for_all_projects(&config, &projects, commands::gc::do_gc)?;
-        }
-        Commands::Checkout { branch } => {
-            let branch = branch.clone();
-            runner::do_for_all_projects(
-                &config,
-                &projects,
-                move |project: &Utf8Path| -> anyhow::Result<()> {
-                    commands::checkout::do_checkout(project, &branch)
-                },
-            )?;
-        }
-        Commands::Commit { message } => {
-            let message = message.clone();
-            runner::do_for_all_projects_with_check(
-                &config,
-                &projects,
-                commands::commit::has_anything_to_commit,
-                move |project: &Utf8Path| -> anyhow::Result<()> {
-                    commands::commit::do_commit(project, &message)
-                },
-            )?;
-        }
-        Commands::SubmoduleUpdate => {
-            runner::do_for_all_projects(&config, &projects, commands::submodule::submodule_update)?;
-        }
-        Commands::Blame { file } => {
-            let file = file.clone();
-            let file_for_check = file.clone();
-            runner::do_for_all_projects_with_check(
-                &config,
-                &projects,
-                move |project: &Utf8Path| commands::blame::has_file(project, &file_for_check),
-                move |project: &Utf8Path| -> anyhow::Result<()> {
-                    commands::blame::do_blame(project, &file)
-                },
-            )?;
-        }
-        Commands::Grep { regexp, files } => {
-            // A data command: a repo without a match prints nothing at all.
-            let regexp = regexp.clone();
-            let files = *files;
-            runner::print_if_data(&config, &projects, move |project: &Utf8Path| {
-                commands::grep::do_grep(project, &regexp, files)
-            })?;
-        }
+        Commands::Git { command } => run_git_command(&config, &projects, command)?,
         Commands::Run { command } => {
             let command = command.clone();
             let venv = config.venv;
@@ -643,5 +488,161 @@ fn main() -> Result<()> {
         Commands::Version => unreachable!("handled above"),
     }
 
+    Ok(())
+}
+
+/// The `git` group: each subcommand runs the git command of the same name
+/// in every repo.
+fn run_git_command(
+    config: &AppConfig,
+    projects: &[Utf8PathBuf],
+    command: &GitCommand,
+) -> Result<()> {
+    match command {
+        GitCommand::Config { key } => {
+            let key = key.clone();
+            runner::print_if_data(config, projects, move |project: &Utf8Path| {
+                commands::config::do_config(project, &key)
+            })?;
+        }
+        GitCommand::Branch { what } => {
+            let branch_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
+                BranchWhat::Local => commands::branch::branch_local,
+                BranchWhat::Remote => commands::branch::branch_remote,
+                BranchWhat::Github => commands::branch::branch_github,
+            };
+            runner::do_for_all_projects(config, projects, branch_fn)?;
+        }
+        GitCommand::Pull { quiet } => {
+            let quiet = *quiet;
+            runner::do_for_all_projects(
+                config,
+                projects,
+                move |project: &Utf8Path| -> anyhow::Result<()> {
+                    commands::pull::do_pull(project, quiet)
+                },
+            )?;
+        }
+        GitCommand::Push => {
+            runner::do_for_all_projects_with_check(
+                config,
+                projects,
+                commands::count::is_ahead,
+                commands::push::do_push,
+            )?;
+        }
+        GitCommand::Fetch => {
+            runner::do_for_all_projects(config, projects, commands::fetch::do_fetch)?;
+        }
+        GitCommand::Clean { what } => {
+            let clean_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
+                CleanWhat::Hard => commands::clean::clean_hard,
+                CleanWhat::Soft => commands::clean::clean_soft,
+            };
+            runner::do_for_all_projects(config, projects, clean_fn)?;
+        }
+        GitCommand::Stash { what } => {
+            let stash_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
+                StashWhat::Push => commands::stash::stash_push,
+                StashWhat::Pop => commands::stash::stash_pop,
+            };
+            runner::do_for_all_projects(config, projects, stash_fn)?;
+        }
+        GitCommand::Restore => {
+            runner::do_for_all_projects(config, projects, commands::restore::restore)?;
+        }
+        GitCommand::Reset { what } => {
+            let reset_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
+                ResetWhat::Hard => commands::reset::reset_hard,
+                ResetWhat::Soft => commands::reset::reset_soft,
+                ResetWhat::Mixed => commands::reset::reset_mixed,
+            };
+            runner::do_for_all_projects(config, projects, reset_fn)?;
+        }
+        GitCommand::Diff => {
+            runner::do_for_all_projects(config, projects, commands::diff::do_diff)?;
+        }
+        GitCommand::Log { count } => {
+            let count = *count;
+            runner::do_for_all_projects(
+                config,
+                projects,
+                move |project: &Utf8Path| -> anyhow::Result<()> {
+                    commands::log::do_log(project, count)
+                },
+            )?;
+        }
+        GitCommand::Tag { what } => match what {
+            TagWhat::Local | TagWhat::Remote => {
+                let tag_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
+                    TagWhat::Local => commands::tag::tag_local,
+                    TagWhat::Remote => commands::tag::tag_remote,
+                    _ => unreachable!(),
+                };
+                runner::do_for_all_projects(config, projects, tag_fn)?;
+            }
+            TagWhat::HasLocal | TagWhat::HasRemote => {
+                let test_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
+                    TagWhat::HasLocal => commands::tag::tag_has_local,
+                    TagWhat::HasRemote => commands::tag::tag_has_remote,
+                    _ => unreachable!(),
+                };
+                runner::do_count(config, projects, test_fn)?;
+            }
+        },
+        GitCommand::Remote => {
+            runner::do_for_all_projects(config, projects, commands::remote::do_remote)?;
+        }
+        GitCommand::RemotePrune => {
+            runner::do_for_all_projects(config, projects, commands::prune::do_prune)?;
+        }
+        GitCommand::Gc => {
+            runner::do_for_all_projects(config, projects, commands::gc::do_gc)?;
+        }
+        GitCommand::Checkout { branch } => {
+            let branch = branch.clone();
+            runner::do_for_all_projects(
+                config,
+                projects,
+                move |project: &Utf8Path| -> anyhow::Result<()> {
+                    commands::checkout::do_checkout(project, &branch)
+                },
+            )?;
+        }
+        GitCommand::Commit { message } => {
+            let message = message.clone();
+            runner::do_for_all_projects_with_check(
+                config,
+                projects,
+                commands::commit::has_anything_to_commit,
+                move |project: &Utf8Path| -> anyhow::Result<()> {
+                    commands::commit::do_commit(project, &message)
+                },
+            )?;
+        }
+        GitCommand::SubmoduleUpdate => {
+            runner::do_for_all_projects(config, projects, commands::submodule::submodule_update)?;
+        }
+        GitCommand::Blame { file } => {
+            let file = file.clone();
+            let file_for_check = file.clone();
+            runner::do_for_all_projects_with_check(
+                config,
+                projects,
+                move |project: &Utf8Path| commands::blame::has_file(project, &file_for_check),
+                move |project: &Utf8Path| -> anyhow::Result<()> {
+                    commands::blame::do_blame(project, &file)
+                },
+            )?;
+        }
+        GitCommand::Grep { regexp, files } => {
+            // A data command: a repo without a match prints nothing at all.
+            let regexp = regexp.clone();
+            let files = *files;
+            runner::print_if_data(config, projects, move |project: &Utf8Path| {
+                commands::grep::do_grep(project, &regexp, files)
+            })?;
+        }
+    }
     Ok(())
 }

@@ -38,7 +38,7 @@ fn no_subcommand_fails() {
 #[test]
 fn grep_requires_regexp() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let output = run_rsmultigit(utf8(&tmp), &["grep"]);
+    let output = run_rsmultigit(utf8(&tmp), &["git", "grep"]);
     assert!(!output.status.success());
 }
 
@@ -88,6 +88,56 @@ fn bare_count_lists_its_choices() {
 }
 
 #[test]
+fn bare_git_lists_its_subcommands_and_no_flags() {
+    // `git` is a group of subcommands rather than a `<WHAT>` positional;
+    // invoked bare, or with options only, it lists them all the same.
+    let tmp = tempfile::TempDir::new().unwrap();
+    for args in [&["git"][..], &["git", "--no-stop"][..]] {
+        let output = run_rsmultigit(utf8(&tmp), args);
+        assert_eq!(output.status.code(), Some(2), "{args:?}");
+        let stderr = stderr_str(&output);
+        assert!(
+            stderr.contains("Usage: rsmultigit git"),
+            "{args:?}: {stderr}"
+        );
+        assert!(
+            !stderr.contains("requires a subcommand"),
+            "{args:?}: {stderr}"
+        );
+        for name in ["pull", "restore", "remote-prune", "submodule-update"] {
+            assert!(
+                stderr.contains(name),
+                "{args:?} should list `{name}`: {stderr}"
+            );
+        }
+        assert!(
+            stderr.contains("Discard unstaged changes to tracked files"),
+            "each subcommand should come with its description: {stderr}"
+        );
+        assert!(!stderr.contains("Options:"), "{args:?}: {stderr}");
+        assert!(
+            stderr.contains("Run `rsmultigit git --help` for the options."),
+            "{stderr}"
+        );
+    }
+}
+
+#[test]
+fn bare_git_operation_lists_its_choices() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let output = run_rsmultigit(utf8(&tmp), &["git", "reset"]);
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = stderr_str(&output);
+    assert!(stderr.contains("Usage: rsmultigit git reset"), "{stderr}");
+    for name in ["hard", "soft", "mixed"] {
+        assert!(
+            stderr.contains(name),
+            "bare git reset should list `{name}`: {stderr}"
+        );
+    }
+}
+
+#[test]
 fn gh_with_options_but_no_operation_lists_its_operations() {
     // Options alone do not satisfy the command either; the choices are shown
     // just as for the bare form, instead of a "<WHAT> not provided" error.
@@ -108,7 +158,7 @@ fn missing_plain_positional_keeps_clap_error() {
     // Only the operation-selecting positional gets the help treatment; a
     // missing free-form argument (blame's file) still gets clap's error.
     let tmp = tempfile::TempDir::new().unwrap();
-    let output = run_rsmultigit(utf8(&tmp), &["blame"]);
+    let output = run_rsmultigit(utf8(&tmp), &["git", "blame"]);
     assert_eq!(output.status.code(), Some(2));
     let stderr = stderr_str(&output);
     assert!(
