@@ -30,7 +30,7 @@ fn parse_cli() -> Cli {
         Ok(cli) => cli,
         Err(err) if is_missing_operation(&err) => {
             let args: Vec<String> = std::env::args().collect();
-            eprint!("{}", cli::long_help_for(&args));
+            anstream::eprint!("{}", cli::long_help_for(&args).ansi());
             std::process::exit(2);
         }
         Err(err) => err.exit(),

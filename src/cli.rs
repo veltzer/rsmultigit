@@ -5,27 +5,55 @@
 
 use std::io;
 
+use clap::builder::StyledStr;
+use clap::builder::styling::{AnsiColor, Effects, Styles};
+
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
 use serde::Deserialize;
+
+/// Colours for every help and error message clap renders (cargo's palette).
+/// clap drops them by itself when the stream is not a terminal or `NO_COLOR`
+/// is set; text we print ourselves goes through `anstream` for the same.
+pub const STYLES: Styles = Styles::styled()
+    .header(AnsiColor::Green.on_default().effects(Effects::BOLD))
+    .usage(AnsiColor::Green.on_default().effects(Effects::BOLD))
+    .literal(AnsiColor::Cyan.on_default().effects(Effects::BOLD))
+    .placeholder(AnsiColor::Cyan.on_default())
+    .error(AnsiColor::Red.on_default().effects(Effects::BOLD))
+    .valid(AnsiColor::Cyan.on_default().effects(Effects::BOLD))
+    .invalid(AnsiColor::Yellow.on_default().effects(Effects::BOLD));
+
+/// The top-level help: the global flags stay out of it (they would bury the
+/// command list), so the Options section is written out by hand, styled the
+/// way clap styles the sections it renders itself.
+fn top_help_template() -> StyledStr {
+    let h = STYLES.get_header();
+    let l = STYLES.get_literal();
+    format!(
+        "\
+{{about}}
+
+{{usage-heading}} {{usage}}
+
+{h}Commands:{h:#}
+{{subcommands}}
+
+{h}Options:{h:#}
+  {l}-h{l:#}, {l}--help{l:#}     Print help
+  {l}-V{l:#}, {l}--version{l:#}  Print version
+
+Use `rsmultigit <command> --help` for more options."
+    )
+    .into()
+}
 
 #[derive(Parser)]
 #[command(name = "rsmultigit")]
 #[command(version = concat!(env!("CARGO_PKG_VERSION"), " by ", env!("CARGO_PKG_AUTHORS")))]
 #[command(about = "Manage multiple git repositories at once")]
-#[command(help_template = "\
-{about}
-
-Usage: {usage}
-
-Commands:
-{subcommands}
-
-Options:
-  -h, --help     Print help
-  -V, --version  Print version
-
-Use `rsmultigit <command> --help` for more options.")]
+#[command(styles = STYLES)]
+#[command(help_template = top_help_template())]
 pub struct Cli {
     // Output control
     /// Terse output
@@ -770,7 +798,10 @@ const OPERATIONS_HELP_TEMPLATE: &str =
 
 /// The same for a command whose operations are subcommands (`git`): the
 /// subcommand list takes the place of the positionals.
-const SUBCOMMANDS_HELP_TEMPLATE: &str = "{before-help}{about-with-newline}\n{usage-heading} {usage}\n\nCommands:\n{subcommands}{after-help}";
+fn subcommands_help_template() -> StyledStr {
+    let h = STYLES.get_header();
+    format!("{{before-help}}{{about-with-newline}}\n{{usage-heading}} {{usage}}\n\n{h}Commands:{h:#}\n{{subcommands}}{{after-help}}").into()
+}
 
 /// The help of the (sub)command that `args` (argv, program name included)
 /// names, for printing when such a command is invoked without the positional
@@ -779,7 +810,7 @@ const SUBCOMMANDS_HELP_TEMPLATE: &str = "{before-help}{about-with-newline}\n{usa
 /// flag; this renders the *long* description of each choice and *no* flags,
 /// which is what someone who stopped at `rsmultigit gh` is looking for.
 /// The top-level command (no subcommand named) keeps its normal long help.
-pub fn long_help_for<I, S>(args: I) -> String
+pub fn long_help_for<I, S>(args: I) -> StyledStr
 where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
@@ -800,7 +831,7 @@ where
         }
     }
     if path.is_empty() {
-        return cmd.render_long_help().to_string();
+        return cmd.render_long_help();
     }
     let full_name = format!("{} {}", cmd.get_name(), path.join(" "));
     let mut cur = &mut cmd;
@@ -810,15 +841,14 @@ where
             .expect("subcommand path was taken from this very Command");
     }
     let template = if cur.has_subcommands() {
-        SUBCOMMANDS_HELP_TEMPLATE
+        subcommands_help_template()
     } else {
-        OPERATIONS_HELP_TEMPLATE
+        OPERATIONS_HELP_TEMPLATE.into()
     };
     cur.clone()
         .help_template(template)
         .after_help(format!("Run `{full_name} --help` for the options."))
         .render_long_help()
-        .to_string()
 }
 
 /// Bash snippet appended to `rsmultigit complete bash`. Wraps clap's generated
@@ -969,7 +999,7 @@ mod tests {
 
     #[test]
     fn long_help_for_lists_each_choice_with_its_description() {
-        let help = long_help_for(["rsmultigit", "gh"]);
+        let help = long_help_for(["rsmultigit", "gh"]).to_string();
         assert!(
             help.contains("Usage: rsmultigit gh"),
             "usage line should carry the full command path: {help}"
@@ -995,7 +1025,7 @@ mod tests {
         // choices, so the bare invocation lists only the operations and says
         // where the flags are.
         for sub in ["gh", "cargo"] {
-            let help = long_help_for(["rsmultigit", sub]);
+            let help = long_help_for(["rsmultigit", sub]).to_string();
             // Rendered option lines; a description may well mention a flag
             // (`clean-all` talks about --keep), and that is fine.
             for flag in [
@@ -1032,10 +1062,10 @@ mod tests {
     #[test]
     fn long_help_for_stops_at_the_deepest_subcommand_named() {
         // Trailing non-subcommand words (flags, typos) do not derail the lookup.
-        let help = long_help_for(["rsmultigit", "git", "count", "--verbose"]);
+        let help = long_help_for(["rsmultigit", "git", "count", "--verbose"]).to_string();
         assert!(help.contains("Usage: rsmultigit git count"), "{help}");
         // No subcommand at all falls back to the top-level help.
-        let help = long_help_for(["rsmultigit"]);
+        let help = long_help_for(["rsmultigit"]).to_string();
         assert!(help.contains("Usage: rsmultigit"), "{help}");
         assert!(help.contains("Commands:"), "{help}");
     }

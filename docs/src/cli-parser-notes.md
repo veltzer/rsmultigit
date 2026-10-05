@@ -106,6 +106,20 @@ ever lands, the template needs to drop that literal — otherwise you'd see
 `Commands:` above clap's auto-emitted per-group headings. Flagging it here so
 it's not forgotten.
 
+## Colours in help
+
+`Cli` sets `styles = STYLES` (cargo's palette: green headings, cyan flags and
+commands, red errors). clap colours only what it renders itself, so any
+heading written as literal text in a `help_template` (`Commands:`,
+`Options:`, and the hand-written `-h`/`-V` lines) is put together as a
+`StyledStr` from `STYLES` (`top_help_template`, `subcommands_help_template`)
+instead of a plain `&str`. `long_help_for` returns that `StyledStr`, and
+`parse_cli` prints it with `anstream::eprint!` and `.ansi()`. Calling
+`.to_string()` on it would strip the colours, and a plain `eprint!` would
+send escape codes into pipes. anstream applies the same rules clap does:
+colour on a terminal, none when the output is piped, and it respects
+`NO_COLOR` and `CLICOLOR_FORCE`.
+
 ## `--version` vs `version` subcommand
 
 Both exist. `--version` is the clap-derived flag and prints a one-line

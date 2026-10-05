@@ -99,5 +99,6 @@ Runtime deps — keep it minimal:
 - `similar` — unified diffs for `check same --diff`
 - `camino` — UTF-8 paths throughout
 - `indicatif` — progress bar in the parallel runner
+- `anstream` — prints our own styled help (the bare-command listing) with clap's colour detection (tty, `NO_COLOR`, `CLICOLOR_FORCE`)
 
 Licenses and advisories are gated by the fleet-shared `deny.toml`.
