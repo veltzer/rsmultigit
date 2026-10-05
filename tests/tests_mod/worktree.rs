@@ -46,20 +46,96 @@ fn checkout_switches_every_repo_to_the_branch() {
 }
 
 #[test]
-fn stash_push_then_pop_round_trips_changes() {
+fn stash_skips_clean_repos_and_never_pops_a_hand_made_stash() {
+    // `clean` is clean but holds an old stash of its own; `dirty` has a
+    // change; `bare` is clean with no stash at all. push must stash only in
+    // `dirty`, and pop must restore only that, leaving the old stash alone.
+    let tmp = setup_git_repos(&["bare", "clean", "dirty"]);
+    let dir = utf8(&tmp);
+    for name in ["clean", "dirty"] {
+        commit_file(&dir.join(name), "f.txt", "original", "add f");
+    }
+    fs::write(dir.join("clean/f.txt"), "old").unwrap();
+    git(&dir.join("clean"), &["stash", "push", "-m", "by hand"]);
+    fs::write(dir.join("dirty/f.txt"), "changed").unwrap();
+
+    let output = run_rsmultigit(dir, &["git", "stash", "push"]);
+    assert!(output.status.success(), "{}", stderr_str(&output));
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("dirty]"), "{stdout}");
+    assert!(
+        !stdout.contains("clean]") && !stdout.contains("bare]"),
+        "{stdout}"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.join("dirty/f.txt")).unwrap(),
+        "original"
+    );
+
+    let output = run_rsmultigit(dir, &["git", "stash", "pop"]);
+    assert!(output.status.success(), "{}", stderr_str(&output));
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("dirty]"), "{stdout}");
+    assert!(
+        !stdout.contains("clean]") && !stdout.contains("bare]"),
+        "{stdout}"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.join("dirty/f.txt")).unwrap(),
+        "changed"
+    );
+    assert_eq!(
+        fs::read_to_string(dir.join("clean/f.txt")).unwrap(),
+        "original"
+    );
+    let list = git(&dir.join("clean"), &["stash", "list", "--format=%s"]);
+    assert!(
+        list.ends_with(": by hand") && !list.contains('\n'),
+        "{list}"
+    );
+}
+
+#[test]
+fn linked_worktrees_are_discovered_as_repos() {
+    // A linked worktree's `.git` is a file (`gitdir: ...`), not a directory.
+    let tmp = setup_git_repos(&["main"]);
+    let dir = utf8(&tmp);
+    git(&dir.join("main"), &["worktree", "add", "-q", "../linked"]);
+    assert!(dir.join("linked/.git").is_file());
+    // A stray `.git` file that is not a gitdir pointer is still no repo.
+    fs::create_dir(dir.join("fake")).unwrap();
+    fs::write(dir.join("fake/.git"), "not a pointer").unwrap();
+
+    let output = run_rsmultigit(dir, &["list", "repos"]);
+    assert!(output.status.success(), "{}", stderr_str(&output));
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("/linked"), "{stdout}");
+    assert!(stdout.contains("/main"), "{stdout}");
+    assert!(!stdout.contains("/fake"), "{stdout}");
+}
+
+#[test]
+fn stash_pop_finds_its_stash_below_a_newer_hand_made_one() {
     let tmp = setup_git_repos(&["repo"]);
     let dir = utf8(&tmp);
     let repo = dir.join("repo");
     commit_file(&repo, "f.txt", "original", "add f");
-    fs::write(repo.join("f.txt"), "changed").unwrap();
-
+    commit_file(&repo, "g.txt", "original", "add g");
+    fs::write(repo.join("f.txt"), "ours").unwrap();
     let output = run_rsmultigit(dir, &["git", "stash", "push"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
-    assert_eq!(fs::read_to_string(repo.join("f.txt")).unwrap(), "original");
+    fs::write(repo.join("g.txt"), "theirs").unwrap();
+    git(&repo, &["stash", "push", "-m", "by hand"]);
 
     let output = run_rsmultigit(dir, &["git", "stash", "pop"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
-    assert_eq!(fs::read_to_string(repo.join("f.txt")).unwrap(), "changed");
+    assert_eq!(fs::read_to_string(repo.join("f.txt")).unwrap(), "ours");
+    assert_eq!(fs::read_to_string(repo.join("g.txt")).unwrap(), "original");
+    let list = git(&repo, &["stash", "list", "--format=%s"]);
+    assert!(
+        list.ends_with(": by hand") && !list.contains('\n'),
+        "{list}"
+    );
 }
 
 #[test]

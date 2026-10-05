@@ -155,3 +155,50 @@ fn grep_pattern_starting_with_dash_is_searched_for() {
         format!("[{repo}]\nr1: f.txt:1:x -foo y")
     );
 }
+
+#[test]
+fn a_failing_repo_prints_the_same_under_j_as_serially() {
+    // Header, the repo's own output on its own streams, then the error:
+    // byte for byte the same whether the repos ran one by one or in parallel.
+    // The sleep keeps the two writes apart: written back to back, two pipes
+    // may deliver them in either order, which capture cannot know.
+    let tmp = setup_git_repos(&["a", "b"]);
+    let dir = utf8(&tmp);
+    for flags in [&["--no-stop"][..], &["--no-stop", "--no-output"], &[]] {
+        let run = |jobs: &str| {
+            let mut args = vec!["-j", jobs];
+            args.extend_from_slice(flags);
+            args.extend(["run", "echo OUT; sleep 0.1; echo ERR >&2; exit 1"]);
+            run_rsmultigit(dir, &args)
+        };
+        let serial = run("1");
+        let parallel = run("2");
+        assert!(!serial.status.success(), "{flags:?}");
+        assert_eq!(serial.status.code(), parallel.status.code(), "{flags:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&serial.stdout),
+            String::from_utf8_lossy(&parallel.stdout),
+            "stdout differs for {flags:?}"
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&serial.stderr),
+            String::from_utf8_lossy(&parallel.stderr),
+            "stderr differs for {flags:?}"
+        );
+    }
+    // The repo's stderr stays on stderr and its stdout under its header.
+    let output = run_rsmultigit(
+        dir,
+        &[
+            "-j",
+            "2",
+            "--no-stop",
+            "run",
+            "echo OUT; echo ERR >&2; exit 1",
+        ],
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("a]\nOUT\n"), "{stdout}");
+    assert!(!stdout.contains("ERR"), "{stdout}");
+    assert!(stderr_str(&output).contains("ERR"));
+}

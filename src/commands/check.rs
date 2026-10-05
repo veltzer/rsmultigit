@@ -170,8 +170,20 @@ pub fn load_config(path: &Utf8Path) -> Result<CheckConfig> {
     Ok(config)
 }
 
-/// Expand globs in `config.repos`, filter to directories containing `.git/`,
-/// dedupe, and sort. Returns an error if `repos` is empty or no matches exist.
+/// Whether `path` is the top of a git checkout: `.git` is either the git
+/// directory itself or, in a linked worktree or a submodule, a file holding
+/// a `gitdir: <path>` pointer to it.
+pub fn is_git_checkout(path: &std::path::Path) -> bool {
+    let dot_git = path.join(".git");
+    if dot_git.is_dir() {
+        return true;
+    }
+    dot_git.is_file()
+        && std::fs::read_to_string(&dot_git).is_ok_and(|text| text.starts_with("gitdir:"))
+}
+
+/// Expand globs in `config.repos`, keep the git checkouts among them (see
+/// [`is_git_checkout`]), dedupe, and sort. Returns an error if `repos` is empty or no matches exist.
 pub fn resolve_repos(config: &CheckConfig) -> Result<Vec<Utf8PathBuf>> {
     if config.repos.is_empty() {
         anyhow::bail!("config must set `repos = [...]` with at least one entry");
@@ -185,7 +197,7 @@ pub fn resolve_repos(config: &CheckConfig) -> Result<Vec<Utf8PathBuf>> {
             glob::glob(&expanded).with_context(|| format!("invalid glob pattern `{entry}`"))?;
         for m in matches {
             let path = m.with_context(|| format!("error iterating glob `{entry}`"))?;
-            if path.is_dir() && path.join(".git").is_dir() {
+            if path.is_dir() && is_git_checkout(&path) {
                 let path = Utf8PathBuf::from_path_buf(path).map_err(|p| {
                     anyhow::anyhow!("repo path is not valid UTF-8: {}", p.display())
                 })?;

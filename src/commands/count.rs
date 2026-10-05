@@ -22,7 +22,8 @@ pub(crate) fn status_options() -> git2::StatusOptions {
     opts
 }
 
-/// Returns true if there are any dirty changes (modified, staged, or new in index)
+/// Returns true if there are any dirty changes (modified, staged, new in index,
+/// or conflicted mid-merge)
 /// OR any untracked files. One status scan serves both questions.
 pub fn has_changes(project: &Utf8Path) -> Result<(bool, bool)> {
     let repo = open_repo(project)?;
@@ -42,7 +43,8 @@ pub fn has_changes(project: &Utf8Path) -> Result<(bool, bool)> {
                 | git2::Status::INDEX_DELETED
                 | git2::Status::INDEX_RENAMED
                 | git2::Status::INDEX_TYPECHANGE
-                | git2::Status::INDEX_NEW,
+                | git2::Status::INDEX_NEW
+                | git2::Status::CONFLICTED,
         ) {
             dirty = true;
         }

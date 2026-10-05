@@ -567,11 +567,16 @@ fn run_git_command(
             runner::do_for_all_projects(config, projects, clean_fn)?;
         }
         GitCommand::Stash { what } => {
-            let stash_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
-                StashWhat::Push => commands::stash::stash_push,
-                StashWhat::Pop => commands::stash::stash_pop,
+            type CheckFn = fn(&Utf8Path) -> anyhow::Result<bool>;
+            type StashFn = fn(&Utf8Path) -> anyhow::Result<()>;
+            let (check_fn, stash_fn): (CheckFn, StashFn) = match what {
+                StashWhat::Push => (
+                    commands::stash::has_changes_to_stash,
+                    commands::stash::stash_push,
+                ),
+                StashWhat::Pop => (commands::stash::has_own_stash, commands::stash::stash_pop),
             };
-            runner::do_for_all_projects(config, projects, stash_fn)?;
+            runner::do_for_all_projects_with_check(config, projects, check_fn, stash_fn)?;
         }
         GitCommand::Restore => {
             runner::do_for_all_projects(config, projects, commands::restore::restore)?;

@@ -336,51 +336,64 @@ where
     for_each_project_ordered(
         jobs,
         &projects_vec,
-        |project| -> Result<(bool, Captured)> {
+        |project| -> Result<(Step, Captured)> {
             let abs = absolute(project, &base);
             // Capture output on this worker thread for the duration of check+action.
             crate::subprocess_utils::enter_capture();
-            let r: Result<bool> = (|| -> Result<bool> {
-                let passed =
-                    check(&abs).with_context(|| format!("error checking project {}", project))?;
-                if !passed {
-                    return Ok(false);
-                }
-                action(&abs).with_context(|| format!("error in project {}", project))?;
-                Ok(true)
-            })();
-            let captured = crate::subprocess_utils::leave_capture();
-            match r {
-                Ok(passed) => Ok((passed, captured)),
-                Err(e) => Err(attach_captured(e, &captured)),
-            }
+            let step = match check(&abs) {
+                Err(e) => Step::CheckFailed(e),
+                Ok(false) => Step::Skipped,
+                Ok(true) => match action(&abs) {
+                    Ok(()) => Step::Done,
+                    Err(e) => Step::ActionFailed(e),
+                },
+            };
+            Ok((step, crate::subprocess_utils::leave_capture()))
         },
         |project, result| -> Result<()> {
-            match result {
-                Ok((passed, captured)) => {
-                    let show_header = !headers_suppressed(config);
-                    if passed || (config.verbose && show_header) {
-                        if show_header {
-                            print_project_header(project);
-                        }
-                        if passed && !config.no_output {
-                            captured.replay();
-                        }
-                    }
-                    Ok(())
-                }
-                Err(e) => {
-                    if config.no_stop {
-                        report_no_stop(project, &e, &mut failed);
-                        Ok(())
+            // Replayed exactly as the serial path shows it live: header, then
+            // the repo's own output, then (on failure) the error with the same
+            // context chain the serial path builds.
+            let (step, captured) = result?;
+            let show_header = !headers_suppressed(config);
+            let ran = matches!(step, Step::Done | Step::ActionFailed(_));
+            if show_header && (ran || config.verbose) {
+                print_project_header(project);
+            }
+            if ran && !config.no_output {
+                captured.replay();
+            }
+            let e = match step {
+                Step::Skipped | Step::Done => return Ok(()),
+                Step::CheckFailed(e) => e.context(format!("error checking project {}", project)),
+                Step::ActionFailed(e) => {
+                    let e = if config.no_output {
+                        attach_captured(e, &captured)
                     } else {
-                        Err(e)
-                    }
+                        e
+                    };
+                    e.context(format!("error in project {}", project))
                 }
+            };
+            if config.no_stop {
+                report_no_stop(project, &e, &mut failed);
+                Ok(())
+            } else {
+                Err(e)
             }
         },
     )?;
     no_stop_outcome(failed, projects.len())
+}
+
+/// What happened to one repo on the parallel path of
+/// [`do_for_all_projects_with_check`]. Errors travel back raw, so the main
+/// thread can wrap them in the same order the serial path does.
+enum Step {
+    Skipped,
+    Done,
+    CheckFailed(anyhow::Error),
+    ActionFailed(anyhow::Error),
 }
 
 /// Attach a failed action's captured subprocess output to its error, so a

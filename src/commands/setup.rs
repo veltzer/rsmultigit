@@ -125,7 +125,7 @@ pub fn scan(dir: &Utf8Path) -> Result<Scan> {
     for entry in entries {
         let entry = entry.with_context(|| format!("cannot read an entry of {dir}"))?;
         let path = entry.into_path();
-        if path.is_dir() && path.join(".git").is_dir() {
+        if path.is_dir() && crate::commands::check::is_git_checkout(path.as_std_path()) {
             repos.push(path);
         }
     }
@@ -513,14 +513,22 @@ mod tests {
         git_repo(root, "c", &["rsconstruct.toml"]);
         fs::create_dir_all(root.join("plain")).unwrap();
         fs::write(root.join("file"), "").unwrap();
-        // A `.git` *file* (worktree) is not a repo for resolve_repos, so not here.
+        // A `.git` *file* with a gitdir pointer (a linked worktree) is a repo,
+        // as it is for resolve_repos; any other `.git` file is not.
         fs::create_dir_all(root.join("wt")).unwrap();
         fs::write(root.join("wt/.git"), "gitdir: elsewhere").unwrap();
+        fs::create_dir_all(root.join("junk")).unwrap();
+        fs::write(root.join("junk/.git"), "not a pointer").unwrap();
 
         let s = scan(root).unwrap();
         assert_eq!(
             s.repos,
-            vec![root.join("a"), root.join("b"), root.join("c")]
+            vec![
+                root.join("a"),
+                root.join("b"),
+                root.join("c"),
+                root.join("wt")
+            ]
         );
         assert_eq!(s.count_for(BuildWhat::Cargo), 2);
         assert_eq!(s.count_for(BuildWhat::Make), 1);

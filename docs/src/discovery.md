@@ -19,9 +19,11 @@ Each entry is a glob pattern. Resolution works as follows:
 1. **Shell expansion.** `~` and `$VAR` are expanded in every entry.
 2. **Glob matching.** The expanded pattern is matched against the filesystem.
    A pattern with no glob characters is simply a path.
-3. **Git filter.** Only matches that are directories containing a `.git`
-   directory are kept. Plain directories, files, and worktrees whose `.git`
-   is a file are silently dropped.
+3. **Git filter.** Only matches that are git checkouts are kept: directories
+   whose `.git` is the git directory itself, or a file holding a
+   `gitdir: <path>` pointer to it, as in a linked worktree (`git worktree
+   add`) or a submodule. Plain directories, files, and directories with any
+   other kind of `.git` file are silently dropped.
 4. **Dedupe and sort.** Matches from all patterns are merged, duplicates
    removed, and the list sorted alphabetically. Output order is always this
    sorted order, even when running in parallel.

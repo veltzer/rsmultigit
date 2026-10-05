@@ -58,7 +58,8 @@ prints the path of every matching repo, then a final `matched/total` line.
 #### `rsmultigit git count dirty`
 
 Repos with changes in the working tree or index: modified, deleted, renamed,
-type-changed, or newly staged files. Untracked files do not count.
+type-changed, newly staged, or conflicted (mid-merge) files. Untracked files
+do not count.
 
 ```bash
 rsmultigit git count dirty
@@ -120,7 +121,8 @@ The age of the last commit as a relative date (`3 days ago`).
 #### `rsmultigit git size`
 
 Size of the `.git` directory per repo, in human-readable units. Symlinks are
-not followed.
+not followed. A linked worktree, whose `.git` is only a pointer file, has no
+git directory of its own and is skipped.
 
 #### `rsmultigit git last-tag`
 
@@ -166,7 +168,11 @@ Clean repos are skipped.
 
 ### `rsmultigit git stash push` / `rsmultigit git stash pop`
 
-Stash, or pop the most recent stash, in every repo.
+`push` runs `git stash push -m "rsmultigit stash"` in every repo that has
+changes to tracked files; clean repos are skipped. `pop` restores the most
+recent stash carrying that message, wherever it sits in the stash list, and
+skips repos that have none. A stash made by hand is never popped, so
+`push` followed by `pop` round-trips exactly what `push` saved.
 
 ### `rsmultigit git reset hard|soft|mixed`
 
@@ -273,8 +279,8 @@ Every configured repo. `--verbose` adds the `[repo]` header for each entry.
 
 ### `rsmultigit list dirty`
 
-Repos with modified, deleted or staged files (untracked files do not count;
-see `list untracked`). The same test as `git count dirty`.
+Repos with modified, deleted, staged or conflicted files (untracked files do
+not count; see `list untracked`). The same test as `git count dirty`.
 
 ### `rsmultigit list untracked`
 

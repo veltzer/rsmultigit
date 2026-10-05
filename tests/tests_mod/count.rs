@@ -1,4 +1,4 @@
-use crate::common::{run_rsmultigit, setup_git_repos, stdout_str, utf8};
+use crate::common::{commit_file, git, run_rsmultigit, setup_git_repos, stdout_str, utf8};
 use std::fs;
 
 #[test]
@@ -84,4 +84,29 @@ fn print_not_inverts_selection() {
         !stdout.contains("/a\n"),
         "should not print the matching repo"
     );
+}
+
+#[test]
+fn count_dirty_counts_a_repo_mid_merge() {
+    // A conflicted file is dirty even though nothing else is modified.
+    let tmp = setup_git_repos(&["clean", "merging"]);
+    let repo = utf8(&tmp).join("merging");
+    commit_file(&repo, "f.txt", "base", "base");
+    let main = git(&repo, &["rev-parse", "--abbrev-ref", "HEAD"]);
+    git(&repo, &["checkout", "-q", "-b", "other"]);
+    commit_file(&repo, "f.txt", "theirs", "theirs");
+    git(&repo, &["checkout", "-q", &main]);
+    commit_file(&repo, "f.txt", "ours", "ours");
+    let merge = std::process::Command::new("git")
+        .args(["merge", "-q", "other"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(!merge.status.success(), "the merge should conflict");
+
+    let output = run_rsmultigit(utf8(&tmp), &["git", "count", "dirty"]);
+    assert!(output.status.success());
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("merging"), "{stdout}");
+    assert!(stdout.contains("1/2"), "{stdout}");
 }

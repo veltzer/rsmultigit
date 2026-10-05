@@ -139,7 +139,7 @@ The rest each run the git command of the same name in every repo:
 | `git fetch` | Fetch from origin |
 | `git commit -m <msg>` | Stage and commit all changes with a shared message |
 | `git checkout <branch>` | Checkout a branch across all repositories |
-| `git stash push` / `git stash pop` | Stash or pop working-tree changes |
+| `git stash push` / `git stash pop` | Stash tracked changes, or pop the stash rsmultigit made; never touches hand-made stashes |
 | `git reset hard` / `git reset soft` / `git reset mixed` | Reset HEAD across all repositories |
 | `git restore` | `git restore .` (discards unstaged changes to tracked files) |
 | `git clean hard` | `git clean -ffxd` (removes untracked and ignored files) |

@@ -314,7 +314,7 @@ pub enum ListCommand {
     ///
     /// Pass --verbose to also emit the [project] header for each entry.
     Repos,
-    /// Print repos with modified, deleted or staged files
+    /// Print repos with modified, deleted, staged or conflicted files
     Dirty,
     /// Print repos with untracked files
     Untracked,
@@ -642,9 +642,11 @@ pub enum BranchWhat {
 
 #[derive(Clone, ValueEnum)]
 pub enum StashWhat {
-    /// Stash working-tree changes (git stash push)
+    /// Stash tracked changes under the message `rsmultigit stash`
+    /// (git stash push -m); repos with nothing to stash are skipped
     Push,
-    /// Pop the most recent stash (git stash pop)
+    /// Pop the most recent `rsmultigit stash` stash; repos without one are
+    /// skipped, and stashes made by hand are never touched
     Pop,
 }
 
