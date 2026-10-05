@@ -297,6 +297,8 @@ pub enum Commands {
         #[arg(value_enum)]
         what: ResetWhat,
     },
+    /// Discard unstaged changes to tracked files (git restore .)
+    Restore,
     /// Run an arbitrary command across all repositories
     #[command(alias = "exec")]
     Run {
@@ -547,8 +549,6 @@ pub enum CleanWhat {
     Soft,
     /// Run make clean
     Make,
-    /// Discard unstaged working-tree changes (git checkout .)
-    Git,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -943,6 +943,7 @@ mod tests {
             "prune",
             "gc",
             "submodule-update",
+            "restore",
             "version",
             "setup",
         ];
@@ -952,7 +953,7 @@ mod tests {
         }
 
         // clean requires a what argument
-        let clean_whats = ["hard", "soft", "make", "git"];
+        let clean_whats = ["hard", "soft", "make"];
         for what in clean_whats {
             let result = Cli::try_parse_from(["rsmultigit", "clean", what]);
             assert!(result.is_ok(), "clean {what} should parse");

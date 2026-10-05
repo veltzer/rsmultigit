@@ -25,6 +25,7 @@ pub mod pull;
 pub mod push;
 pub mod remote;
 pub mod reset;
+pub mod restore;
 pub mod run;
 pub mod rust;
 pub mod setup;

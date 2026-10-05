@@ -314,7 +314,6 @@ fn main() -> Result<()> {
                 let clean_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
                     CleanWhat::Hard => commands::clean::clean_hard,
                     CleanWhat::Soft => commands::clean::clean_soft,
-                    CleanWhat::Git => commands::clean::clean_git,
                     CleanWhat::Make => unreachable!("handled above"),
                 };
                 runner::do_for_all_projects(&config, &projects, clean_fn)?;
@@ -326,6 +325,9 @@ fn main() -> Result<()> {
                 StashWhat::Pop => commands::stash::stash_pop,
             };
             runner::do_for_all_projects(&config, &projects, stash_fn)?;
+        }
+        Commands::Restore => {
+            runner::do_for_all_projects(&config, &projects, commands::restore::restore)?;
         }
         Commands::Reset { what } => {
             let reset_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {

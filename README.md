@@ -158,9 +158,9 @@ rsmultigit complete bash >> ~/.bash_completion
 | `checkout <branch>` | Checkout a branch across all repositories |
 | `stash push` / `stash pop` | Stash or pop working-tree changes |
 | `reset hard` / `reset soft` / `reset mixed` | Reset HEAD across all repositories |
+| `restore` | `git restore .` (discards unstaged changes to tracked files) |
 | `clean hard` | `git clean -ffxd` (removes untracked and ignored files) |
 | `clean soft` | `git clean -fd` (removes untracked files only) |
-| `clean git` | `git checkout .` (discards unstaged changes) |
 | `clean make` | `make clean` |
 | `prune` | Prune stale remote-tracking branches |
 | `gc` | Run git garbage collection |

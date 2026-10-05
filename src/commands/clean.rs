@@ -23,9 +23,3 @@ pub fn clean_make(project: &Utf8Path, venv: bool) -> Result<()> {
     check_call_maybe_ve(project, venv, "make", &["clean"])?;
     Ok(())
 }
-
-/// Discard unstaged working-tree changes (git checkout .).
-pub fn clean_git(project: &Utf8Path) -> Result<()> {
-    check_call(project, "git", &["checkout", "."])?;
-    Ok(())
-}

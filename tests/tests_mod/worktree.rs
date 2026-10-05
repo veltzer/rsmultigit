@@ -85,6 +85,26 @@ fn reset_hard_discards_and_reset_mixed_unstages() {
 }
 
 #[test]
+fn restore_discards_unstaged_but_keeps_staged_and_untracked() {
+    let tmp = setup_git_repos(&["repo"]);
+    let dir = utf8(&tmp);
+    let repo = dir.join("repo");
+    commit_file(&repo, "f.txt", "original", "add f");
+    commit_file(&repo, "g.txt", "original", "add g");
+
+    fs::write(repo.join("g.txt"), "staged").unwrap();
+    git(&repo, &["add", "g.txt"]);
+    fs::write(repo.join("f.txt"), "changed").unwrap();
+    fs::write(repo.join("new.txt"), "untracked").unwrap();
+
+    let output = run_rsmultigit(dir, &["restore"]);
+    assert!(output.status.success(), "{}", stderr_str(&output));
+    assert_eq!(fs::read_to_string(repo.join("f.txt")).unwrap(), "original");
+    assert_eq!(fs::read_to_string(repo.join("g.txt")).unwrap(), "staged");
+    assert!(repo.join("new.txt").exists());
+}
+
+#[test]
 fn diff_shows_the_change_under_the_repo_header() {
     let tmp = setup_git_repos(&["repo"]);
     let dir = utf8(&tmp);

@@ -174,13 +174,18 @@ rsmultigit reset soft       # Keep changes staged
 rsmultigit reset mixed      # Unstage changes
 ```
 
+### `rsmultigit restore`
+
+`git restore .` in every repo: discards unstaged changes to tracked files,
+leaving staged changes and untracked files alone. (Formerly `clean git`; it
+removes nothing untracked, so it was never a clean.)
+
 ### `rsmultigit clean <what>`
 
 | What | Runs | Notes |
 |------|------|-------|
 | `hard` | `git clean -ffxd` | Removes untracked **and ignored** files |
 | `soft` | `git clean -fd` | Removes untracked files only |
-| `git` | `git checkout .` | Discards unstaged working-tree changes |
 | `make` | `make clean` | Honours `--venv` |
 
 `cargo clean` lives under the cargo command: `rsmultigit cargo clean`.
