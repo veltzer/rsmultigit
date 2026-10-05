@@ -199,7 +199,8 @@ The rest each run the git command of the same name in every repo:
 |---------|-------------|
 | `setup interactive [--repos-dir <DIR>] [--build <METHOD>\|--no-build] [--overwrite]` | Interactively write a first config file: pick the repositories directory and the default build tool |
 | `setup config-sample` | Print a sample config file to stdout |
-| `list-repos` | Print the path of every configured repo |
+| `list repos` | Print the path of every configured repo |
+| `list dirty\|untracked\|unsynchronized\|ahead\|behind` | Print the paths of the repos in that state, one per line |
 | `complete <shell>` | Generate shell completion scripts |
 | `version` | Print detailed version information |
 

@@ -162,9 +162,12 @@ pub enum Commands {
         #[command(subcommand)]
         command: GitCommand,
     },
-    /// Print the path of every configured repo, one per line (no header by default).
-    /// Pass --verbose to also emit the [project] header for each entry.
-    ListRepos,
+    /// Print the paths of the configured repos, all of them or those in a given state
+    #[command(arg_required_else_help = true, disable_help_subcommand = true)]
+    List {
+        #[command(subcommand)]
+        command: ListCommand,
+    },
     /// Run npm operations on projects that have a package.json file
     #[command(arg_required_else_help = true)]
     Npm {
@@ -298,6 +301,29 @@ pub enum CheckCommand {
         #[arg(value_enum, default_value_t = RuleKind::Check)]
         kind: RuleKind,
     },
+}
+
+/// The `list` subcommands: each prints the absolute path of every repo it
+/// selects, one per line and with no header, so the output feeds straight
+/// into `xargs` or a shell loop. The path is the data, so a bracketed header
+/// would only repeat it; `--verbose` adds it anyway on `list repos`, and
+/// `--print-not` inverts the selection of the state filters.
+#[derive(Subcommand, Clone, Copy)]
+pub enum ListCommand {
+    /// Print the path of every configured repo
+    ///
+    /// Pass --verbose to also emit the [project] header for each entry.
+    Repos,
+    /// Print repos with modified, deleted or staged files
+    Dirty,
+    /// Print repos with untracked files
+    Untracked,
+    /// Print repos whose branch is ahead of or behind its upstream
+    Unsynchronized,
+    /// Print repos with local commits not yet pushed to the upstream
+    Ahead,
+    /// Print repos with upstream commits not yet pulled
+    Behind,
 }
 
 /// The `setup` subcommands: both run before any config file exists, since
@@ -992,7 +1018,7 @@ mod tests {
 
     #[test]
     fn parse_all_subcommands() {
-        let subcommands = ["list-repos", "version"];
+        let subcommands = ["version"];
         for sub in subcommands {
             let result = Cli::try_parse_from(["rsmultigit", sub]);
             assert!(result.is_ok(), "subcommand {sub} should parse");
@@ -1004,6 +1030,12 @@ mod tests {
             &["check", "exists"],
             &["check", "all"],
             &["check", "list"],
+            &["list", "repos"],
+            &["list", "dirty"],
+            &["list", "untracked"],
+            &["list", "unsynchronized"],
+            &["list", "ahead"],
+            &["list", "behind"],
         ] {
             let result =
                 Cli::try_parse_from(std::iter::once("rsmultigit").chain(words.iter().copied()));
@@ -1024,6 +1056,7 @@ mod tests {
             "check all",
             "check list",
             "setup config-sample",
+            "list-repos",
         ] {
             assert!(
                 Cli::try_parse_from(["rsmultigit", sub, "dirty"]).is_err(),
@@ -1415,15 +1448,15 @@ mod tests {
 
     #[test]
     fn parse_jobs_flag() {
-        let cli = parse(&["rsmultigit", "-j", "4", "list-repos"]);
+        let cli = parse(&["rsmultigit", "-j", "4", "list", "repos"]);
         assert_eq!(cli.jobs, 4);
-        let cli = parse(&["rsmultigit", "--jobs", "8", "list-repos"]);
+        let cli = parse(&["rsmultigit", "--jobs", "8", "list", "repos"]);
         assert_eq!(cli.jobs, 8);
     }
 
     #[test]
     fn default_jobs_is_one() {
-        let cli = parse(&["rsmultigit", "list-repos"]);
+        let cli = parse(&["rsmultigit", "list", "repos"]);
         assert_eq!(cli.jobs, 1);
     }
 

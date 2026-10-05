@@ -34,6 +34,7 @@ fn every_subcommand_has_a_heading_in_the_command_reference() {
         (&["git", "--help"][..], "rsmultigit git", 20),
         (&["check", "--help"][..], "rsmultigit check", 3),
         (&["setup", "--help"][..], "rsmultigit setup", 1),
+        (&["list", "--help"][..], "rsmultigit list", 4),
     ] {
         let output = run_rsmultigit(crate::common::utf8(&tmp), args);
         assert!(output.status.success());

@@ -282,7 +282,7 @@ pub fn run(opts: &SetupOpts, config_path: &Utf8Path, out: &mut dyn Write) -> Res
     }
     writeln!(
         out,
-        "Next: `rsmultigit list-repos`, then `rsmultigit git status`."
+        "Next: `rsmultigit list repos`, then `rsmultigit git status`."
     )?;
     Ok(())
 }

@@ -252,12 +252,49 @@ git's unrelated object pruning.
 
 `git submodule update --init --recursive` in every repo.
 
-## Repo List
+## Repo Lists
 
-### `rsmultigit list-repos`
+The `list` commands print the absolute path of every repo they select, one
+per line, with no header and no summary line, so the output feeds straight
+into `xargs` or a shell loop. `--print-not` inverts the selection of every
+filter (`list dirty --print-not` prints the clean repos); `-j` inspects repos
+in parallel without changing the output order. A bare `rsmultigit list`
+lists the choices.
 
-Print the absolute path of every configured repo, one per line and with no
-header. `--verbose` adds the `[repo]` header for each entry.
+```bash
+for repo in $(rsmultigit list dirty); do git -C "$repo" diff --stat; done
+rsmultigit list ahead                  # the repos `git push` would send something from
+rsmultigit list dirty --print-not      # the clean repos
+```
+
+### `rsmultigit list repos`
+
+Every configured repo. `--verbose` adds the `[repo]` header for each entry.
+
+### `rsmultigit list dirty`
+
+Repos with modified, deleted or staged files (untracked files do not count;
+see `list untracked`). The same test as `git count dirty`.
+
+### `rsmultigit list untracked`
+
+Repos with untracked files. The same test as `git count untracked`.
+
+### `rsmultigit list unsynchronized`
+
+Repos whose checked-out branch is ahead of or behind its upstream. A repo
+with no upstream (or a detached HEAD) has nothing to be out of sync with and
+is never listed. The same test as `git count synchronized`.
+
+### `rsmultigit list ahead`
+
+Repos with local commits not yet pushed to the upstream.
+
+### `rsmultigit list behind`
+
+Repos whose upstream has commits not yet pulled. This compares against the
+remote-tracking refs as they are; run `rsmultigit git fetch` first for a
+current answer.
 
 ## Running Arbitrary Commands
 

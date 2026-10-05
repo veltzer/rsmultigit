@@ -56,7 +56,7 @@ tests/
     cli.rs             Help, unknown subcommand, missing args
     count.rs           count dirty/untracked, --terse, --print-not
     docs.rs            Every subcommand and global flag is in commands.md
-    inspect.rs         list-repos, log, blame, tags, size, age, authors, config,
+    inspect.rs         list, log, blame, tags, size, age, authors, config,
                        check exists, check all, complete
     remote.rs          push, fetch, pull, prune, remote, tag remote, against a
                        local bare repository standing in for origin
@@ -111,7 +111,7 @@ use crate::common::{run_rsmultigit, setup_git_repos, stdout_str};
 fn my_new_test() {
     let tmp = setup_git_repos(&["repo1", "repo2"]);
     let dir = Utf8Path::from_path(tmp.path()).unwrap();
-    let output = run_rsmultigit(dir, &["list-repos"]);
+    let output = run_rsmultigit(dir, &["list", "repos"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("repo1"));

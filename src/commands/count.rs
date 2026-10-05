@@ -131,6 +131,15 @@ pub fn is_ahead(project: &Utf8Path) -> Result<bool> {
     }
 }
 
+/// Returns true if the upstream has commits the local branch does not.
+/// Repos without an upstream have nothing to pull from, so return false.
+pub fn is_behind(project: &Utf8Path) -> Result<bool> {
+    match ahead_behind(project)? {
+        Some((_, behind)) => Ok(behind != 0),
+        None => Ok(false),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,6 +304,7 @@ mod tests {
         commit_empty(&repo, "local only");
         assert_eq!(ahead_behind(dir).unwrap(), Some((1, 0)));
         assert!(is_ahead(dir).unwrap());
+        assert!(!is_behind(dir).unwrap());
         assert!(non_synchronized(dir).unwrap());
     }
 

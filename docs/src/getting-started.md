@@ -32,7 +32,7 @@ Patterns are shell-expanded, and matches that are not git repositories are
 ignored. Check what was picked up:
 
 ```bash
-rsmultigit list-repos
+rsmultigit list repos
 ```
 
 ## Checking repository status

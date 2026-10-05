@@ -1,29 +1,102 @@
-//! Read-only commands: data commands, list-repos, log, blame, tags, and the
+//! Read-only commands: data commands, list, log, blame, tags, and the
 //! check exists / check all / complete surfaces.
 
 use std::fs;
 
 use crate::common::{
-    commit_file, current_branch, git, run_rsmultigit, run_rsmultigit_with_env, setup_git_repos,
-    stderr_str, stdout_str, utf8, write_config,
+    add_bare_origin, clone_of, commit_file, current_branch, git, run_rsmultigit,
+    run_rsmultigit_with_env, setup_git_repos, stderr_str, stdout_str, utf8, write_config,
 };
 
 #[test]
 fn list_repos_prints_paths_and_verbose_adds_headers() {
     let tmp = setup_git_repos(&["a", "b"]);
     let dir = utf8(&tmp);
-    let output = run_rsmultigit(dir, &["list-repos"]);
+    let output = run_rsmultigit(dir, &["list", "repos"]);
     assert!(output.status.success());
     assert_eq!(
         stdout_str(&output),
         format!("{}\n{}", dir.join("a"), dir.join("b"))
     );
 
-    let output = run_rsmultigit(dir, &["--verbose", "list-repos"]);
+    let output = run_rsmultigit(dir, &["--verbose", "list", "repos"]);
     assert_eq!(
         stdout_str(&output),
         format!("[{0}]\n{0}\n[{1}]\n{1}", dir.join("a"), dir.join("b"))
     );
+}
+
+#[test]
+fn list_filters_print_only_the_matching_paths() {
+    let names = ["ahead", "behind", "clean", "dirty", "untracked"];
+    let tmp = setup_git_repos(&names);
+    let dir = utf8(&tmp);
+    let bares = tempfile::TempDir::new().unwrap();
+    for name in ["ahead", "behind"] {
+        add_bare_origin(&dir.join(name), &utf8(&bares).join(name));
+    }
+    commit_file(&dir.join("ahead"), "new.txt", "x", "local only");
+    // `behind` gets a commit from another clone, then fetches it.
+    let clone = utf8(&bares).join("clone");
+    clone_of(&utf8(&bares).join("behind"), &clone);
+    commit_file(&clone, "elsewhere.txt", "x", "made elsewhere");
+    git(&clone, &["push", "-q", "origin", "HEAD"]);
+    git(&dir.join("behind"), &["fetch", "-q"]);
+    commit_file(&dir.join("dirty"), "f.txt", "1", "add f");
+    fs::write(dir.join("dirty/f.txt"), "2").unwrap();
+    fs::write(dir.join("untracked/new.txt"), "x").unwrap();
+
+    let paths = |names: &[&str]| -> String {
+        names
+            .iter()
+            .map(|n| dir.join(n).to_string())
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    for (what, expected) in [
+        ("dirty", &["dirty"][..]),
+        ("untracked", &["untracked"]),
+        ("unsynchronized", &["ahead", "behind"]),
+        ("ahead", &["ahead"]),
+        ("behind", &["behind"]),
+    ] {
+        for jobs in ["1", "4"] {
+            let output = run_rsmultigit(dir, &["-j", jobs, "list", what]);
+            assert!(output.status.success(), "{}", stderr_str(&output));
+            assert_eq!(
+                stdout_str(&output),
+                paths(expected),
+                "list {what} -j {jobs}"
+            );
+        }
+    }
+
+    // --print-not inverts the selection.
+    let output = run_rsmultigit(dir, &["list", "dirty", "--print-not"]);
+    assert!(output.status.success(), "{}", stderr_str(&output));
+    assert_eq!(
+        stdout_str(&output),
+        paths(&["ahead", "behind", "clean", "untracked"])
+    );
+}
+
+#[test]
+fn bare_list_names_its_operations() {
+    let tmp = setup_git_repos(&["a"]);
+    let output = run_rsmultigit(utf8(&tmp), &["list"]);
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = stderr_str(&output);
+    for op in [
+        "repos",
+        "dirty",
+        "untracked",
+        "unsynchronized",
+        "ahead",
+        "behind",
+    ] {
+        assert!(stderr.contains(&format!("  {op} ")), "{stderr}");
+    }
+    assert!(!stderr.contains("--jobs"), "{stderr}");
 }
 
 #[test]

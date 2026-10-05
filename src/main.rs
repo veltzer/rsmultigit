@@ -12,7 +12,8 @@ use clap::error::{ContextKind, ContextValue, ErrorKind};
 
 use cli::{
     BranchWhat, BuildWhat, CargoWhat, CheckCommand, CleanWhat, Cli, Commands, CountWhat, GhWhat,
-    GitCommand, ReleaseType, ResetWhat, RuleKind, SetupCommand, StashWhat, TagWhat, UvWhat,
+    GitCommand, ListCommand, ReleaseType, ResetWhat, RuleKind, SetupCommand, StashWhat, TagWhat,
+    UvWhat,
 };
 use commands::check_run::{self, CheckExistsOpts, CheckSameOpts};
 use config::AppConfig;
@@ -115,17 +116,7 @@ fn main() -> Result<()> {
     }
 
     match &cli.command {
-        Commands::ListRepos => {
-            // Prints one path per line with no header — the project path *is* the data,
-            // so the bracketed header would be redundant. --verbose re-enables the
-            // standard [project]\n<data> format for consistency with other commands.
-            for project in &projects {
-                if config.verbose && !config.terse && !config.no_header {
-                    println!("[{}]", project);
-                }
-                println!("{}", project);
-            }
-        }
+        Commands::List { command } => run_list_command(&config, &projects, *command)?,
 
         // ── do_for_all_projects ──
         Commands::Git { command } => run_git_command(&config, &projects, command)?,
@@ -463,6 +454,32 @@ fn run_check_command(
 
 /// The `git` group: the libgit2 reports, then the subcommands that run the
 /// git command of the same name in every repo.
+fn run_list_command(
+    config: &AppConfig,
+    projects: &[Utf8PathBuf],
+    command: ListCommand,
+) -> Result<()> {
+    let test_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match command {
+        ListCommand::Repos => {
+            // Every repo, no git inspection. --verbose re-enables the standard
+            // [project]\n<data> format for consistency with other commands.
+            for project in projects {
+                if config.verbose && !config.terse && !config.no_header {
+                    println!("[{}]", project);
+                }
+                println!("{}", project);
+            }
+            return Ok(());
+        }
+        ListCommand::Dirty => commands::count::is_dirty,
+        ListCommand::Untracked => commands::count::has_untracked,
+        ListCommand::Unsynchronized => commands::count::non_synchronized,
+        ListCommand::Ahead => commands::count::is_ahead,
+        ListCommand::Behind => commands::count::is_behind,
+    };
+    runner::print_matching(config, projects, test_fn)
+}
+
 fn run_git_command(
     config: &AppConfig,
     projects: &[Utf8PathBuf],

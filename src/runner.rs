@@ -216,6 +216,38 @@ where
     no_stop_outcome(failed, projects.len())
 }
 
+/// Runner for the `list` filters: prints the path of every repo where
+/// `test_fn` holds (or does not, under `--print-not`), one per line with no
+/// header and no summary, so the output is a plain list for scripts.
+pub fn print_matching<F>(config: &AppConfig, projects: &[Utf8PathBuf], test_fn: F) -> Result<()>
+where
+    F: Fn(&Utf8Path) -> Result<bool> + Sync,
+{
+    let mut failed = 0usize;
+    for_each_project_ordered(
+        resolve_jobs(config),
+        projects,
+        |project| test_fn(project).with_context(|| format!("error testing project {}", project)),
+        |project, result| {
+            match result {
+                Ok(matches) => {
+                    if matches != config.print_not {
+                        println!("{}", project);
+                    }
+                }
+                Err(e) => {
+                    if !config.no_stop {
+                        return Err(e);
+                    }
+                    report_no_stop(project, &e, &mut failed);
+                }
+            }
+            Ok(())
+        },
+    )?;
+    no_stop_outcome(failed, projects.len())
+}
+
 /// Runner for "do for all projects" commands.
 /// Parallel execution preserves per-project output ordering by capturing subprocess
 /// stdout/stderr into a buffer and replaying on the main thread in input order.

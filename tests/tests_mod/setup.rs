@@ -39,10 +39,10 @@ fn setup_writes_a_config_the_other_commands_can_use() {
     assert!(text.contains(&format!("\"{root}/*\"")), "{text}");
     assert!(text.contains("default_build_method = \"cargo\""), "{text}");
 
-    // The written config drives the tool: list-repos sees exactly the two repos.
+    // The written config drives the tool: list repos sees exactly the two repos.
     let output = run_rsmultigit_with_env(
         root,
-        &["list-repos"],
+        &["list", "repos"],
         &[("RSMULTIGIT_CONFIG", cfg.as_str())],
     );
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));

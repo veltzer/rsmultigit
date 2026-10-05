@@ -32,8 +32,8 @@ an error: rsmultigit refuses to run a command over nothing.
 ## Inspecting the result
 
 ```bash
-rsmultigit list-repos              # one absolute path per line
-rsmultigit --verbose list-repos    # with the usual [repo] header per entry
+rsmultigit list repos              # one absolute path per line
+rsmultigit --verbose list repos    # with the usual [repo] header per entry
 ```
 
 ## Per-rule selection
