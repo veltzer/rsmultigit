@@ -52,9 +52,12 @@ pub fn parse_group_label(input: &str, num_groups: usize) -> Option<usize> {
     if idx < num_groups { Some(idx) } else { None }
 }
 
-/// Prompt the user to pick a group by letter. Accepts `s`/`skip` → `Skip`,
-/// `q`/`quit` → `Quit`. `exclude` optionally forbids one index (used for the
-/// "to" prompt so the user can't pick the same group as the "from" choice).
+/// Prompt the user to pick a group by letter. Accepts `skip` → `Skip` and
+/// `quit` → `Quit`, and their one-letter forms `s` / `q` as long as no group
+/// is labelled `S` / `Q` (17 or more groups): a letter that names a group
+/// always picks it, so every group stays reachable. The prompt shows which
+/// forms apply. `exclude` optionally forbids one index (used for the "to"
+/// prompt so the user can't pick the same group as the "from" choice).
 pub fn pick_group<R: BufRead, W: Write>(
     mut reader: R,
     mut writer: W,
@@ -68,9 +71,16 @@ pub fn pick_group<R: BufRead, W: Write>(
     let allowed: Vec<usize> = (0..num_groups).filter(|i| Some(*i) != exclude).collect();
     let labels: Vec<String> = allowed.iter().map(|&i| group_label(i)).collect();
     let allowed_str = labels.join("/");
+    let short_skip = parse_group_label("s", num_groups).is_none();
+    let short_quit = parse_group_label("q", num_groups).is_none();
+    let skip_hint = if short_skip { "s=skip" } else { "skip" };
+    let quit_hint = if short_quit { "q=quit" } else { "quit" };
 
     loop {
-        write!(writer, "{prompt} [{allowed_str}, s=skip, q=quit]: ")?;
+        write!(
+            writer,
+            "{prompt} [{allowed_str}, {skip_hint}, {quit_hint}]: "
+        )?;
         writer.flush().context("failed to flush prompt")?;
 
         let mut line = String::new();
@@ -83,8 +93,10 @@ pub fn pick_group<R: BufRead, W: Write>(
         }
         let trimmed = line.trim().to_ascii_lowercase();
         match trimmed.as_str() {
-            "s" | "skip" => return Ok(Choice::Skip),
-            "q" | "quit" => return Ok(Choice::Quit),
+            "skip" => return Ok(Choice::Skip),
+            "quit" => return Ok(Choice::Quit),
+            "s" if short_skip => return Ok(Choice::Skip),
+            "q" if short_quit => return Ok(Choice::Quit),
             other => {
                 if let Some(idx) = parse_group_label(other, num_groups)
                     && Some(idx) != exclude
@@ -206,5 +218,26 @@ mod tests {
         assert!(!confirm(Cursor::new(b"\n".to_vec()), &mut out, "ok?").unwrap());
         let mut out = Vec::new();
         assert!(!confirm(Cursor::new(b"".to_vec()), &mut out, "ok?").unwrap());
+    }
+
+    #[test]
+    fn groups_q_and_s_stay_reachable_once_they_exist() {
+        use std::io::Cursor;
+        // 20 groups: Q is index 16, S is index 18.
+        let mut out = Vec::new();
+        let pick = |input: &str, out: &mut Vec<u8>| {
+            pick_group(Cursor::new(input.to_string()), out, "pick", 20, None).unwrap()
+        };
+        assert_eq!(pick("q\n", &mut out), Choice::Value(16));
+        assert_eq!(pick("S\n", &mut out), Choice::Value(18));
+        assert_eq!(pick("skip\n", &mut out), Choice::Skip);
+        assert_eq!(pick("quit\n", &mut out), Choice::Quit);
+        let shown = String::from_utf8(out).unwrap();
+        assert!(shown.contains(", skip, quit]"), "{shown}");
+        // With few groups the one-letter forms still work.
+        let mut out = Vec::new();
+        let few = pick_group(Cursor::new("s\n"), &mut out, "pick", 3, None).unwrap();
+        assert_eq!(few, Choice::Skip);
+        assert!(String::from_utf8(out).unwrap().contains("s=skip, q=quit"));
     }
 }

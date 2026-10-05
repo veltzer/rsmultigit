@@ -20,12 +20,12 @@ fn count_dirty_with_modified_file() {
     let dirty_path = utf8(&tmp).join("dirty");
     let file = dirty_path.join("file.txt");
     fs::write(&file, "original").unwrap();
-    std::process::Command::new("git")
+    crate::common::git_command()
         .args(["add", "file.txt"])
         .current_dir(&dirty_path)
         .status()
         .unwrap();
-    std::process::Command::new("git")
+    crate::common::git_command()
         .args(["commit", "-m", "add file"])
         .current_dir(&dirty_path)
         .status()
@@ -97,7 +97,7 @@ fn count_dirty_counts_a_repo_mid_merge() {
     commit_file(&repo, "f.txt", "theirs", "theirs");
     git(&repo, &["checkout", "-q", &main]);
     commit_file(&repo, "f.txt", "ours", "ours");
-    let merge = std::process::Command::new("git")
+    let merge = crate::common::git_command()
         .args(["merge", "-q", "other"])
         .current_dir(&repo)
         .output()

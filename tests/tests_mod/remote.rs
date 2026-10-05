@@ -39,6 +39,30 @@ fn push_pushes_only_repos_that_are_ahead() {
 }
 
 #[test]
+fn push_without_a_configured_upstream_pushes_to_origin_branch() {
+    // `is_ahead` measures an untracked branch against origin/<branch>; the
+    // push must go there too, although plain `git push` (push.default
+    // simple, the test env has no global config) refuses such a branch.
+    let tmp = setup_git_repos(&["untracked"]);
+    let dir = utf8(&tmp);
+    let repo = dir.join("untracked");
+    let bares = tempfile::TempDir::new().unwrap();
+    add_bare_origin(&repo, &utf8(&bares).join("untracked"));
+    git(&repo, &["branch", "--unset-upstream"]);
+    commit_file(&repo, "new.txt", "x", "local only");
+    let local_tip = git(&repo, &["rev-parse", "HEAD"]);
+
+    let output = run_rsmultigit(dir, &["git", "push"]);
+    assert!(output.status.success(), "{}", stderr_str(&output));
+    assert!(stdout_str(&output).contains("untracked]"));
+    let branch = current_branch(&repo);
+    assert_eq!(
+        git(&utf8(&bares).join("untracked"), &["rev-parse", &branch]),
+        local_tip
+    );
+}
+
+#[test]
 fn fetch_updates_tracking_ref_and_status_reports_behind() {
     let tmp = setup_git_repos(&["repo"]);
     let dir = utf8(&tmp);

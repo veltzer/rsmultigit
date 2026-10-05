@@ -231,3 +231,64 @@ fn clean_soft_removes_untracked_but_keeps_ignored() {
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert!(!repo.join("ignored.txt").exists());
 }
+
+#[test]
+fn destructive_commands_skip_untouched_repos_and_dry_run_changes_nothing() {
+    // `work` has a staged change, an unstaged change, an untracked file and
+    // an ignored file; `idle` has nothing for any of the commands to do.
+    let tmp = setup_git_repos(&["idle", "work"]);
+    let dir = utf8(&tmp);
+    let work = dir.join("work");
+    commit_file(&work, ".gitignore", "ignored.txt\n", "ignore");
+    commit_file(&work, "staged.txt", "a", "add staged");
+    commit_file(&work, "unstaged.txt", "a", "add unstaged");
+    fs::write(work.join("staged.txt"), "b").unwrap();
+    git(&work, &["add", "staged.txt"]);
+    fs::write(work.join("unstaged.txt"), "b").unwrap();
+    fs::write(work.join("untracked.txt"), "x").unwrap();
+    fs::write(work.join("ignored.txt"), "x").unwrap();
+    let before = git(&work, &["status", "--short", "--ignored"]);
+
+    for (args, listed) in [
+        (&["git", "clean", "hard", "--dry-run"][..], "ignored.txt"),
+        (&["git", "clean", "soft", "--dry-run"], "untracked.txt"),
+        (&["git", "reset", "hard", "--dry-run"], "unstaged.txt"),
+        (&["git", "reset", "mixed", "--dry-run"], "staged.txt"),
+        (&["git", "restore", "--dry-run"], "unstaged.txt"),
+    ] {
+        let output = run_rsmultigit(dir, args);
+        assert!(output.status.success(), "{args:?}: {}", stderr_str(&output));
+        let stdout = stdout_str(&output);
+        assert!(stdout.contains("work]"), "{args:?}: {stdout}");
+        assert!(
+            stdout.contains(listed),
+            "{args:?} should list {listed}: {stdout}"
+        );
+        assert!(
+            !stdout.contains("idle]"),
+            "{args:?} must skip idle: {stdout}"
+        );
+        assert_eq!(
+            git(&work, &["status", "--short", "--ignored"]),
+            before,
+            "{args:?} must change nothing"
+        );
+    }
+    // soft leaves ignored files alone, so its dry run does not list them.
+    let output = run_rsmultigit(dir, &["git", "clean", "soft", "--dry-run"]);
+    assert!(!stdout_str(&output).contains("ignored.txt"));
+
+    // The real thing, still skipping the idle repo.
+    let output = run_rsmultigit(dir, &["git", "clean", "soft"]);
+    assert!(output.status.success(), "{}", stderr_str(&output));
+    assert!(!stdout_str(&output).contains("idle]"));
+    assert!(!work.join("untracked.txt").exists());
+    assert!(work.join("ignored.txt").exists());
+}
+
+#[test]
+fn reset_soft_is_gone() {
+    let tmp = setup_git_repos(&["a"]);
+    let output = run_rsmultigit(utf8(&tmp), &["git", "reset", "soft"]);
+    assert!(!output.status.success());
+}

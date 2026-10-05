@@ -133,18 +133,22 @@ pub struct RuleResult {
     /// Repos that matched selection but lacked `path` *and* the rule has
     /// `must_have = true`. These are rule violations.
     pub must_have_violations: Vec<Utf8PathBuf>,
+    /// Files that exist but could not be read, with the reason. Each is a
+    /// failure of the rule (its content is unknown, so it cannot be said to
+    /// match), reported per file rather than aborting the whole run.
+    pub unreadable: Vec<(Utf8PathBuf, String)>,
 }
 
 impl RuleResult {
     pub fn is_consistent(&self) -> bool {
-        self.groups.len() <= 1 && self.must_have_violations.is_empty()
+        self.groups.len() <= 1 && self.must_have_violations.is_empty() && self.unreadable.is_empty()
     }
 
     /// True when the rule hashed no files and has no must_have violations to
     /// report — i.e. it checked nothing at all. Usually a stale `select`/`path`,
     /// so check same treats this as a failure unless --allow-empty is passed.
     pub fn matched_nothing(&self) -> bool {
-        self.total_files == 0 && self.must_have_violations.is_empty()
+        self.total_files == 0 && self.must_have_violations.is_empty() && self.unreadable.is_empty()
     }
 }
 
@@ -167,7 +171,36 @@ pub fn load_config(path: &Utf8Path) -> Result<CheckConfig> {
         .with_context(|| format!("failed to read config file {}", path))?;
     let config: CheckConfig =
         toml::from_str(&text).with_context(|| format!("failed to parse config file {}", path))?;
+    let paths = config
+        .check
+        .iter()
+        .map(|r| ("check", &r.name, &r.path))
+        .chain(config.exists.iter().map(|r| ("exists", &r.name, &r.path)));
+    for (kind, name, rule_path) in paths {
+        validate_rule_path(rule_path)
+            .with_context(|| format!("[[{kind}]] rule `{name}` in {path}"))?;
+    }
     Ok(config)
+}
+
+/// A rule's `path` names a file inside each repo, so it must be relative and
+/// stay inside: an absolute path would make `repo.join` drop the repo and
+/// compare one file with itself (a rule that always passes), and `..` would
+/// reach outside the repo.
+fn validate_rule_path(path: &str) -> Result<()> {
+    let p = Utf8Path::new(path);
+    if path.is_empty() {
+        anyhow::bail!("`path` is empty");
+    }
+    if p.is_absolute() {
+        anyhow::bail!("`path = \"{path}\"` is absolute; it must be relative to the repo");
+    }
+    if p.components()
+        .any(|c| c == camino::Utf8Component::ParentDir)
+    {
+        anyhow::bail!("`path = \"{path}\"` contains `..`; it must stay inside the repo");
+    }
+    Ok(())
 }
 
 /// Whether `path` is the top of a git checkout: `.git` is either the git
@@ -318,9 +351,16 @@ pub fn evaluate_rule(rule: &Rule, repos: &[Utf8PathBuf]) -> Result<RuleResult> {
     }
 
     let mut buckets: BTreeMap<[u8; 32], Vec<Utf8PathBuf>> = BTreeMap::new();
+    let mut unreadable: Vec<(Utf8PathBuf, String)> = Vec::new();
+    let mut hashed = 0usize;
     for file in &files {
-        let digest = hash_file(file)?;
-        buckets.entry(digest).or_default().push(file.clone());
+        match hash_file(file) {
+            Ok(digest) => {
+                buckets.entry(digest).or_default().push(file.clone());
+                hashed += 1;
+            }
+            Err(e) => unreadable.push((file.clone(), format!("{e:#}"))),
+        }
     }
 
     let mut groups: Vec<Vec<Utf8PathBuf>> = buckets.into_values().collect();
@@ -336,9 +376,10 @@ pub fn evaluate_rule(rule: &Rule, repos: &[Utf8PathBuf]) -> Result<RuleResult> {
         name: rule.name.clone(),
         path: rule.path.clone(),
         groups,
-        total_files: files.len(),
+        total_files: hashed,
         skipped,
         must_have_violations,
+        unreadable,
     })
 }
 
@@ -373,6 +414,37 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn rule_paths_must_be_relative_and_inside_the_repo() {
+        let tmp = TempDir::new().unwrap();
+        let cfg = Utf8Path::from_path(tmp.path()).unwrap().join("c.toml");
+        for (kind, bad, needle) in [
+            ("check", "/etc/hostname", "absolute"),
+            ("exists", "../outside", "`..`"),
+            ("check", "a/../../b", "`..`"),
+            ("check", "", "empty"),
+        ] {
+            fs::write(
+                &cfg,
+                format!(
+                    "repos = [\"x\"]\n[[{kind}]]\nname = \"r\"\nselect = \"*\"\npath = \"{bad}\"\n"
+                ),
+            )
+            .unwrap();
+            let err = format!("{:#}", load_config(&cfg).unwrap_err());
+            assert!(
+                err.contains(needle) && err.contains("rule `r`"),
+                "{bad}: {err}"
+            );
+        }
+        fs::write(
+            &cfg,
+            "repos = [\"x\"]\n[[check]]\nname = \"r\"\nselect = \"*\"\npath = \".github/workflows/ci.yml\"\n",
+        )
+        .unwrap();
+        assert!(load_config(&cfg).is_ok());
+    }
 
     #[test]
     fn misspelled_config_keys_are_rejected() {

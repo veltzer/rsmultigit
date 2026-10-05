@@ -24,10 +24,32 @@ pub fn run_rsmultigit(dir: &Utf8Path, args: &[&str]) -> Output {
     run_rsmultigit_with_env(dir, args, &[("RSMULTIGIT_CONFIG", &cfg_str)])
 }
 
+/// Shield a child process — git itself, or rsmultigit, which spawns git —
+/// from the developer's git setup: no global or system config (a global
+/// `commit.gpgsign`, `push.default` or hook must not change what a test
+/// sees), and no inherited `GIT_DIR` / `GIT_WORK_TREE` / `GIT_INDEX_FILE`
+/// (set when the suite runs from inside a git hook) pointing git at the
+/// wrong repository.
+pub fn isolate_git(cmd: &mut Command) -> &mut Command {
+    cmd.env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+}
+
+/// A `git` command with the isolation of [`isolate_git`] applied.
+pub fn git_command() -> Command {
+    let mut cmd = Command::new("git");
+    isolate_git(&mut cmd);
+    cmd
+}
+
 /// Run the rsmultigit binary with extra env vars layered on top of the parent env.
 pub fn run_rsmultigit_with_env(dir: &Utf8Path, args: &[&str], env: &[(&str, &str)]) -> Output {
     let bin_path = env!("CARGO_BIN_EXE_rsmultigit");
     let mut cmd = Command::new(bin_path);
+    isolate_git(&mut cmd);
     cmd.current_dir(dir).args(args);
     for (k, v) in env {
         cmd.env(k, v);
@@ -45,6 +67,7 @@ pub fn run_rsmultigit_with_stdin(
 ) -> Output {
     let bin_path = env!("CARGO_BIN_EXE_rsmultigit");
     let mut cmd = Command::new(bin_path);
+    isolate_git(&mut cmd);
     cmd.current_dir(dir)
         .args(args)
         .stdin(Stdio::piped())
@@ -82,10 +105,7 @@ pub fn stderr_str(output: &Output) -> String {
 
 /// Run `git <args>` in `dir`, panicking on failure, and return trimmed stdout.
 pub fn git(dir: &Utf8Path, args: &[&str]) -> String {
-    // A developer's global tag.gpgSign / commit.gpgsign must not turn a
-    // fixture tag or commit into a signing prompt.
-    let out = Command::new("git")
-        .args(["-c", "tag.gpgSign=false", "-c", "commit.gpgsign=false"])
+    let out = git_command()
         .args(args)
         .current_dir(dir)
         .output()
@@ -107,7 +127,7 @@ pub fn current_branch(dir: &Utf8Path) -> String {
 /// (created here), and push the current branch to it with tracking set, the
 /// way a fresh clone would have it. Returns the bare path.
 pub fn add_bare_origin(repo: &Utf8Path, bare: &Utf8Path) {
-    let status = Command::new("git")
+    let status = git_command()
         .args(["init", "-q", "--bare", bare.as_str()])
         .status()
         .unwrap();
@@ -119,7 +139,7 @@ pub fn add_bare_origin(repo: &Utf8Path, bare: &Utf8Path) {
 /// A second working clone of `bare` at `path`, with a user configured, for
 /// producing commits "somewhere else" that a fetch or pull must bring in.
 pub fn clone_of(bare: &Utf8Path, path: &Utf8Path) {
-    let status = Command::new("git")
+    let status = git_command()
         .args(["clone", "-q", bare.as_str(), path.as_str()])
         .status()
         .unwrap();
@@ -146,32 +166,13 @@ pub fn setup_git_repos(names: &[&str]) -> TempDir {
     tmp
 }
 
-/// Initialise a minimal git repo at `path` with one commit.
+/// Initialise a minimal git repo at `path` with one commit, on `master`
+/// whatever git's own default branch is.
 pub fn init_git_repo(path: &Utf8Path) {
     fs::create_dir_all(path).unwrap();
-    let status = Command::new("git")
-        .args(["init", "-q"])
-        .current_dir(path)
-        .status()
-        .unwrap();
-    assert!(status.success(), "git init failed");
-
-    // Configure user for the repo so commits work
-    Command::new("git")
-        .args(["config", "user.email", "test@test.com"])
-        .current_dir(path)
-        .status()
-        .unwrap();
-    Command::new("git")
-        .args(["config", "user.name", "Test"])
-        .current_dir(path)
-        .status()
-        .unwrap();
-
-    // Create an initial commit so HEAD exists
-    Command::new("git")
-        .args(["commit", "--allow-empty", "-m", "initial"])
-        .current_dir(path)
-        .status()
-        .unwrap();
+    git(path, &["init", "-q", "--initial-branch=master"]);
+    git(path, &["config", "user.email", "test@test.com"]);
+    git(path, &["config", "user.name", "Test"]);
+    // An initial commit so HEAD exists.
+    git(path, &["commit", "-q", "--allow-empty", "-m", "initial"]);
 }

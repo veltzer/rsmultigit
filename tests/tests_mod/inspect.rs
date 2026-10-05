@@ -265,3 +265,135 @@ fn complete_emits_a_script_with_the_dynamic_checks_snippet() {
     assert!(output.status.success());
     assert!(!stdout_str(&output).contains("check list \"$kind\""));
 }
+
+#[test]
+fn data_and_count_runners_honour_the_output_flags() {
+    // `tagged` has a tag, `plain` has none: `git last-tag` reports one repo.
+    let tmp = setup_git_repos(&["plain", "tagged"]);
+    let dir = utf8(&tmp);
+    git(&dir.join("tagged"), &["tag", "v1"]);
+    let p = |name: &str| dir.join(name).to_string();
+
+    for (args, want) in [
+        (&["git", "last-tag"][..], format!("[{}]\nv1", p("tagged"))),
+        (&["--terse", "git", "last-tag"], p("tagged")),
+        (&["--no-header", "git", "last-tag"], "v1".to_string()),
+        (
+            &["--no-output", "git", "last-tag"],
+            format!("[{}]", p("tagged")),
+        ),
+        (
+            &["--print-not", "git", "last-tag"],
+            format!("[{}]", p("plain")),
+        ),
+        (&["--print-not", "--terse", "git", "last-tag"], p("plain")),
+        (
+            &["--verbose", "git", "last-tag"],
+            format!("[{}]\n[{}]\nv1", p("plain"), p("tagged")),
+        ),
+        (
+            &["git", "tag", "has-local"],
+            format!("{}\n1/2", p("tagged")),
+        ),
+        (&["--terse", "git", "tag", "has-local"], "1/2".to_string()),
+        (
+            &["--print-not", "git", "tag", "has-local"],
+            format!("{}\n1/2", p("plain")),
+        ),
+    ] {
+        for jobs in ["1", "2"] {
+            let mut full = vec!["-j", jobs];
+            full.extend_from_slice(args);
+            let output = run_rsmultigit(dir, &full);
+            assert!(output.status.success(), "{full:?}: {}", stderr_str(&output));
+            assert_eq!(stdout_str(&output), want, "{full:?}");
+        }
+    }
+}
+
+#[test]
+fn verbose_shows_skipped_repos_on_a_checked_action_serial_and_parallel() {
+    // `git restore --dry-run` acts only on repos with unstaged changes and
+    // changes nothing. Without --verbose only the acted-on repo gets a
+    // header; with it, the skipped one does too. Same with and without -j.
+    let tmp = setup_git_repos(&["changed", "idle"]);
+    let dir = utf8(&tmp);
+    commit_file(&dir.join("changed"), "f.txt", "a", "add f");
+    fs::write(dir.join("changed/f.txt"), "b").unwrap();
+    let changed = format!("[{}]\nM\tf.txt", dir.join("changed"));
+    let idle = format!("[{}]", dir.join("idle"));
+
+    for jobs in ["1", "2"] {
+        let output = run_rsmultigit(dir, &["-j", jobs, "git", "restore", "--dry-run"]);
+        assert!(output.status.success(), "{}", stderr_str(&output));
+        assert_eq!(stdout_str(&output), changed, "-j {jobs}");
+
+        let output = run_rsmultigit(
+            dir,
+            &["--verbose", "-j", jobs, "git", "restore", "--dry-run"],
+        );
+        assert!(output.status.success(), "{}", stderr_str(&output));
+        assert_eq!(
+            stdout_str(&output),
+            format!("{changed}\n{idle}"),
+            "-j {jobs}"
+        );
+    }
+}
+
+#[test]
+fn reports_skip_an_empty_repo_instead_of_failing() {
+    // A repo with no commit yet (unborn branch) has no age, authors or tag;
+    // it must not abort the run for the repos that do.
+    let tmp = setup_git_repos(&["full"]);
+    let dir = utf8(&tmp);
+    let empty = dir.join("empty");
+    fs::create_dir(&empty).unwrap();
+    git(&empty, &["init", "-q"]);
+    fs::write(empty.join("new.txt"), "x").unwrap();
+    git(&empty, &["add", "new.txt"]);
+
+    for args in [
+        &["git", "age"][..],
+        &["git", "authors"],
+        &["git", "last-tag"],
+        &["git", "status"],
+        &["git", "count", "dirty"],
+    ] {
+        let output = run_rsmultigit(dir, args);
+        assert!(output.status.success(), "{args:?}: {}", stderr_str(&output));
+    }
+    let output = run_rsmultigit(dir, &["git", "age"]);
+    let stdout = stdout_str(&output);
+    assert!(
+        stdout.contains("full]") && !stdout.contains("empty]"),
+        "{stdout}"
+    );
+    // The staged file in the unborn repo shows up in `git dirty`.
+    let output = run_rsmultigit(dir, &["git", "dirty"]);
+    assert!(output.status.success(), "{}", stderr_str(&output));
+    assert!(
+        stdout_str(&output).contains("new.txt"),
+        "{}",
+        stdout_str(&output)
+    );
+}
+
+#[test]
+fn git_config_reports_values_and_rejects_a_malformed_key() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    let dir = utf8(&tmp);
+    git(&dir.join("a"), &["config", "rsmultigit.probe", "here"]);
+
+    let output = run_rsmultigit(dir, &["git", "config", "rsmultigit.probe"]);
+    assert!(output.status.success(), "{}", stderr_str(&output));
+    assert_eq!(stdout_str(&output), format!("[{}]\nhere", dir.join("a")));
+
+    let output = run_rsmultigit(dir, &["git", "config", "nosection"]);
+    assert!(!output.status.success());
+    assert!(
+        stderr_str(&output).contains("invalid git config key"),
+        "{}",
+        stderr_str(&output)
+    );
+}

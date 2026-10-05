@@ -141,9 +141,12 @@ fn main() -> Result<()> {
             if dry_run && !what.takes_dry_run() {
                 anyhow::bail!("--dry-run only applies to `gh sync-metadata`");
             }
+            if keep.is_some() && !what.takes_keep() {
+                anyhow::bail!("--keep only applies to `gh clean-all`");
+            }
             match what {
                 GhWhat::CleanAll => {
-                    let keep = *keep;
+                    let keep = keep.unwrap_or(4);
                     runner::do_for_all_projects_with_check(
                         &config,
                         &projects,
@@ -452,8 +455,8 @@ fn run_check_command(
     std::process::exit(exit_code);
 }
 
-/// The `git` group: the libgit2 reports, then the subcommands that run the
-/// git command of the same name in every repo.
+/// The `list` group: `repos` prints every configured repo, the rest print
+/// the repos in a given state, one path per line.
 fn run_list_command(
     config: &AppConfig,
     projects: &[Utf8PathBuf],
@@ -480,6 +483,13 @@ fn run_list_command(
     runner::print_matching(config, projects, test_fn)
 }
 
+/// A per-repo precondition (`true` = act on this repo) and a per-repo action,
+/// as `runner::do_for_all_projects_with_check` takes them.
+type CheckFn = fn(&Utf8Path) -> anyhow::Result<bool>;
+type ActionFn = fn(&Utf8Path) -> anyhow::Result<()>;
+
+/// The `git` group: the libgit2 reports, then the subcommands that run the
+/// git command of the same name in every repo.
 fn run_git_command(
     config: &AppConfig,
     projects: &[Utf8PathBuf],
@@ -491,7 +501,9 @@ fn run_git_command(
             let test_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
                 CountWhat::Dirty => commands::count::is_dirty,
                 CountWhat::Untracked => commands::count::has_untracked,
-                CountWhat::Synchronized => commands::count::non_synchronized,
+                CountWhat::Unsynchronized => commands::count::non_synchronized,
+                CountWhat::Ahead => commands::count::is_ahead,
+                CountWhat::Behind => commands::count::is_behind,
             };
             runner::do_count(config, projects, test_fn)?;
         }
@@ -559,17 +571,17 @@ fn run_git_command(
         GitCommand::Fetch => {
             runner::do_for_all_projects(config, projects, commands::fetch::do_fetch)?;
         }
-        GitCommand::Clean { what } => {
-            let clean_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
-                CleanWhat::Hard => commands::clean::clean_hard,
-                CleanWhat::Soft => commands::clean::clean_soft,
+        GitCommand::Clean { what, dry_run } => {
+            use commands::clean::*;
+            let (check_fn, run_fn, preview_fn): (CheckFn, ActionFn, ActionFn) = match what {
+                CleanWhat::Hard => (would_clean_hard, clean_hard, preview_clean_hard),
+                CleanWhat::Soft => (would_clean_soft, clean_soft, preview_clean_soft),
             };
-            runner::do_for_all_projects(config, projects, clean_fn)?;
+            let action = if *dry_run { preview_fn } else { run_fn };
+            runner::do_for_all_projects_with_check(config, projects, check_fn, action)?;
         }
         GitCommand::Stash { what } => {
-            type CheckFn = fn(&Utf8Path) -> anyhow::Result<bool>;
-            type StashFn = fn(&Utf8Path) -> anyhow::Result<()>;
-            let (check_fn, stash_fn): (CheckFn, StashFn) = match what {
+            let (check_fn, stash_fn): (CheckFn, ActionFn) = match what {
                 StashWhat::Push => (
                     commands::stash::has_changes_to_stash,
                     commands::stash::stash_push,
@@ -578,16 +590,19 @@ fn run_git_command(
             };
             runner::do_for_all_projects_with_check(config, projects, check_fn, stash_fn)?;
         }
-        GitCommand::Restore => {
-            runner::do_for_all_projects(config, projects, commands::restore::restore)?;
+        GitCommand::Restore { dry_run } => {
+            use commands::restore::*;
+            let action: ActionFn = if *dry_run { preview_restore } else { restore };
+            runner::do_for_all_projects_with_check(config, projects, would_restore, action)?;
         }
-        GitCommand::Reset { what } => {
-            let reset_fn: fn(&Utf8Path) -> anyhow::Result<()> = match what {
-                ResetWhat::Hard => commands::reset::reset_hard,
-                ResetWhat::Soft => commands::reset::reset_soft,
-                ResetWhat::Mixed => commands::reset::reset_mixed,
+        GitCommand::Reset { what, dry_run } => {
+            use commands::reset::*;
+            let (check_fn, run_fn, preview_fn): (CheckFn, ActionFn, ActionFn) = match what {
+                ResetWhat::Hard => (would_reset_hard, reset_hard, preview_reset_hard),
+                ResetWhat::Mixed => (would_reset_mixed, reset_mixed, preview_reset_mixed),
             };
-            runner::do_for_all_projects(config, projects, reset_fn)?;
+            let action = if *dry_run { preview_fn } else { run_fn };
+            runner::do_for_all_projects_with_check(config, projects, check_fn, action)?;
         }
         GitCommand::Diff => {
             runner::do_for_all_projects(config, projects, commands::diff::do_diff)?;

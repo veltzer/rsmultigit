@@ -79,7 +79,7 @@ fn bare_count_lists_its_choices() {
     let output = run_rsmultigit(utf8(&tmp), &["git", "count"]);
     assert_eq!(output.status.code(), Some(2));
     let stderr = stderr_str(&output);
-    for name in ["dirty", "untracked", "synchronized"] {
+    for name in ["dirty", "untracked", "unsynchronized", "ahead", "behind"] {
         assert!(
             stderr.contains(name),
             "bare count should list `{name}`: {stderr}"
@@ -154,7 +154,7 @@ fn bare_git_operation_lists_its_choices() {
     assert_eq!(output.status.code(), Some(2));
     let stderr = stderr_str(&output);
     assert!(stderr.contains("Usage: rsmultigit git reset"), "{stderr}");
-    for name in ["hard", "soft", "mixed"] {
+    for name in ["hard", "mixed"] {
         assert!(
             stderr.contains(name),
             "bare git reset should list `{name}`: {stderr}"

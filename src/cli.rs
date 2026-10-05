@@ -149,9 +149,9 @@ pub enum Commands {
         #[arg(value_enum)]
         what: GhWhat,
         /// How many recent non-failed deployments/releases/workflow runs to keep
-        /// (`clean-all` only)
-        #[arg(long, default_value_t = 4)]
-        keep: usize,
+        /// (`clean-all` only; default 4)
+        #[arg(long, value_name = "N")]
+        keep: Option<usize>,
         /// Print what differs but change nothing on GitHub (`sync-metadata` only)
         #[arg(long, default_value_t = false)]
         dry_run: bool,
@@ -384,12 +384,16 @@ pub enum GitCommand {
         /// Branch name to checkout
         branch: String,
     },
-    /// Remove untracked files (git clean)
+    /// Remove untracked files (git clean); repos with nothing to remove
+    /// are skipped
     #[command(arg_required_else_help = true)]
     Clean {
         /// What kind of clean to perform
         #[arg(value_enum)]
         what: CleanWhat,
+        /// List what would be removed in each repo, removing nothing
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
     },
     /// Commit all changes across all repositories
     Commit {
@@ -446,15 +450,25 @@ pub enum GitCommand {
     // Not named `prune`: `git prune` is git's object pruning, a different thing.
     /// Prune stale remote-tracking branches (git remote prune origin)
     RemotePrune,
-    /// Reset operations
+    /// Reset operations; repos where the reset would change nothing are
+    /// skipped
     #[command(arg_required_else_help = true)]
     Reset {
         /// What kind of reset to perform
         #[arg(value_enum)]
         what: ResetWhat,
+        /// List what would be discarded or unstaged in each repo, changing
+        /// nothing
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
     },
-    /// Discard unstaged changes to tracked files (git restore .)
-    Restore,
+    /// Discard unstaged changes to tracked files (git restore .); repos
+    /// without any are skipped
+    Restore {
+        /// List what would be discarded in each repo, changing nothing
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+    },
     /// Show the size of the .git directory per repo
     Size,
     /// Stash operations
@@ -509,6 +523,11 @@ impl GhWhat {
     /// things would be worse than a usage error, so the others reject it.
     pub fn takes_dry_run(self) -> bool {
         matches!(self, GhWhat::SyncMetadata)
+    }
+
+    /// Whether `--keep` makes sense for this operation (only `clean-all`).
+    pub fn takes_keep(self) -> bool {
+        matches!(self, GhWhat::CleanAll)
     }
 }
 
@@ -626,8 +645,13 @@ pub enum CountWhat {
     Dirty,
     /// Count repositories with untracked files
     Untracked,
-    /// Count non-synchronized repositories (ahead of or behind their upstream)
-    Synchronized,
+    /// Count repositories that are not synchronized: ahead of or behind
+    /// their upstream
+    Unsynchronized,
+    /// Count repositories with local commits not yet pushed to the upstream
+    Ahead,
+    /// Count repositories with upstream commits not yet pulled
+    Behind,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -666,8 +690,6 @@ pub enum TagWhat {
 pub enum ResetWhat {
     /// Hard reset: discard all changes (git reset --hard HEAD)
     Hard,
-    /// Soft reset: keep changes staged (git reset --soft HEAD)
-    Soft,
     /// Mixed reset: unstage changes (git reset --mixed HEAD)
     Mixed,
 }
@@ -1102,7 +1124,7 @@ mod tests {
         }
 
         // count requires a what argument
-        let count_whats = ["dirty", "untracked", "synchronized"];
+        let count_whats = ["dirty", "untracked", "unsynchronized", "ahead", "behind"];
         for what in count_whats {
             let result = Cli::try_parse_from(["rsmultigit", "git", "count", what]);
             assert!(result.is_ok(), "count {what} should parse");
@@ -1123,7 +1145,7 @@ mod tests {
         }
 
         // reset requires a what argument
-        let reset_whats = ["hard", "soft", "mixed"];
+        let reset_whats = ["hard", "mixed"];
         for what in reset_whats {
             let result = Cli::try_parse_from(["rsmultigit", "git", "reset", what]);
             assert!(result.is_ok(), "reset {what} should parse");
@@ -1530,7 +1552,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_gh_clean_all_defaults_to_keep_4() {
+    fn parse_gh_clean_all_keep_defaults_to_unset() {
         let cli = parse(&["rsmultigit", "gh", "clean-all"]);
         match &cli.command {
             Commands::Gh {
@@ -1539,7 +1561,7 @@ mod tests {
                 dry_run,
             } => {
                 assert!(matches!(what, GhWhat::CleanAll));
-                assert_eq!(*keep, 4);
+                assert_eq!(*keep, None);
                 assert!(!*dry_run);
             }
             _ => panic!("expected Gh"),
@@ -1550,7 +1572,7 @@ mod tests {
     fn parse_gh_clean_all_with_keep() {
         let cli = parse(&["rsmultigit", "gh", "clean-all", "--keep", "10"]);
         match &cli.command {
-            Commands::Gh { keep, .. } => assert_eq!(*keep, 10),
+            Commands::Gh { keep, .. } => assert_eq!(*keep, Some(10)),
             _ => panic!("expected Gh"),
         }
     }
@@ -1570,6 +1592,17 @@ mod tests {
                 assert!(*dry_run);
             }
             _ => panic!("expected Gh"),
+        }
+    }
+
+    #[test]
+    fn gh_keep_applies_to_clean_all_only() {
+        for what in GhWhat::value_variants() {
+            assert_eq!(
+                what.takes_keep(),
+                matches!(what, GhWhat::CleanAll),
+                "{what:?}"
+            );
         }
     }
 

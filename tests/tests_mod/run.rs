@@ -115,7 +115,7 @@ fn parallel_grep_output_stays_in_repo_order() {
         let repo = dir.join(name);
         std::fs::write(repo.join("f.txt"), "needle\n").unwrap();
         for args in [vec!["add", "f.txt"], vec!["commit", "-q", "-m", "add"]] {
-            let ok = std::process::Command::new("git")
+            let ok = crate::common::git_command()
                 .args(&args)
                 .current_dir(&repo)
                 .status()
@@ -141,7 +141,7 @@ fn grep_pattern_starting_with_dash_is_searched_for() {
     let dir = utf8(&tmp);
     let repo = dir.join("r1");
     std::fs::write(repo.join("f.txt"), "x -foo y\n").unwrap();
-    let ok = std::process::Command::new("git")
+    let ok = crate::common::git_command()
         .args(["add", "f.txt"])
         .current_dir(&repo)
         .status()

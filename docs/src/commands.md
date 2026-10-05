@@ -71,7 +71,7 @@ rsmultigit --print-not git count dirty           # Clean repos instead
 
 Repos that have untracked files.
 
-#### `rsmultigit git count synchronized`
+#### `rsmultigit git count unsynchronized`
 
 Repos that are **not** synchronized with their upstream: ahead of or behind
 it. The upstream is the branch's configured tracking branch (as set by
@@ -80,9 +80,15 @@ A repo with no upstream at all has nothing to be out of sync with and is not
 counted, which matches how `git status` and `git push` treat it.
 
 ```bash
-rsmultigit git count synchronized
-rsmultigit --print-not git count synchronized    # Repos that ARE in sync
+rsmultigit git count unsynchronized
+rsmultigit --print-not git count unsynchronized    # Repos that ARE in sync
 ```
+
+#### `rsmultigit git count ahead` / `rsmultigit git count behind`
+
+The two halves of `unsynchronized`: repos with local commits not yet pushed
+(`ahead`) or upstream commits not yet pulled (`behind`), against the same
+upstream. The same tests as `list ahead` / `list behind`.
 
 ### Reports
 
@@ -94,8 +100,8 @@ With `--terse`, only the repo path is printed.
 
 One-line summary of every repo that needs attention: counts of conflicted,
 staged, modified, deleted and untracked files, plus `ahead N` / `behind N`
-when the branch has diverged from its upstream (see `git count synchronized`
-for how the upstream is chosen). Clean, in-sync repos are skipped. Computed
+when the branch has diverged from its upstream (see
+`git count unsynchronized` for how the upstream is chosen). Clean, in-sync repos are skipped. Computed
 with libgit2.
 
 ```bash
@@ -151,7 +157,10 @@ rsmultigit git config remote.origin.url
 
 `git push` in every repo that is ahead of its upstream (the configured
 tracking branch, else `origin/<branch>`). Repos with nothing to push, or
-with no upstream, are skipped.
+with neither, are skipped. A branch measured against `origin/<branch>` for
+want of a configured upstream is pushed there explicitly
+(`git push origin HEAD`), since plain `git push` refuses a branch without
+an upstream.
 
 ### `rsmultigit git fetch`
 
@@ -174,30 +183,47 @@ recent stash carrying that message, wherever it sits in the stash list, and
 skips repos that have none. A stash made by hand is never popped, so
 `push` followed by `pop` round-trips exactly what `push` saved.
 
-### `rsmultigit git reset hard|soft|mixed`
+These three throw work away, so each one skips the repos where it would
+change nothing (no `[repo]` header unless `--verbose`), and each takes
+`--dry-run`, which lists per repo what would go and changes nothing. Run the
+dry run first: across a fleet, one command can discard a lot.
 
-`git reset --<mode> HEAD` in every repo.
+### `rsmultigit git reset hard|mixed [--dry-run]`
+
+`git reset --<mode> HEAD` in every repo that has something to reset.
+
+| What | Runs | Selects repos with | `--dry-run` shows |
+|------|------|--------------------|-------------------|
+| `hard` | `git reset --hard HEAD` | any change to a tracked file, staged or not | `git status --short --untracked-files=no` |
+| `mixed` | `git reset --mixed HEAD` | staged changes | `git diff --cached --name-status` |
+
+There is no `soft`: `git reset --soft HEAD` changes nothing, and a soft reset
+to an older commit is not a fleet-wide operation.
 
 ```bash
-rsmultigit git reset hard   # Discard all changes
-rsmultigit git reset soft   # Keep changes staged
-rsmultigit git reset mixed  # Unstage changes
+rsmultigit git reset hard --dry-run   # What would be discarded, per repo
+rsmultigit git reset hard             # Discard all changes to tracked files
+rsmultigit git reset mixed            # Unstage changes
 ```
 
-### `rsmultigit git restore`
+### `rsmultigit git restore [--dry-run]`
 
-`git restore .` in every repo: discards unstaged changes to tracked files,
-leaving staged changes and untracked files alone. (Formerly `clean git`; it
-removes nothing untracked, so it was never a clean.)
+`git restore .` in every repo with unstaged changes to tracked files:
+discards them, leaving staged changes and untracked files alone.
+`--dry-run` shows `git diff --name-status` instead. (Formerly `clean git`;
+it removes nothing untracked, so it was never a clean.)
 
-### `rsmultigit git clean <what>`
+### `rsmultigit git clean <what> [--dry-run]`
 
 | What | Runs | Notes |
 |------|------|-------|
-| `hard` | `git clean -ffxd` | Removes untracked **and ignored** files |
+| `hard` | `git clean -ffxd` | Removes untracked **and ignored** files (`.venv/`, `target/`, `.env`, ...) |
 | `soft` | `git clean -fd` | Removes untracked files only |
 
-`cargo clean` lives under the cargo command: `rsmultigit git cargo clean`.
+A repo is selected when git's own dry run (`git clean -nxd` / `-nd`) lists
+something, and `--dry-run` prints exactly that list.
+
+`cargo clean` lives under the cargo command: `rsmultigit cargo clean`.
 
 ### `rsmultigit git diff`
 
@@ -290,7 +316,7 @@ Repos with untracked files. The same test as `git count untracked`.
 
 Repos whose checked-out branch is ahead of or behind its upstream. A repo
 with no upstream (or a detached HEAD) has nothing to be out of sync with and
-is never listed. The same test as `git count synchronized`.
+is never listed. The same test as `git count unsynchronized`.
 
 ### `rsmultigit list ahead`
 
@@ -754,8 +780,9 @@ features
   github: wiki=true issues=true projects=false
 ```
 
-`--dry-run` is accepted by `sync-metadata` only; on any other `gh`
-operation it is an error rather than a silently ignored flag.
+`--dry-run` is accepted by `sync-metadata` only, and `--keep` by
+`clean-all` only; on any other `gh` operation either is an error rather
+than a silently ignored flag.
 
 ## Utility Commands
 

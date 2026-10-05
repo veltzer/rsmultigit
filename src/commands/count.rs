@@ -68,6 +68,40 @@ pub fn has_untracked(project: &Utf8Path) -> Result<bool> {
     Ok(has_changes(project)?.1)
 }
 
+/// Whether any entry of the working-tree scan has a status in `mask`.
+fn any_status(project: &Utf8Path, mask: git2::Status) -> Result<bool> {
+    let repo = open_repo(project)?;
+    let statuses = repo
+        .statuses(Some(&mut status_options()))
+        .with_context(|| format!("failed to get statuses for {}", project))?;
+    Ok(statuses.iter().any(|e| e.status().intersects(mask)))
+}
+
+/// Whether anything is staged: what `git reset mixed` would unstage.
+pub fn has_staged(project: &Utf8Path) -> Result<bool> {
+    any_status(
+        project,
+        git2::Status::INDEX_NEW
+            | git2::Status::INDEX_MODIFIED
+            | git2::Status::INDEX_DELETED
+            | git2::Status::INDEX_RENAMED
+            | git2::Status::INDEX_TYPECHANGE
+            | git2::Status::CONFLICTED,
+    )
+}
+
+/// Whether tracked files have unstaged changes: what `git restore .` would
+/// discard.
+pub fn has_unstaged(project: &Utf8Path) -> Result<bool> {
+    any_status(
+        project,
+        git2::Status::WT_MODIFIED
+            | git2::Status::WT_DELETED
+            | git2::Status::WT_RENAMED
+            | git2::Status::WT_TYPECHANGE,
+    )
+}
+
 /// Returns `Some((ahead, behind))` of the checked-out branch relative to its
 /// upstream, or `None` when the repo has no HEAD, HEAD is detached, or no
 /// upstream can be found (see [`upstream_oid`]).

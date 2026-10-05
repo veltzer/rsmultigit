@@ -101,17 +101,25 @@ pub fn do_status_summary(project: &Utf8Path) -> Result<Option<String>> {
 /// Returns `Some(output)` if there are dirty (modified/staged) changes.
 /// Uses `git diff --stat` to detect modifications.
 pub fn do_dirty(project: &Utf8Path) -> Result<Option<String>> {
-    let output = capture_output(project, "git", &["diff", "--stat"])?;
-    if output.is_empty() {
-        let staged = capture_output(project, "git", &["diff", "--cached", "--stat"])?;
-        if staged.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(staged))
-        }
-    } else {
-        Ok(Some(output))
+    let repo = open_repo(project)?;
+    let unstaged = repo.diff_index_to_workdir(None, None)?;
+    if let Some(stat) = diff_stat(&unstaged)? {
+        return Ok(Some(stat));
     }
+    // An unborn branch has no HEAD tree; everything staged is then new.
+    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
+    let staged = repo.diff_tree_to_index(head_tree.as_ref(), None, None)?;
+    diff_stat(&staged)
+}
+
+/// `git diff --stat`'s rendering of `diff`, or None when it changes nothing.
+fn diff_stat(diff: &git2::Diff<'_>) -> Result<Option<String>> {
+    let stats = diff.stats()?;
+    if stats.files_changed() == 0 {
+        return Ok(None);
+    }
+    let buf = stats.to_buf(git2::DiffStatsFormat::FULL, 80)?;
+    Ok(Some(String::from_utf8_lossy(&buf).trim_end().to_string()))
 }
 
 #[cfg(test)]

@@ -41,8 +41,11 @@ fn headers_suppressed(config: &AppConfig) -> bool {
 
 /// Report a per-repo error under `--no-stop` and count it, so the run can
 /// carry on past it and still fail at the end (see [`no_stop_outcome`]).
-fn report_no_stop(project: &Utf8Path, e: &anyhow::Error, failed: &mut usize) {
-    eprintln!("error in {}: {e:#}", project);
+/// Every runner wraps the error in a context naming the repo already
+/// (`error in project <repo>`, `error checking project <repo>`, ...), so the
+/// line is the error itself; prefixing the repo again would name it twice.
+fn report_no_stop(_project: &Utf8Path, e: &anyhow::Error, failed: &mut usize) {
+    eprintln!("{e:#}");
     *failed += 1;
 }
 

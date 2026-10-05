@@ -20,12 +20,12 @@ fn status_shows_dirty_repo() {
     let dirty_path = utf8(&tmp).join("dirty");
     let file = dirty_path.join("file.txt");
     fs::write(&file, "original").unwrap();
-    std::process::Command::new("git")
+    crate::common::git_command()
         .args(["add", "file.txt"])
         .current_dir(&dirty_path)
         .status()
         .unwrap();
-    std::process::Command::new("git")
+    crate::common::git_command()
         .args(["commit", "-m", "add file"])
         .current_dir(&dirty_path)
         .status()
@@ -69,7 +69,7 @@ fn status_shows_repo_with_unpushed_commits() {
     // Mark the current commit as the upstream tip, then commit past it so the
     // repo is ahead of origin with a clean working tree.
     let branch = String::from_utf8(
-        std::process::Command::new("git")
+        crate::common::git_command()
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
             .current_dir(&repo_path)
             .output()
@@ -78,7 +78,7 @@ fn status_shows_repo_with_unpushed_commits() {
     )
     .unwrap();
     let branch = branch.trim();
-    std::process::Command::new("git")
+    crate::common::git_command()
         .args([
             "update-ref",
             &format!("refs/remotes/origin/{branch}"),
@@ -87,7 +87,7 @@ fn status_shows_repo_with_unpushed_commits() {
         .current_dir(&repo_path)
         .status()
         .unwrap();
-    std::process::Command::new("git")
+    crate::common::git_command()
         .args(["commit", "--allow-empty", "-m", "local only"])
         .current_dir(&repo_path)
         .status()
@@ -120,12 +120,12 @@ fn dirty_subcommand_shows_diff_stat() {
     let repo_path = utf8(&tmp).join("repo");
     let file = repo_path.join("hello.txt");
     fs::write(&file, "hello").unwrap();
-    std::process::Command::new("git")
+    crate::common::git_command()
         .args(["add", "hello.txt"])
         .current_dir(&repo_path)
         .status()
         .unwrap();
-    std::process::Command::new("git")
+    crate::common::git_command()
         .args(["commit", "-m", "add hello"])
         .current_dir(&repo_path)
         .status()

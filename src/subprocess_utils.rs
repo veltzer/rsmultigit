@@ -206,13 +206,15 @@ fn run_inheriting_or_capturing(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Resu
 
 fn run_command(mut command: Command, name: &str) -> Result<()> {
     if is_capturing() {
-        let status = run_capturing(command)?;
+        let status = run_capturing(command, name)?;
         if !status.success() {
             bail!("{name} failed with {status}");
         }
         Ok(())
     } else {
-        let status = command.status()?;
+        let status = command
+            .status()
+            .with_context(|| format!("failed to run {name}"))?;
         if !status.success() {
             bail!("{name} failed with {status}");
         }
@@ -224,12 +226,13 @@ fn run_command(mut command: Command, name: &str) -> Result<()> {
 /// capture buffer, tagged with its stream, as it arrives. One reader thread
 /// per pipe feeds a channel, so neither pipe can fill up and stall the child
 /// while the other is being drained.
-fn run_capturing(mut command: Command) -> Result<std::process::ExitStatus> {
+fn run_capturing(mut command: Command, name: &str) -> Result<std::process::ExitStatus> {
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()?;
+        .spawn()
+        .with_context(|| format!("failed to run {name}"))?;
     let (tx, rx) = mpsc::channel::<(Stream, Vec<u8>)>();
     let pipes: [(Stream, Box<dyn Read + Send>); 2] = [
         (
@@ -272,7 +275,8 @@ pub fn capture_output(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<String
         .args(args)
         .current_dir(cwd)
         .stdin(Stdio::null())
-        .output()?;
+        .output()
+        .with_context(|| format!("failed to run {cmd}"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         anyhow::bail!("{cmd} failed: {stderr}");
@@ -292,7 +296,8 @@ pub fn capture_output_allow_failure(
         .args(args)
         .current_dir(cwd)
         .stdin(Stdio::null())
-        .output()?;
+        .output()
+        .with_context(|| format!("failed to run {cmd}"))?;
     let code = output.status.code().unwrap_or(-1);
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -427,6 +432,19 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    #[test]
+    fn a_program_that_cannot_start_is_named_in_the_error() {
+        let missing = "rsmultigit-no-such-program";
+        let serial = check_call(&cwd(), missing, &[]).unwrap_err();
+        assert!(format!("{serial:#}").contains(&format!("failed to run {missing}")));
+        enter_capture();
+        let captured = check_call(&cwd(), missing, &[]).unwrap_err();
+        leave_capture();
+        assert!(format!("{captured:#}").contains(&format!("failed to run {missing}")));
+        let output = capture_output(&cwd(), missing, &[]).unwrap_err();
+        assert!(format!("{output:#}").contains(&format!("failed to run {missing}")));
     }
 
     #[test]

@@ -124,7 +124,8 @@ Everything that inspects or operates on the repos as git repositories;
 | `git dirty` | Show `git diff --stat` for repos with modifications |
 | `git count dirty` | Count repositories with uncommitted changes |
 | `git count untracked` | Count repositories with untracked files |
-| `git count synchronized` | Count repositories ahead of or behind their upstream |
+| `git count unsynchronized` | Count repositories ahead of or behind their upstream |
+| `git count ahead` / `git count behind` | Count repositories with unpushed / unpulled commits |
 | `git age` | Show the age of the last commit per repo |
 | `git authors` | Show commit authors per repo |
 | `git size` | Show the size of the `.git` directory per repo |
@@ -140,10 +141,10 @@ The rest each run the git command of the same name in every repo:
 | `git commit -m <msg>` | Stage and commit all changes with a shared message |
 | `git checkout <branch>` | Checkout a branch across all repositories |
 | `git stash push` / `git stash pop` | Stash tracked changes, or pop the stash rsmultigit made; never touches hand-made stashes |
-| `git reset hard` / `git reset soft` / `git reset mixed` | Reset HEAD across all repositories |
-| `git restore` | `git restore .` (discards unstaged changes to tracked files) |
-| `git clean hard` | `git clean -ffxd` (removes untracked and ignored files) |
-| `git clean soft` | `git clean -fd` (removes untracked files only) |
+| `git reset hard` / `git reset mixed [--dry-run]` | Discard or unstage changes to tracked files; repos with nothing to reset are skipped |
+| `git restore [--dry-run]` | `git restore .` (discards unstaged changes to tracked files) |
+| `git clean hard [--dry-run]` | `git clean -ffxd` (removes untracked and ignored files) |
+| `git clean soft [--dry-run]` | `git clean -fd` (removes untracked files only) |
 | `git diff` | Show the diff of every repo |
 | `git log [--count N]` | Show recent commits (default 10) |
 | `git blame <file>` | `git blame` in every repo that has the file |

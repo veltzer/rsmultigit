@@ -235,6 +235,15 @@ pub fn run_check_same<R: BufRead, W: Write>(
         do_fix_missing,
     } = opts;
 
+    // --copy and --fix-missing prompt and write, and they exit 0 because
+    // they act on what they show. Under --terse or --no-output nothing is
+    // shown, so they could only do nothing and still report success.
+    if (do_copy || do_fix_missing) && (app.terse || app.no_output) {
+        let flag = if do_copy { "--copy" } else { "--fix-missing" };
+        let quiet = if app.terse { "--terse" } else { "--no-output" };
+        anyhow::bail!("check same: {flag} is interactive and cannot be combined with {quiet}");
+    }
+
     let rules = select_rules(&file_config.check, requested, requested_re, "check")?;
     if rules.is_empty() {
         if app.verbose {
@@ -248,7 +257,8 @@ pub fn run_check_same<R: BufRead, W: Write>(
     let mut failed_writes = 0usize;
 
     for rule in rules {
-        let result = check::evaluate_rule(rule, projects)?;
+        let result = check::evaluate_rule(rule, projects)
+            .with_context(|| format!("check same: rule `{}`", rule.name))?;
 
         if result.matched_nothing() && !allow_empty {
             // A rule that checked nothing is almost always a stale select/path,
@@ -296,6 +306,9 @@ pub fn run_check_same<R: BufRead, W: Write>(
         if !result.must_have_violations.is_empty() {
             suffix_parts.push(format!("{} missing", result.must_have_violations.len()));
         }
+        if !result.unreadable.is_empty() {
+            suffix_parts.push(format!("{} unreadable", result.unreadable.len()));
+        }
         if !result.skipped.is_empty() {
             suffix_parts.push(format!("{} skipped", result.skipped.len()));
         }
@@ -324,12 +337,22 @@ pub fn run_check_same<R: BufRead, W: Write>(
                     writeln!(out, "    {repo}")?;
                 }
             }
+            if !result.unreadable.is_empty() {
+                writeln!(out, "  unreadable:")?;
+                for (file, reason) in &result.unreadable {
+                    writeln!(out, "    {file}: {reason}")?;
+                }
+            }
 
+            // Diffing and copying need two groups to work between. A rule can
+            // fail with fewer (one group plus repos missing the file, or
+            // unreadable files), and prompting there would offer no choice.
+            let two_groups = result.groups.len() >= 2;
             let mut quit = false;
-            if show_diff {
+            if show_diff && two_groups {
                 quit |= run_diff(&result, &mut *input, &mut *out)? == FlowControl::Quit;
             }
-            if do_copy && !quit {
+            if do_copy && two_groups && !quit {
                 quit |= run_copy(&result, &mut *input, &mut *out, &mut failed_writes)?
                     == FlowControl::Quit;
             }
@@ -599,6 +622,7 @@ fn run_copy<R: BufRead, W: Write>(
 /// `fs::copy` replaces the destination's permissions with the source's. We want
 /// the opposite: overwrite the *content* but keep the destination's mode.
 fn copy_preserving_mode(src: &Utf8Path, dst: &Utf8Path) -> Result<()> {
+    refuse_symlink(dst)?;
     let original_mode = std::fs::metadata(dst)
         .with_context(|| format!("failed to stat {dst}"))?
         .permissions();
@@ -606,6 +630,19 @@ fn copy_preserving_mode(src: &Utf8Path, dst: &Utf8Path) -> Result<()> {
     std::fs::set_permissions(dst, original_mode)
         .with_context(|| format!("failed to restore permissions on {dst}"))?;
     Ok(())
+}
+
+/// `fs::copy` writes *through* a symlink, into whatever it points at, which
+/// may lie outside every repo; and a dangling one would be "fixed" by
+/// creating its target. Neither is what overwriting a repo's file means, so
+/// a symlink at the destination is an error for that file.
+fn refuse_symlink(dst: &Utf8Path) -> Result<()> {
+    match std::fs::symlink_metadata(dst) {
+        Ok(meta) if meta.file_type().is_symlink() => {
+            anyhow::bail!("{dst} is a symlink; not writing through it")
+        }
+        _ => Ok(()),
+    }
 }
 
 /// Run the interactive fix-missing flow for a rule that has `must_have`
@@ -658,6 +695,11 @@ fn run_fix_missing<R: BufRead, W: Write>(
 
     for repo in violators {
         let dst = repo.join(&result.path);
+        if let Err(e) = refuse_symlink(&dst) {
+            let _ = writeln!(writer, "  error: {e:#}");
+            *failed += 1;
+            continue;
+        }
         if let Some(parent) = dst.parent()
             && let Err(e) = std::fs::create_dir_all(parent)
         {

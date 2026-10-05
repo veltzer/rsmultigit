@@ -1789,3 +1789,143 @@ path = "README"
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
     assert!(stdout.contains("[readme]"), "stdout: {stdout}");
 }
+
+// ── failure modes found by the 2026-10-05 scan ───────────────────────────────
+
+const GI_RULE: &str = r#"
+[[check]]
+name = "gi"
+select = "*"
+path = ".gitignore"
+"#;
+
+#[test]
+fn check_same_unreadable_file_fails_its_rule_and_the_run_goes_on() {
+    use std::os::unix::fs::PermissionsExt;
+    let tmp = setup_git_repos(&["a", "b"]);
+    let dir = utf8(&tmp);
+    for repo in ["a", "b"] {
+        fs::write(dir.join(repo).join(".gitignore"), "same\n").unwrap();
+        fs::write(dir.join(repo).join("other"), repo).unwrap();
+    }
+    let locked = dir.join("a/.gitignore");
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+    let cfg = write_config(
+        dir,
+        &format!("{GI_RULE}\n[[check]]\nname = \"other\"\nselect = \"*\"\npath = \"other\"\n"),
+    );
+
+    let output = run(dir, &cfg, &["check", "same"]);
+    fs::set_permissions(&locked, fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(output.status.code(), Some(1), "{}", stderr_str(&output));
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("1 unreadable"), "{stdout}");
+    assert!(stdout.contains("  unreadable:"), "{stdout}");
+    assert!(stdout.contains("a/.gitignore"), "{stdout}");
+    // The run carried on to the second rule, which differs.
+    assert!(stdout.contains("[other]"), "{stdout}");
+    assert!(stdout.contains("2 groups"), "{stdout}");
+}
+
+#[test]
+fn check_same_copy_and_fix_missing_refuse_terse_and_no_output() {
+    let tmp = setup_git_repos(&["a", "b"]);
+    let dir = utf8(&tmp);
+    fs::write(dir.join("a/.gitignore"), "x\n").unwrap();
+    fs::write(dir.join("b/.gitignore"), "y\n").unwrap();
+    let cfg = write_config(dir, GI_RULE);
+    for (flag, quiet) in [
+        ("--copy", "--terse"),
+        ("--copy", "--no-output"),
+        ("--fix-missing", "--terse"),
+        ("--fix-missing", "--no-output"),
+    ] {
+        let output = run(dir, &cfg, &[quiet, "check", "same", flag]);
+        assert!(!output.status.success(), "{flag} {quiet} must fail");
+        let stderr = stderr_str(&output);
+        assert!(stderr.contains("interactive"), "{flag} {quiet}: {stderr}");
+    }
+    // Nothing was touched.
+    assert_eq!(fs::read_to_string(dir.join("b/.gitignore")).unwrap(), "y\n");
+}
+
+#[test]
+fn check_same_one_group_with_missing_repos_does_not_prompt_for_diff_or_copy() {
+    // Every repo that has the file agrees; one lacks it. There is nothing
+    // to diff or copy between, so no group prompt may appear; fix-missing
+    // (which has something to do) still runs.
+    let tmp = setup_git_repos(&["a", "b", "c"]);
+    let dir = utf8(&tmp);
+    fs::write(dir.join("a/.gitignore"), "x\n").unwrap();
+    fs::write(dir.join("b/.gitignore"), "x\n").unwrap();
+    let cfg = write_config(dir, &format!("{GI_RULE}must_have = true\n"));
+
+    let output = run_with_stdin(
+        dir,
+        &cfg,
+        &["check", "same", "--diff", "--copy", "--fix-missing"],
+        b"A\ny\n",
+    );
+    assert!(output.status.success(), "{}", stderr_str(&output));
+    let stdout = stdout_str(&output);
+    assert!(!stdout.contains("diff from group?"), "{stdout}");
+    assert!(!stdout.contains("copy from group?"), "{stdout}");
+    assert!(!stdout.contains("invalid choice"), "{stdout}");
+    assert!(stdout.contains("seed missing files"), "{stdout}");
+    assert_eq!(fs::read_to_string(dir.join("c/.gitignore")).unwrap(), "x\n");
+}
+
+#[test]
+fn check_same_copy_does_not_write_through_a_symlink() {
+    let tmp = setup_git_repos(&["a1", "a2", "b"]);
+    let dir = utf8(&tmp);
+    fs::write(dir.join("a1/.gitignore"), "canonical\n").unwrap();
+    fs::write(dir.join("a2/.gitignore"), "canonical\n").unwrap();
+    let outside = tempfile::TempDir::new().unwrap();
+    let target = utf8(&outside).join("shared");
+    fs::write(&target, "outside\n").unwrap();
+    std::os::unix::fs::symlink(&target, dir.join("b/.gitignore")).unwrap();
+    let cfg = write_config(dir, GI_RULE);
+
+    // Copy group A (the two real files) over group B (the symlink).
+    let output = run_with_stdin(dir, &cfg, &["check", "same", "--copy"], b"A\nB\ny\n");
+    let stdout = stdout_str(&output);
+    assert!(stdout.contains("is a symlink"), "{stdout}");
+    assert!(
+        !output.status.success(),
+        "a refused write must fail the run"
+    );
+    assert_eq!(fs::read_to_string(&target).unwrap(), "outside\n");
+    assert!(
+        fs::symlink_metadata(dir.join("b/.gitignore"))
+            .unwrap()
+            .file_type()
+            .is_symlink()
+    );
+}
+
+#[test]
+fn check_same_exclude_and_marker_absent_narrow_the_scope() {
+    // `skipped` is excluded by name, `optout` opts out with a marker file;
+    // both differ from the rest, and the rule must still pass.
+    let tmp = setup_git_repos(&["a", "b", "skipped", "optout"]);
+    let dir = utf8(&tmp);
+    for repo in ["a", "b"] {
+        fs::write(dir.join(repo).join(".gitignore"), "same\n").unwrap();
+    }
+    fs::write(dir.join("skipped/.gitignore"), "different\n").unwrap();
+    fs::write(dir.join("optout/.gitignore"), "different\n").unwrap();
+    fs::write(dir.join("optout/.noci"), "").unwrap();
+    let cfg = write_config(
+        dir,
+        &format!("{GI_RULE}exclude = \"skipped\"\nmarker_absent = \".noci\"\n"),
+    );
+
+    let output = run(dir, &cfg, &["check", "same"]);
+    assert!(output.status.success(), "{}", stdout_str(&output));
+    assert!(
+        stdout_str(&output).contains("ok (2 files)"),
+        "{}",
+        stdout_str(&output)
+    );
+}
