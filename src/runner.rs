@@ -6,6 +6,7 @@ use std::sync::mpsc;
 use anyhow::{Context, Result};
 
 use crate::config::AppConfig;
+use crate::subprocess_utils::Captured;
 
 fn resolve_jobs(config: &AppConfig) -> usize {
     let n = if config.jobs == 0 {
@@ -335,7 +336,7 @@ where
     for_each_project_ordered(
         jobs,
         &projects_vec,
-        |project| -> Result<(bool, Vec<u8>)> {
+        |project| -> Result<(bool, Captured)> {
             let abs = absolute(project, &base);
             // Capture output on this worker thread for the duration of check+action.
             crate::subprocess_utils::enter_capture();
@@ -363,9 +364,7 @@ where
                             print_project_header(project);
                         }
                         if passed && !config.no_output {
-                            let stdout = io::stdout();
-                            let mut lock = stdout.lock();
-                            lock.write_all(&captured).ok();
+                            captured.replay();
                         }
                     }
                     Ok(())
@@ -386,11 +385,11 @@ where
 
 /// Attach a failed action's captured subprocess output to its error, so a
 /// failure that happened under capture is not reported without its cause.
-fn attach_captured(e: anyhow::Error, captured: &[u8]) -> anyhow::Error {
+fn attach_captured(e: anyhow::Error, captured: &Captured) -> anyhow::Error {
     if captured.is_empty() {
         e
     } else {
-        e.context(format!("captured: {}", String::from_utf8_lossy(captured)))
+        e.context(format!("captured: {}", captured.to_text_lossy()))
     }
 }
 

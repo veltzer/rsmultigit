@@ -22,7 +22,6 @@ cargo build --release           # Release build
 cargo nextest run               # Run tests (preferred runner)
 cargo nextest run --release     # Run tests in release mode
 cargo nt                        # Alias for nextest run
-make test                       # Runs nextest in both release and debug
 ```
 
 Tests use `cargo-nextest` (not `cargo test`). Config in `.config/nextest.toml` (4 threads, fail-level reporting).
@@ -50,9 +49,9 @@ build.rs                 # Embeds git metadata at compile time
 
 All commands use one of three patterns in `runner.rs`:
 
-1. **`do_count`** — Boolean test per repo using git2 (no subprocess). Prints count summary. Used by: `count dirty/untracked/synchronized`.
+1. **`do_count`** — Boolean test per repo; prints the matching repos and a count summary. Used by: `git count dirty/untracked/synchronized` (git2, no subprocess) and `git tag has-local/has-remote` (spawn `git tag` / `git ls-remote`).
 2. **`do_for_all_projects`** — Runs an action (`Result<()>`) in each repo dir; the `_with_check` variant runs a cheap predicate first and skips repos where it is false. Skips are decided only there, never inside the action, because the serial path prints the header before the action runs. Used by: `git pull/push/fetch/clean`, `build`, etc.
-3. **`print_if_data`** — Calls data function returning `Option<String>`, prints only if Some. Used by: `status, dirty, git grep, age, authors, size`.
+3. **`print_if_data`** — Calls data function returning `Option<String>`, prints only if Some. Used by: `git status`, `git dirty`, `git grep`, `git age`, `git authors`, `git size`, `git last-tag`.
 
 ## Key Conventions
 

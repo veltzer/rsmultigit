@@ -81,9 +81,11 @@ thread-local capture buffer (`subprocess_utils::enter_capture`) before
 running the action, so `check_call` and friends collect the child's stdout
 and stderr into it instead of inheriting the parent's streams, and command
 modules that format their own lines (`gh`, `git branch github`) route them
-through `subprocess_utils::out_line`, which lands in the same buffer. The buffer
-travels back with the result and is replayed on the main thread under the
-repo's header. In the serial path nothing is captured and children write
+through `subprocess_utils::out_line`, which lands in the same buffer. The
+buffer keeps each chunk tagged with the stream it came from, in arrival
+order (one reader thread per pipe), so the replay puts stderr back on stderr
+and keeps the two interleaved to read granularity. It travels back with the
+result and is replayed on the main thread under the repo's header. In the serial path nothing is captured and children write
 live, which keeps interactive tools (credential prompts, pagers) working.
 `--no-output` reuses the capture: the buffer is simply dropped, in both
 paths, and attached to the error if the action failed.
