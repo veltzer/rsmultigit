@@ -27,7 +27,7 @@ Unit tests live in `#[cfg(test)]` modules inside each source file:
 |--------|---------------|
 | `cli` | Every subcommand and value enum parses; global flags before and after the subcommand; `--venv`/`--no-venv` precedence; `default_build_method` accepts exactly the CLI spellings |
 | `commands::check` | Config parsing, `repos` resolution (git filter, dedupe, empty-list errors), rule selection filters, SHA-256 grouping, `must_have`, `matched_nothing`, `[[exists]]` evaluation |
-| `commands::check_run` | `--checks` / `--checks-re` resolution; whole `check-same` and `check-exists` runs against in-memory stdin/stdout: output format, exit codes, `--terse`, `--only-failed`, `--short-circuit`, `--allow-empty`, `--diff`, `--copy`, `--fix-missing` |
+| `commands::check_run` | `--checks` / `--checks-re` resolution; whole `check same` and `check exists` runs against in-memory stdin/stdout: output format, exit codes, `--terse`, `--only-failed`, `--short-circuit`, `--allow-empty`, `--diff`, `--copy`, `--fix-missing` |
 | `commands::count` | `is_dirty`, `has_untracked`, `ahead_behind` (configured upstream, origin fallback, detached HEAD) against temp git repos built with git2 |
 | `commands::status` | The one-line status summary |
 | `commands::run` | Shell vs direct execution, venv activation |
@@ -50,19 +50,19 @@ tests/
   common/mod.rs        Shared helpers
   tests_mod/
     build.rs           build with and without default_build_method
-    check_same.rs      check-same: grouping, must_have, --checks/--checks-re,
+    check_same.rs      check same: grouping, must_have, --checks/--checks-re,
                        --only-failed, --allow-empty, --diff, --copy, --fix-missing,
                        --terse, --short-circuit, exit codes
     cli.rs             Help, unknown subcommand, missing args
     count.rs           count dirty/untracked, --terse, --print-not
     docs.rs            Every subcommand and global flag is in commands.md
     inspect.rs         list-repos, log, blame, tags, size, age, authors, config,
-                       check-exists, check-all, complete
+                       check exists, check all, complete
     remote.rs          push, fetch, pull, prune, remote, tag remote, against a
                        local bare repository standing in for origin
     run.rs             run/exec, shell vs direct, --no-stop, --no-output,
                        parallel output ordering
-    rust.rs            rust publish against a fake cargo/cargo-release/pass on
+    rust.rs            cargo release against a fake cargo/cargo-release/pass on
                        PATH: level, token from pass or environment, preflight
     status.rs          status summary, --verbose, dirty
     version.rs         version subcommand and --version flag
@@ -89,7 +89,7 @@ the `RSMULTIGIT_CONFIG` environment variable, so tests never touch
 | `write_config(dir, extra)` | Write `<dir>/config.toml` with `repos = ["<dir>/*"]` plus `extra` (for `[[check]]` blocks); returns its path |
 | `run_rsmultigit(dir, args)` | Run the binary in `dir` against a default config written by `write_config` |
 | `run_rsmultigit_with_env(dir, args, env)` | Run the binary with extra environment variables (used to pass a custom `RSMULTIGIT_CONFIG`) |
-| `run_rsmultigit_with_stdin(dir, args, env, bytes)` | Same, with `bytes` fed to stdin, for the interactive check-same flows |
+| `run_rsmultigit_with_stdin(dir, args, env, bytes)` | Same, with `bytes` fed to stdin, for the interactive check same flows |
 | `stdout_str(output)` / `stderr_str(output)` | Trimmed stdout / stderr of a finished command |
 
 ### Writing new tests

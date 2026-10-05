@@ -7,14 +7,14 @@ operate on and *which invariants* to check; the flags say *how* to run and
 
 The location is fixed and there is no `--config` flag. `RSMULTIGIT_CONFIG`
 overrides the path (the test suite uses it). A missing or unparsable file is
-an error for every command except `setup`, `config-example`, `complete` and
+an error for every command except `setup`, `setup config-sample`, `complete` and
 `version`.
 
-Write a first config interactively with `rsmultigit setup`, or print a fully
+Write a first config interactively with `rsmultigit setup interactive`, or print a fully
 commented starting point with:
 
 ```bash
-rsmultigit config-example
+rsmultigit setup config-sample
 ```
 
 ## Top-level keys
@@ -29,12 +29,12 @@ crates_io_pass_entry = "keys/crates.io"
 |-----|----------|---------|
 | `repos` | yes | List of shell-expanded glob patterns. Matches that are not git repositories are dropped; the rest are deduplicated and sorted. See [Repository Discovery](discovery.md) |
 | `default_build_method` | no | What a bare `rsmultigit build` runs: `bootstrap`, `make`, `rsconstruct` or `cargo`, spelled as on the command line. A method given on the command line always wins. Without the key, `rsmultigit build` with no method is an error |
-| `crates_io_pass_entry` | no | The pass(1) entry `rsmultigit rust publish` reads the crates.io token from when `CARGO_REGISTRY_TOKEN` is not set in the environment. Default `keys/crates.io` |
+| `crates_io_pass_entry` | no | The pass(1) entry `rsmultigit cargo release` reads the crates.io token from when `CARGO_REGISTRY_TOKEN` is not set in the environment. Default `keys/crates.io` |
 
 ## `[[check]]` rules: files that must be identical
 
 Each `[[check]]` block names one file that must have byte-identical content
-in every repo it applies to. `rsmultigit check-same` evaluates them.
+in every repo it applies to. `rsmultigit check same` evaluates them.
 
 ```toml
 [[check]]
@@ -70,7 +70,7 @@ Selection filters are applied in the order listed: `select`, then
 Each `[[exists]]` block asserts that a file is present in every repo it
 applies to, without ever comparing content. This is the rule type for files
 that must exist but legitimately differ per repo, such as a README.
-`rsmultigit check-exists` evaluates them.
+`rsmultigit check exists` evaluates them.
 
 ```toml
 [[exists]]
@@ -84,7 +84,7 @@ mean exactly what they mean for `[[check]]`. There is no `must_have`,
 because requiring the file *is* the whole rule. A directory at `path` does
 not satisfy the rule; it must be a file.
 
-`rsmultigit check-all` runs the `[[check]]` and `[[exists]]` rules together.
+`rsmultigit check all` runs the `[[check]]` and `[[exists]]` rules together.
 
 ## Global flags
 
@@ -94,7 +94,7 @@ All flags are global: they may appear before or after the subcommand.
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-v`, `--verbose` | off | Print every repo, even when nothing happened; `status` switches to per-file output |
+| `-v`, `--verbose` | off | Print every repo, even when nothing happened; `git status` switches to per-file output |
 | `--terse` | off | Repo names only for data commands; only the `N/total` line for count commands; failing rule names only for the check commands |
 | `--no-header` | off | Suppress the `[repo]` (or `[rule]`) header line |
 | `--no-output` | off | Suppress command output, keep the `[repo]` headers |
@@ -105,7 +105,7 @@ All flags are global: they may appear before or after the subcommand.
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--no-stop` | off | Report errors on stderr and continue instead of stopping at the first one; still exits non-zero if any repo failed |
-| `--short-circuit` | off | Stop at the first negative result. Honoured by `check-same` and `check-exists`; other commands accept it and ignore it |
+| `--short-circuit` | off | Stop at the first negative result. Honoured by `check same` and `check exists`; other commands accept it and ignore it |
 | `-j`, `--jobs <N>` | 1 | Number of repos to process concurrently; 0 means one per CPU. Output is buffered per repo and printed in repo order |
 
 ### Tool environment
@@ -123,10 +123,10 @@ reported, and the exit code is unchanged (non-zero when a rule is broken).
 Without the flag, every rule is evaluated and every failure reported.
 
 ```bash
-rsmultigit check-same                        # report every broken rule
-rsmultigit --short-circuit check-same        # report the first broken rule and stop
-rsmultigit --terse --short-circuit check-same # print just that rule's name
-rsmultigit --short-circuit check-exists      # same, for presence rules
+rsmultigit check same                        # report every broken rule
+rsmultigit --short-circuit check same        # report the first broken rule and stop
+rsmultigit --terse --short-circuit check same # print just that rule's name
+rsmultigit --short-circuit check exists      # same, for presence rules
 ```
 
 ## Build command skipping
@@ -134,6 +134,6 @@ rsmultigit --short-circuit check-exists      # same, for presence rules
 `rsmultigit build <method>` skips projects that contain a `.disable` file in
 their root. `build rsconstruct` additionally skips projects without an
 `rsconstruct.toml`, and `build cargo`, the `cargo` commands and
-`rust publish` skip projects without a `Cargo.toml`. The `uv` commands
+`cargo release` skip projects without a `Cargo.toml`. The `uv` commands
 skip projects without a `pyproject.toml`, and `gh` commands skip repos with
 no github.com remote.

@@ -7,7 +7,7 @@ use anyhow::{Context, Result, bail};
 
 use crate::subprocess_utils::check_call_with_env;
 
-/// Should `rust publish` release this project? Only a repo whose root
+/// Should `cargo release` release this project? Only a repo whose root
 /// `Cargo.toml` declares a `[package]` that cargo would publish. That is
 /// cargo's own vocabulary for "this is a crate meant for a registry", so no
 /// rsmultigit-specific marker is needed:
@@ -67,7 +67,7 @@ pub fn default_pass_entry() -> String {
     "keys/crates.io".to_string()
 }
 
-/// Everything `rust publish` needs before touching the first repo: the level
+/// Everything `cargo release` needs before touching the first repo: the level
 /// to bump and the crates.io token. Built once per run, not once per repo, so
 /// a missing cargo-release is reported before any version is bumped and
 /// pass(1) is asked (and gpg prompts) at most once.

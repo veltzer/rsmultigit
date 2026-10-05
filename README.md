@@ -12,7 +12,7 @@ Full documentation: <https://veltzer.github.io/rsmultigit/>
 
 - **Batch operations** — pull, push, fetch, diff, grep, clean, commit, and build across all repos at once
 - **Native git inspection** — status, dirty and sync checks use libgit2 in-process, with no `git` subprocess per repo
-- **Consistency checks** — `check-same` verifies that shared files (`.gitignore`, CI workflows, lint configs, ...) are byte-identical across the fleet, `check-exists` verifies that required files are present, and `--diff`, `--copy` and `--fix-missing` repair drift interactively
+- **Consistency checks** — `check same` verifies that shared files (`.gitignore`, CI workflows, lint configs, ...) are byte-identical across the fleet, `check exists` verifies that required files are present, and `--diff`, `--copy` and `--fix-missing` repair drift interactively
 - **Build orchestration** — make, rsconstruct, cargo, bootstrap, with each repo's `.venv` activated automatically
 - **Tooling passthrough** — `uv lock` / `uv sync` on Python projects, `cargo build|check|clippy|fmt|test|nextest|doc|deny|fetch|update|clean|publish` on Rust projects, `gh` cleanup, release/workflow inspection and metadata sync on GitHub repos
 - **Parallel execution** — `-j N` runs repos concurrently while keeping output in repo order
@@ -66,14 +66,14 @@ interactively (it asks where your repositories are and which build tool you
 use, with tab completion and a menu):
 
 ```bash
-rsmultigit setup
+rsmultigit setup interactive
 ```
 
 or bootstrap it from the fully commented built-in example:
 
 ```bash
 mkdir -p ~/.config/rsmultigit
-rsmultigit config-example > ~/.config/rsmultigit/config.toml
+rsmultigit setup config-sample > ~/.config/rsmultigit/config.toml
 ```
 
 The file names the repositories to operate on and, optionally, the
@@ -82,7 +82,7 @@ consistency rules to enforce:
 ```toml
 repos = ["~/git/*"]                  # shell-expanded globs; non-git matches are ignored
 default_build_method = "rsconstruct" # what a bare `rsmultigit build` runs
-crates_io_pass_entry = "keys/crates.io" # where `rust publish` finds the crates.io token
+crates_io_pass_entry = "keys/crates.io" # where `cargo release` finds the crates.io token
 
 [[check]]                            # files that must be byte-identical
 name = "gitignore"
@@ -101,12 +101,12 @@ for every field.
 ## Quick Start
 
 ```bash
-rsmultigit status                 # one-line summary of every repo that needs attention
+rsmultigit git status             # one-line summary of every repo that needs attention
 rsmultigit -j 8 git pull          # pull all repos, 8 at a time
-rsmultigit count dirty            # count repos with uncommitted changes
+rsmultigit git count dirty        # count repos with uncommitted changes
 rsmultigit git grep "TODO"        # git grep across all repos
-rsmultigit check-same             # verify shared files are identical everywhere
-rsmultigit check-same --diff      # ... and show what differs
+rsmultigit check same             # verify shared files are identical everywhere
+rsmultigit check same --diff      # ... and show what differs
 rsmultigit build                  # build every repo with the configured default method
 rsmultigit run "git log -1"       # run any shell command in every repo
 rsmultigit complete bash >> ~/.bash_completion
@@ -114,23 +114,23 @@ rsmultigit complete bash >> ~/.bash_completion
 
 ## Commands
 
-### Inspection
+### Git
+Everything that inspects or operates on the repos as git repositories;
+`rsmultigit git` alone lists it. The reports come first:
+
 | Command | Description |
 |---------|-------------|
-| `status` | One-line summary per repo needing attention (`--verbose` for `git status -s`) |
-| `dirty` | Show `git diff --stat` for repos with modifications |
-| `count dirty` | Count repositories with uncommitted changes |
-| `count untracked` | Count repositories with untracked files |
-| `count synchronized` | Count repositories ahead of or behind their upstream |
-| `list-repos` | Print the path of every configured repo |
-| `age` | Show the age of the last commit per repo |
-| `authors` | Show commit authors per repo |
-| `size` | Show the size of the `.git` directory per repo |
-| `last-tag` | Show the most recent tag per repo |
+| `git status` | One-line summary per repo needing attention (`--verbose` for `git status -s`) |
+| `git dirty` | Show `git diff --stat` for repos with modifications |
+| `git count dirty` | Count repositories with uncommitted changes |
+| `git count untracked` | Count repositories with untracked files |
+| `git count synchronized` | Count repositories ahead of or behind their upstream |
+| `git age` | Show the age of the last commit per repo |
+| `git authors` | Show commit authors per repo |
+| `git size` | Show the size of the `.git` directory per repo |
+| `git last-tag` | Show the most recent tag per repo |
 
-### Git
-Each runs the git command of the same name in every repo; `rsmultigit git`
-alone lists them.
+The rest each run the git command of the same name in every repo:
 
 | Command | Description |
 |---------|-------------|
@@ -157,6 +157,16 @@ alone lists them.
 | `git gc` | Run git garbage collection |
 | `git submodule-update` | `git submodule update --init --recursive` |
 
+### Consistency checks
+`rsmultigit check` alone lists these.
+
+| Command | Description |
+|---------|-------------|
+| `check same [--diff] [--copy] [--fix-missing]` | Verify the `[[check]]` files are byte-identical across the repos they select |
+| `check exists` | Verify the `[[exists]]` files are present in every repo they select |
+| `check all` | Run both; non-zero if either fails |
+| `check list [exists]` | Print the rule names (for shell completion) |
+
 ### Running commands
 | Command | Description |
 |---------|-------------|
@@ -173,11 +183,11 @@ alone lists them.
 | `cargo check\|clippy\|test\|nextest\|doc [--release\|--profile <name>]` | Run the matching cargo command on repos with `Cargo.toml` (`clippy` as CI: `--all-targets -- -D warnings`) |
 | `cargo fmt [--check]` | Run `cargo fmt --all` on repos with `Cargo.toml` |
 | `cargo deny\|fetch\|update\|clean\|publish` | Run `cargo deny check`, `cargo fetch`, `cargo update`, `cargo clean` or `cargo publish` on repos with `Cargo.toml` |
+| `cargo release [--type patch\|minor\|major]` | Run `cargo release` on repos whose `Cargo.toml` has a publishable `[package]`, crates.io token from pass(1) |
 | `uv lock [--upgrade\|--check]` | Run `uv lock` on repos with `pyproject.toml` |
 | `uv sync\|build\|publish` | Run `uv sync`, `uv build` or `uv publish` on repos with `pyproject.toml` |
 | `npm install\|ci\|update\|outdated\|test\|publish` | Run the matching npm command on repos with `package.json` |
 | `npm audit [--fix]` | Run `npm audit` (or `npm audit fix`) on repos with `package.json` |
-| `rust publish [--type patch\|minor\|major]` | Run `cargo release` on repos whose `Cargo.toml` has a publishable `[package]`, crates.io token from pass(1) |
 | `gh clean-all [--keep N]` | Delete old deployments, releases and workflow runs on GitHub repos |
 | `gh artifacts` | List the assets of the latest release (name, size, downloads) on GitHub repos |
 | `gh last-workflow-state` | Print the conclusion of the most recent workflow run on GitHub repos |
@@ -187,8 +197,9 @@ alone lists them.
 ### Other
 | Command | Description |
 |---------|-------------|
-| `setup [--repos-dir <DIR>] [--build <METHOD>\|--no-build] [--overwrite]` | Interactively write a first config file: pick the repositories directory and the default build tool |
-| `config-example` | Print a sample config file to stdout |
+| `setup interactive [--repos-dir <DIR>] [--build <METHOD>\|--no-build] [--overwrite]` | Interactively write a first config file: pick the repositories directory and the default build tool |
+| `setup config-sample` | Print a sample config file to stdout |
+| `list-repos` | Print the path of every configured repo |
 | `complete <shell>` | Generate shell completion scripts |
 | `version` | Print detailed version information |
 
@@ -204,7 +215,7 @@ All global options work before or after the subcommand.
 | `--no-output` | Suppress command output, keep the `[repo]` headers |
 | `--print-not` | Invert selection: print repos that do NOT match |
 | `--no-stop` | Report errors and continue instead of stopping at the first one; still exits non-zero if any repo failed |
-| `--short-circuit` | Stop at the first failing rule (`check-same`, `check-exists`) |
+| `--short-circuit` | Stop at the first failing rule (`check same`, `check exists`) |
 | `-j, --jobs <N>` | Run N repos in parallel (default 1; 0 means all CPUs) |
 | `--venv` / `--no-venv` | Activate each repo's `.venv` before running tools (default on) |
 

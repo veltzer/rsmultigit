@@ -4,7 +4,7 @@ use std::fs;
 #[test]
 fn status_clean_repos_no_output() {
     let tmp = setup_git_repos(&["a", "b"]);
-    let output = run_rsmultigit(utf8(&tmp), &["status"]);
+    let output = run_rsmultigit(utf8(&tmp), &["git", "status"]);
     assert!(output.status.success());
     // Clean repos have no status output, so nothing should be printed
     let stdout = stdout_str(&output);
@@ -32,7 +32,7 @@ fn status_shows_dirty_repo() {
         .unwrap();
     fs::write(&file, "modified").unwrap();
 
-    let output = run_rsmultigit(utf8(&tmp), &["status"]);
+    let output = run_rsmultigit(utf8(&tmp), &["git", "status"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -48,7 +48,7 @@ fn status_shows_dirty_repo() {
         "default status is a summary: should not include per-file git output: {stdout}"
     );
 
-    let output = run_rsmultigit(utf8(&tmp), &["--verbose", "status"]);
+    let output = run_rsmultigit(utf8(&tmp), &["--verbose", "git", "status"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -93,7 +93,7 @@ fn status_shows_repo_with_unpushed_commits() {
         .status()
         .unwrap();
 
-    let output = run_rsmultigit(utf8(&tmp), &["status"]);
+    let output = run_rsmultigit(utf8(&tmp), &["git", "status"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -105,7 +105,7 @@ fn status_shows_repo_with_unpushed_commits() {
         "repo without upstream and no changes should not be listed: {stdout}"
     );
 
-    let output = run_rsmultigit(utf8(&tmp), &["--verbose", "status"]);
+    let output = run_rsmultigit(utf8(&tmp), &["--verbose", "git", "status"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -132,7 +132,7 @@ fn dirty_subcommand_shows_diff_stat() {
         .unwrap();
     fs::write(&file, "changed").unwrap();
 
-    let output = run_rsmultigit(utf8(&tmp), &["dirty"]);
+    let output = run_rsmultigit(utf8(&tmp), &["git", "dirty"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(

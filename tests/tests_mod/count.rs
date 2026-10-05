@@ -4,7 +4,7 @@ use std::fs;
 #[test]
 fn count_dirty_clean_repos() {
     let tmp = setup_git_repos(&["a", "b"]);
-    let output = run_rsmultigit(utf8(&tmp), &["count", "dirty"]);
+    let output = run_rsmultigit(utf8(&tmp), &["git", "count", "dirty"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -32,7 +32,7 @@ fn count_dirty_with_modified_file() {
         .unwrap();
     fs::write(&file, "modified").unwrap();
 
-    let output = run_rsmultigit(utf8(&tmp), &["count", "dirty"]);
+    let output = run_rsmultigit(utf8(&tmp), &["git", "count", "dirty"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -46,7 +46,7 @@ fn untracked_detects_new_files() {
     let tmp = setup_git_repos(&["clean", "has_new"]);
     fs::write(utf8(&tmp).join("has_new/untracked.txt"), "data").unwrap();
 
-    let output = run_rsmultigit(utf8(&tmp), &["count", "untracked"]);
+    let output = run_rsmultigit(utf8(&tmp), &["git", "count", "untracked"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -61,7 +61,7 @@ fn count_dirty_terse_suppresses_names() {
     fs::write(utf8(&tmp).join("a/untracked.txt"), "x").unwrap();
 
     // With --terse, project names are suppressed; only the count line remains.
-    let output = run_rsmultigit(utf8(&tmp), &["--terse", "count", "untracked"]);
+    let output = run_rsmultigit(utf8(&tmp), &["--terse", "git", "count", "untracked"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert_eq!(stdout, "1/2");
@@ -73,7 +73,7 @@ fn print_not_inverts_selection() {
     fs::write(utf8(&tmp).join("a/untracked.txt"), "x").unwrap();
 
     // --print-not should show "b" (the one WITHOUT untracked)
-    let output = run_rsmultigit(utf8(&tmp), &["--print-not", "count", "untracked"]);
+    let output = run_rsmultigit(utf8(&tmp), &["--print-not", "git", "count", "untracked"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(

@@ -33,7 +33,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     assert_eq!(
         stdout_str(&output),
@@ -57,7 +57,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--only-failed"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--only-failed"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     assert_eq!(stdout_str(&output), "");
 }
@@ -85,7 +85,7 @@ path = "README"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--only-failed"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--only-failed"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -117,7 +117,7 @@ path = "README"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -142,7 +142,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -166,7 +166,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--terse"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--terse"]);
     assert!(!output.status.success());
     assert_eq!(stdout_str(&output), "gi");
 }
@@ -186,7 +186,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--no-header"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--no-header"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -218,7 +218,7 @@ path = "README"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks", "readme"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--checks", "readme"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     // Only the requested (passing) rule appears; gi's divergence must not.
     let stdout = stdout_str(&output);
@@ -261,7 +261,7 @@ path = "LICENSE"
     let output = run(
         utf8(&tmp),
         &cfg,
-        &["check-same", "--checks", "gi", "license"],
+        &["check", "same", "--checks", "gi", "license"],
     );
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
@@ -299,7 +299,7 @@ path = "README"
     let output = run(
         utf8(&tmp),
         &cfg,
-        &["check-same", "--checks", "readme", "gi"],
+        &["check", "same", "--checks", "readme", "gi"],
     );
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
@@ -338,7 +338,7 @@ path = "LICENSE"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks-re", "^rs-"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--checks-re", "^rs-"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[rs-gitignore]"), "stdout: {stdout}");
@@ -377,7 +377,8 @@ path = "README"
         utf8(&tmp),
         &cfg,
         &[
-            "check-same",
+            "check",
+            "same",
             "--checks",
             "readme",
             "--checks-re",
@@ -410,7 +411,7 @@ enabled = false
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks-re", "gi"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--checks-re", "gi"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -430,7 +431,11 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks-re", "^bogus"]);
+    let output = run(
+        utf8(&tmp),
+        &cfg,
+        &["check", "same", "--checks-re", "^bogus"],
+    );
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(
@@ -453,7 +458,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks-re", "("]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--checks-re", "("]);
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(stderr.contains("invalid check regex"), "stderr: {stderr}");
@@ -473,7 +478,11 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks", "nonexistent"]);
+    let output = run(
+        utf8(&tmp),
+        &cfg,
+        &["check", "same", "--checks", "nonexistent"],
+    );
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(
@@ -497,7 +506,11 @@ path = ".gitignore"
     );
 
     // Even if one name is known, an unknown one must hard-error.
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks", "gi", "bogus"]);
+    let output = run(
+        utf8(&tmp),
+        &cfg,
+        &["check", "same", "--checks", "gi", "bogus"],
+    );
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(
@@ -510,7 +523,7 @@ path = ".gitignore"
 fn check_same_missing_config_fails() {
     let tmp = setup_git_repos(&["a"]);
     let nonexistent = utf8(&tmp).join("nope.toml");
-    let output = run(utf8(&tmp), &nonexistent, &["check-same"]);
+    let output = run(utf8(&tmp), &nonexistent, &["check", "same"]);
     assert!(!output.status.success());
 }
 
@@ -531,7 +544,7 @@ path = "Makefile"
     );
 
     // Only py* repos considered — they match, so should succeed even though go-proj differs.
-    let output = run(utf8(&tmp), &cfg, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(
         output.status.success(),
         "stdout: {}\nstderr: {}",
@@ -557,7 +570,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(
         output.status.success(),
         "stdout: {}\nstderr: {}",
@@ -582,7 +595,7 @@ enabled = false
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(
         output.status.success(),
         "stdout: {}\nstderr: {}",
@@ -607,7 +620,7 @@ enabled = false
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--checks", "gi"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--checks", "gi"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -628,7 +641,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--verbose"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--verbose"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -654,7 +667,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--diff"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--diff"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     // Unified diff markers must appear.
@@ -691,7 +704,7 @@ path = ".gitignore"
 
     // stdin is the default (closed → EOF → treated as Quit).
     // The prompt for "diff from group" should still be visible in stdout.
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--diff"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--diff"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -721,7 +734,7 @@ path = ".gitignore"
     );
 
     // Without --diff, no unified-diff output.
-    let output = run(utf8(&tmp), &cfg, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(!stdout.contains("+++ "), "no diff without --diff: {stdout}");
@@ -743,7 +756,7 @@ path = "blob.bin"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--diff"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--diff"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(
@@ -768,7 +781,7 @@ path = ".gitignore"
     );
 
     // --terse takes precedence — only the rule name, no grouping output, no diff.
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--terse", "--diff"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--terse", "--diff"]);
     assert!(!output.status.success());
     assert_eq!(stdout_str(&output), "gi");
 }
@@ -789,7 +802,7 @@ path = ".gitignore"
     )
     .unwrap();
 
-    let output = run(utf8(&tmp), &cfg_path, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg_path, &["check", "same"]);
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(
@@ -815,7 +828,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(!output.status.success(), "empty rule should exit 1");
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -850,7 +863,7 @@ path = "Makefile"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(
@@ -874,7 +887,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(!output.status.success(), "empty rule should exit 1");
     let stdout = stdout_str(&output);
     assert!(stdout.contains("no files matched"), "stdout: {stdout}");
@@ -897,7 +910,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--allow-empty"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--allow-empty"]);
     assert!(
         output.status.success(),
         "stdout: {}\nstderr: {}",
@@ -927,7 +940,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--terse"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--terse"]);
     assert!(!output.status.success());
     assert_eq!(stdout_str(&output), "gi");
 }
@@ -948,7 +961,7 @@ must_have = true
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("missing in:"), "stdout: {stdout}");
@@ -958,7 +971,7 @@ must_have = true
     );
 }
 
-// ── config-example ───────────────────────────────────────────────────────────
+// ── setup config-sample ───────────────────────────────────────────────────────────
 
 #[test]
 fn config_example_does_not_require_existing_config() {
@@ -968,7 +981,7 @@ fn config_example_does_not_require_existing_config() {
     let missing = utf8(&tmp).join("does-not-exist.toml");
     let output = run_rsmultigit_with_env(
         utf8(&tmp),
-        &["config-example"],
+        &["setup", "config-sample"],
         &[("RSMULTIGIT_CONFIG", missing.as_str())],
     );
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
@@ -985,14 +998,14 @@ fn config_example_does_not_require_existing_config() {
 
 #[test]
 fn config_example_output_parses_as_valid_config() {
-    // Round-trip: config-example → write to disk → load with rsmultigit → works.
+    // Round-trip: setup config-sample → write to disk → load with rsmultigit → works.
     let tmp = setup_git_repos(&["a"]);
     fs::create_dir_all(utf8(&tmp).join("a/.github/workflows")).unwrap();
     fs::write(utf8(&tmp).join("a/.gitignore"), "x\n").unwrap();
 
     let example = run_rsmultigit_with_env(
         utf8(&tmp),
-        &["config-example"],
+        &["setup", "config-sample"],
         &[("RSMULTIGIT_CONFIG", "/nonexistent")],
     );
     assert!(example.status.success());
@@ -1004,9 +1017,9 @@ fn config_example_output_parses_as_valid_config() {
     let cfg_path = utf8(&tmp).join("config.toml");
     fs::write(&cfg_path, &rewritten).unwrap();
 
-    // Now a normal invocation using this config should parse it (list-checks is
+    // Now a normal invocation using this config should parse it (check list is
     // the cheapest command that reads the full config without doing much).
-    let output = run(utf8(&tmp), &cfg_path, &["list-checks"]);
+    let output = run(utf8(&tmp), &cfg_path, &["check", "list"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     // Should emit at least one rule name.
     assert!(!stdout_str(&output).is_empty());
@@ -1036,7 +1049,7 @@ fn regex_replace_repos_line(text: &str, dir: &Utf8Path) -> String {
     out
 }
 
-// ── list-checks ──────────────────────────────────────────────────────────────
+// ── check list ──────────────────────────────────────────────────────────────
 
 #[test]
 fn list_checks_prints_every_rule_name() {
@@ -1061,7 +1074,7 @@ select = "*"
 path = "c"
 "#,
     );
-    let output = run(utf8(&tmp), &cfg, &["list-checks"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "list"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     // Order should match config order, and disabled rules must still appear
     // (completion needs to offer them so they can be forced on via --checks).
@@ -1072,7 +1085,7 @@ path = "c"
 fn list_checks_empty_when_no_rules() {
     let tmp = setup_git_repos(&["a"]);
     let cfg = write_config(utf8(&tmp), "");
-    let output = run(utf8(&tmp), &cfg, &["list-checks"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "list"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     assert_eq!(stdout_str(&output), "");
 }
@@ -1101,7 +1114,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--diff"], b"A\nB\nn\n");
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check", "same", "--diff"], b"A\nB\nn\n");
     assert!(
         !output.status.success(),
         "non-copy invocation: mismatch → exit 1"
@@ -1146,7 +1159,7 @@ path = ".gitignore"
     let output = run_with_stdin(
         utf8(&tmp),
         &cfg,
-        &["check-same", "--diff"],
+        &["check", "same", "--diff"],
         b"A\nB\ny\nA\nC\nn\n",
     );
     let stdout = stdout_str(&output);
@@ -1177,7 +1190,7 @@ path = ".gitignore"
 
     // 2 groups: A = {a, b} (canonical, larger), B = {c} (stale).
     // Copy from A to B, confirm.
-    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--copy"], b"A\nB\ny\n");
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check", "same", "--copy"], b"A\nB\ny\n");
     assert!(
         output.status.success(),
         "--copy always exits 0: stderr={}",
@@ -1207,7 +1220,7 @@ path = ".gitignore"
     );
 
     // Pick A from, B to, but decline the confirmation.
-    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--copy"], b"A\nB\nn\n");
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check", "same", "--copy"], b"A\nB\nn\n");
     assert!(output.status.success());
     let a = fs::read_to_string(utf8(&tmp).join("a/.gitignore")).unwrap();
     let b = fs::read_to_string(utf8(&tmp).join("b/.gitignore")).unwrap();
@@ -1232,7 +1245,7 @@ path = ".gitignore"
     );
 
     // Quit immediately.
-    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--copy"], b"q\n");
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check", "same", "--copy"], b"q\n");
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
 }
 
@@ -1269,7 +1282,7 @@ select = "*"
 path = ".gitignore"
 "#,
     );
-    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--copy"], b"A\nB\ny\n");
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check", "same", "--copy"], b"A\nB\ny\n");
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
 
     let content = fs::read_to_string(utf8(&tmp).join("b1/.gitignore")).unwrap();
@@ -1313,7 +1326,7 @@ path = ".gitignore"
     );
 
     // Copy A → C, leave B alone.
-    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--copy"], b"A\nC\ny\n");
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check", "same", "--copy"], b"A\nC\ny\n");
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     assert_eq!(
         fs::read_to_string(utf8(&tmp).join("c1/.gitignore")).unwrap(),
@@ -1349,7 +1362,12 @@ path = ".gitignore"
 
     // User picks A for "from", then tries A again for "to" — should be rejected
     // and re-prompted. After re-prompt, pick B and confirm.
-    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--copy"], b"A\nA\nB\ny\n");
+    let output = run_with_stdin(
+        utf8(&tmp),
+        &cfg,
+        &["check", "same", "--copy"],
+        b"A\nA\nB\ny\n",
+    );
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     let stdout = stdout_str(&output);
     assert!(
@@ -1379,7 +1397,7 @@ path = ".gitignore"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(
         output.status.success(),
         "stdout: {}\nstderr: {}",
@@ -1403,7 +1421,7 @@ must_have = true
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(
         !output.status.success(),
         "must_have violation should exit 1"
@@ -1444,7 +1462,7 @@ must_have = true
     let output = run_with_stdin(
         utf8(&tmp),
         &cfg,
-        &["check-same", "--fix-missing"],
+        &["check", "same", "--fix-missing"],
         b"A\ny\n",
     );
     assert!(
@@ -1488,7 +1506,7 @@ must_have = true
     let output = run_with_stdin(
         utf8(&tmp),
         &cfg,
-        &["check-same", "--fix-missing"],
+        &["check", "same", "--fix-missing"],
         b"A\ny\n",
     );
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
@@ -1520,7 +1538,7 @@ must_have = true
     let output = run_with_stdin(
         utf8(&tmp),
         &cfg,
-        &["check-same", "--fix-missing"],
+        &["check", "same", "--fix-missing"],
         b"A\nn\n",
     );
     assert!(output.status.success());
@@ -1545,7 +1563,7 @@ must_have = true
 "#,
     );
 
-    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--fix-missing"], b"");
+    let output = run_with_stdin(utf8(&tmp), &cfg, &["check", "same", "--fix-missing"], b"");
     assert!(output.status.success(), "should still exit 0");
     let stdout = stdout_str(&output);
     assert!(
@@ -1572,7 +1590,12 @@ must_have = true
 "#,
     );
     // Quit immediately.
-    let output = run_with_stdin(utf8(&tmp), &cfg, &["check-same", "--fix-missing"], b"q\n");
+    let output = run_with_stdin(
+        utf8(&tmp),
+        &cfg,
+        &["check", "same", "--fix-missing"],
+        b"q\n",
+    );
     assert!(output.status.success());
 }
 
@@ -1599,7 +1622,7 @@ path = "README"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--short-circuit"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--short-circuit"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -1632,7 +1655,7 @@ path = "README"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--short-circuit"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--short-circuit"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");
@@ -1669,7 +1692,7 @@ path = "AUTHORS"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--short-circuit"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--short-circuit"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[readme]"), "stdout: {stdout}");
@@ -1703,7 +1726,7 @@ path = "README"
     let output = run(
         utf8(&tmp),
         &cfg,
-        &["check-same", "--terse", "--short-circuit"],
+        &["check", "same", "--terse", "--short-circuit"],
     );
     assert!(!output.status.success());
     assert_eq!(stdout_str(&output), "gi");
@@ -1731,7 +1754,7 @@ path = "README"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same", "--short-circuit"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same", "--short-circuit"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("no files matched"), "stdout: {stdout}");
@@ -1760,7 +1783,7 @@ path = "README"
 "#,
     );
 
-    let output = run(utf8(&tmp), &cfg, &["check-same"]);
+    let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("[gi]"), "stdout: {stdout}");

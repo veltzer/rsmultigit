@@ -11,8 +11,8 @@ use clap::Parser;
 use clap::error::{ContextKind, ContextValue, ErrorKind};
 
 use cli::{
-    BranchWhat, BuildWhat, CleanWhat, Cli, Commands, CountWhat, GhWhat, GitCommand, ResetWhat,
-    RuleKind, RustWhat, StashWhat, TagWhat, UvWhat,
+    BranchWhat, BuildWhat, CargoWhat, CheckCommand, CleanWhat, Cli, Commands, CountWhat, GhWhat,
+    GitCommand, ReleaseType, ResetWhat, RuleKind, SetupCommand, StashWhat, TagWhat, UvWhat,
 };
 use commands::check_run::{self, CheckExistsOpts, CheckSameOpts};
 use config::AppConfig;
@@ -74,32 +74,33 @@ fn main() -> Result<()> {
         println!("BUILD_TIMESTAMP: {}", env!("BUILD_TIMESTAMP"));
         return Ok(());
     }
-    if matches!(&cli.command, Commands::ConfigExample) {
-        // Doesn't need (and must not require) a config file — this subcommand
-        // is how a fresh user bootstraps their ~/.config/rsmultigit/config.toml.
-        print!("{}", include_str!("../assets/config-example.toml"));
-        return Ok(());
-    }
-    if let Commands::Setup {
-        repos_dir,
-        build,
-        no_build,
-        overwrite,
-    } = &cli.command
-    {
-        // Same: setup is what writes the config file in the first place, so
-        // it runs before anything tries to read one.
-        let opts = commands::setup::SetupOpts {
-            repos_dir: repos_dir.clone(),
-            build: match (build, no_build) {
-                (Some(m), _) => Some(Some(*m)),
-                (None, true) => Some(None),
-                (None, false) => None,
-            },
-            overwrite: *overwrite,
-        };
-        let config_path = commands::check::default_config_path()?;
-        return commands::setup::run(&opts, &config_path, &mut std::io::stdout().lock());
+    if let Commands::Setup { command } = &cli.command {
+        // Neither needs (nor may require) a config file: producing one is
+        // how a fresh user bootstraps their ~/.config/rsmultigit/config.toml.
+        match command {
+            SetupCommand::ConfigSample => {
+                print!("{}", include_str!("../assets/config-example.toml"));
+                return Ok(());
+            }
+            SetupCommand::Interactive {
+                repos_dir,
+                build,
+                no_build,
+                overwrite,
+            } => {
+                let opts = commands::setup::SetupOpts {
+                    repos_dir: repos_dir.clone(),
+                    build: match (build, no_build) {
+                        (Some(m), _) => Some(Some(*m)),
+                        (None, true) => Some(None),
+                        (None, false) => None,
+                    },
+                    overwrite: *overwrite,
+                };
+                let config_path = commands::check::default_config_path()?;
+                return commands::setup::run(&opts, &config_path, &mut std::io::stdout().lock());
+            }
+        }
     }
 
     let config = AppConfig::from(&cli);
@@ -109,137 +110,11 @@ fn main() -> Result<()> {
     let file_config = commands::check::load_config(&config_path)?;
     let projects = commands::check::resolve_repos(&file_config)?;
 
-    // The check commands are organised by rule rather than by repo and own
-    // their exit codes, so they bypass the runners. Prompts (--diff, --copy,
-    // --fix-missing) are served from stdin; everything is written to stdout.
-    let stdin = std::io::stdin();
-    let stdout = std::io::stdout();
-
-    if let Commands::CheckSame {
-        checks,
-        checks_re,
-        only_failed,
-        diff,
-        copy,
-        allow_empty,
-        fix_missing,
-    } = &cli.command
-    {
-        let exit_code = check_run::run_check_same(
-            &config,
-            &file_config,
-            &projects,
-            &CheckSameOpts {
-                requested: checks,
-                requested_re: checks_re,
-                only_failed: *only_failed,
-                show_diff: *diff,
-                do_copy: *copy,
-                allow_empty: *allow_empty,
-                do_fix_missing: *fix_missing,
-            },
-            &mut stdin.lock(),
-            &mut stdout.lock(),
-        )?;
-        std::process::exit(exit_code);
-    }
-
-    if let Commands::CheckExists {
-        checks,
-        checks_re,
-        only_failed,
-        allow_empty,
-    } = &cli.command
-    {
-        let exit_code = check_run::run_check_exists(
-            &config,
-            &file_config,
-            &projects,
-            &CheckExistsOpts {
-                requested: checks,
-                requested_re: checks_re,
-                only_failed: *only_failed,
-                allow_empty: *allow_empty,
-            },
-            &mut stdout.lock(),
-        )?;
-        std::process::exit(exit_code);
-    }
-
-    if let Commands::CheckAll {
-        only_failed,
-        allow_empty,
-    } = &cli.command
-    {
-        // Both halves always run: the point of check-all is one verdict over
-        // every invariant, so a failure in the first must not hide the state of
-        // the second. An empty-rule bail in either half still propagates as an
-        // error, since that is a config bug rather than drift.
-        let same = check_run::run_check_same(
-            &config,
-            &file_config,
-            &projects,
-            &CheckSameOpts {
-                requested: &[],
-                requested_re: &[],
-                only_failed: *only_failed,
-                show_diff: false,
-                do_copy: false,
-                allow_empty: *allow_empty,
-                do_fix_missing: false,
-            },
-            &mut stdin.lock(),
-            &mut stdout.lock(),
-        )?;
-        let exists = check_run::run_check_exists(
-            &config,
-            &file_config,
-            &projects,
-            &CheckExistsOpts {
-                requested: &[],
-                requested_re: &[],
-                only_failed: *only_failed,
-                allow_empty: *allow_empty,
-            },
-            &mut stdout.lock(),
-        )?;
-        std::process::exit(if same != 0 || exists != 0 { 1 } else { 0 });
+    if let Commands::Check { command } = &cli.command {
+        return run_check_command(&config, &file_config, &projects, command);
     }
 
     match &cli.command {
-        // ── do_count ──
-        Commands::Count { what } => {
-            let test_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
-                CountWhat::Dirty => commands::count::is_dirty,
-                CountWhat::Untracked => commands::count::has_untracked,
-                CountWhat::Synchronized => commands::count::non_synchronized,
-            };
-            runner::do_count(&config, &projects, test_fn)?;
-        }
-
-        // ── print_if_data ──
-        Commands::Status => {
-            // Default: one-line summary of each repo's situation (counts of
-            // modified/staged/untracked files, ahead/behind). --verbose switches
-            // to the full `git status -s` per-file output.
-            if config.verbose {
-                runner::print_if_data(&config, &projects, commands::status::do_status)?;
-            } else {
-                runner::print_if_data(&config, &projects, commands::status::do_status_summary)?;
-            }
-        }
-        Commands::Dirty => {
-            runner::print_if_data(&config, &projects, commands::status::do_dirty)?;
-        }
-        Commands::ListChecks { kind } => {
-            let names: Vec<&str> = match kind {
-                RuleKind::Check => file_config.check.iter().map(|r| r.name.as_str()).collect(),
-                RuleKind::Exists => file_config.exists.iter().map(|r| r.name.as_str()).collect(),
-            };
-            for name in names {
-                println!("{name}");
-            }
-        }
         Commands::ListRepos => {
             // Prints one path per line with no header — the project path *is* the data,
             // so the bracketed header would be redundant. --verbose re-enables the
@@ -250,18 +125,6 @@ fn main() -> Result<()> {
                 }
                 println!("{}", project);
             }
-        }
-        Commands::Age => {
-            runner::print_if_data(&config, &projects, commands::age::do_age)?;
-        }
-        Commands::Authors => {
-            runner::print_if_data(&config, &projects, commands::authors::do_authors)?;
-        }
-        Commands::Size => {
-            runner::print_if_data(&config, &projects, commands::size::do_size)?;
-        }
-        Commands::LastTag => {
-            runner::print_if_data(&config, &projects, commands::last_tag::do_last_tag)?;
         }
 
         // ── do_for_all_projects ──
@@ -323,22 +186,6 @@ fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Rust { what, release_type } => match what {
-            RustWhat::Publish => {
-                // Preflight once: cargo-release present, crates.io token in
-                // hand. Only then start bumping versions.
-                let release = commands::rust::Release::prepare(
-                    release_type.as_str(),
-                    &file_config.crates_io_pass_entry,
-                )?;
-                runner::do_for_all_projects_with_check(
-                    &config,
-                    &projects,
-                    commands::rust::check_publishable,
-                    |project: &Utf8Path| -> anyhow::Result<()> { release.run(project) },
-                )?;
-            }
-        },
 
         // ── build commands ──
         Commands::Build { what } => {
@@ -438,10 +285,14 @@ fn main() -> Result<()> {
             release,
             profile,
             check,
+            release_type,
         } => {
             let what = *what;
             let release = *release;
             let check = *check;
+            if release_type.is_some() && !what.takes_type() {
+                anyhow::bail!("--type only applies to `cargo release`");
+            }
             if (release || profile.is_some()) && !what.takes_release() {
                 anyhow::bail!(
                     "--release and --profile only apply to `cargo build`, `check`, `clippy`, `test`, `nextest` and `doc`"
@@ -450,6 +301,21 @@ fn main() -> Result<()> {
             let profile = commands::cargo::Profile::from_flags(release, profile.as_deref());
             if check && !what.takes_check() {
                 anyhow::bail!("--check only applies to `cargo fmt`");
+            }
+            if what == CargoWhat::Release {
+                // Preflight once: cargo-release present, crates.io token in
+                // hand. Only then start bumping versions.
+                let release = commands::release::Release::prepare(
+                    release_type.unwrap_or(ReleaseType::Patch).as_str(),
+                    &file_config.crates_io_pass_entry,
+                )?;
+                runner::do_for_all_projects_with_check(
+                    &config,
+                    &projects,
+                    commands::release::check_publishable,
+                    |project: &Utf8Path| -> anyhow::Result<()> { release.run(project) },
+                )?;
+                return Ok(());
             }
             let venv = config.venv;
             runner::do_for_all_projects_with_check(
@@ -479,11 +345,8 @@ fn main() -> Result<()> {
             )?;
         }
 
-        Commands::CheckSame { .. } => unreachable!("handled above"),
-        Commands::CheckExists { .. } => unreachable!("handled above"),
-        Commands::CheckAll { .. } => unreachable!("handled above"),
+        Commands::Check { .. } => unreachable!("handled above"),
         Commands::Complete { .. } => unreachable!("handled above"),
-        Commands::ConfigExample => unreachable!("handled above"),
         Commands::Setup { .. } => unreachable!("handled above"),
         Commands::Version => unreachable!("handled above"),
     }
@@ -491,14 +354,159 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// The `git` group: each subcommand runs the git command of the same name
-/// in every repo.
+/// The `check` group. The check commands are organised by rule rather than
+/// by repo and own their exit codes, so they bypass the runners. Prompts
+/// (--diff, --copy, --fix-missing) are served from stdin; everything is
+/// written to stdout.
+fn run_check_command(
+    config: &AppConfig,
+    file_config: &commands::check::CheckConfig,
+    projects: &[Utf8PathBuf],
+    command: &CheckCommand,
+) -> Result<()> {
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    let exit_code = match command {
+        CheckCommand::Same {
+            checks,
+            checks_re,
+            only_failed,
+            diff,
+            copy,
+            allow_empty,
+            fix_missing,
+        } => check_run::run_check_same(
+            config,
+            file_config,
+            projects,
+            &CheckSameOpts {
+                requested: checks,
+                requested_re: checks_re,
+                only_failed: *only_failed,
+                show_diff: *diff,
+                do_copy: *copy,
+                allow_empty: *allow_empty,
+                do_fix_missing: *fix_missing,
+            },
+            &mut stdin.lock(),
+            &mut stdout.lock(),
+        )?,
+        CheckCommand::Exists {
+            checks,
+            checks_re,
+            only_failed,
+            allow_empty,
+        } => check_run::run_check_exists(
+            config,
+            file_config,
+            projects,
+            &CheckExistsOpts {
+                requested: checks,
+                requested_re: checks_re,
+                only_failed: *only_failed,
+                allow_empty: *allow_empty,
+            },
+            &mut stdout.lock(),
+        )?,
+        CheckCommand::All {
+            only_failed,
+            allow_empty,
+        } => {
+            // Both halves always run: the point of `check all` is one verdict
+            // over every invariant, so a failure in the first must not hide
+            // the state of the second. An empty-rule bail in either half still
+            // propagates as an error, since that is a config bug rather than
+            // drift.
+            let same = check_run::run_check_same(
+                config,
+                file_config,
+                projects,
+                &CheckSameOpts {
+                    requested: &[],
+                    requested_re: &[],
+                    only_failed: *only_failed,
+                    show_diff: false,
+                    do_copy: false,
+                    allow_empty: *allow_empty,
+                    do_fix_missing: false,
+                },
+                &mut stdin.lock(),
+                &mut stdout.lock(),
+            )?;
+            let exists = check_run::run_check_exists(
+                config,
+                file_config,
+                projects,
+                &CheckExistsOpts {
+                    requested: &[],
+                    requested_re: &[],
+                    only_failed: *only_failed,
+                    allow_empty: *allow_empty,
+                },
+                &mut stdout.lock(),
+            )?;
+            if same != 0 || exists != 0 { 1 } else { 0 }
+        }
+        CheckCommand::List { kind } => {
+            let names: Vec<&str> = match kind {
+                RuleKind::Check => file_config.check.iter().map(|r| r.name.as_str()).collect(),
+                RuleKind::Exists => file_config.exists.iter().map(|r| r.name.as_str()).collect(),
+            };
+            for name in names {
+                println!("{name}");
+            }
+            return Ok(());
+        }
+    };
+    std::process::exit(exit_code);
+}
+
+/// The `git` group: the libgit2 reports, then the subcommands that run the
+/// git command of the same name in every repo.
 fn run_git_command(
     config: &AppConfig,
     projects: &[Utf8PathBuf],
     command: &GitCommand,
 ) -> Result<()> {
     match command {
+        // ── do_count ──
+        GitCommand::Count { what } => {
+            let test_fn: fn(&Utf8Path) -> anyhow::Result<bool> = match what {
+                CountWhat::Dirty => commands::count::is_dirty,
+                CountWhat::Untracked => commands::count::has_untracked,
+                CountWhat::Synchronized => commands::count::non_synchronized,
+            };
+            runner::do_count(config, projects, test_fn)?;
+        }
+
+        // ── print_if_data ──
+        GitCommand::Status => {
+            // Default: one-line summary of each repo's situation (counts of
+            // modified/staged/untracked files, ahead/behind). --verbose switches
+            // to the full `git status -s` per-file output.
+            if config.verbose {
+                runner::print_if_data(config, projects, commands::status::do_status)?;
+            } else {
+                runner::print_if_data(config, projects, commands::status::do_status_summary)?;
+            }
+        }
+        GitCommand::Dirty => {
+            runner::print_if_data(config, projects, commands::status::do_dirty)?;
+        }
+        GitCommand::Age => {
+            runner::print_if_data(config, projects, commands::age::do_age)?;
+        }
+        GitCommand::Authors => {
+            runner::print_if_data(config, projects, commands::authors::do_authors)?;
+        }
+        GitCommand::Size => {
+            runner::print_if_data(config, projects, commands::size::do_size)?;
+        }
+        GitCommand::LastTag => {
+            runner::print_if_data(config, projects, commands::last_tag::do_last_tag)?;
+        }
+
+        // ── git commands ──
         GitCommand::Config { key } => {
             let key = key.clone();
             runner::print_if_data(config, projects, move |project: &Utf8Path| {

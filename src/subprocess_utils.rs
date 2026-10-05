@@ -84,7 +84,7 @@ pub fn check_call(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<()> {
 
 /// Like `check_call`, with `envs` set in the environment of that one child
 /// process (and whatever it spawns in turn). This is how a secret fetched at
-/// run time reaches a tool without touching disk: `rust publish` hands the
+/// run time reaches a tool without touching disk: `cargo release` hands the
 /// crates.io token to `cargo release` this way.
 pub fn check_call_with_env(
     cwd: &Utf8Path,

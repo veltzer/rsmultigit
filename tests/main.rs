@@ -13,12 +13,12 @@ mod count;
 mod docs;
 #[path = "tests_mod/inspect.rs"]
 mod inspect;
+#[path = "tests_mod/release.rs"]
+mod release;
 #[path = "tests_mod/remote.rs"]
 mod remote;
 #[path = "tests_mod/run.rs"]
 mod run;
-#[path = "tests_mod/rust.rs"]
-mod rust;
 #[path = "tests_mod/setup.rs"]
 mod setup;
 #[path = "tests_mod/status.rs"]

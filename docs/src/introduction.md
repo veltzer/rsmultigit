@@ -13,8 +13,8 @@ with native performance.
   libgit2 in-process, avoiding a `git` subprocess per repo
 - **Bulk operations** — pull, push, fetch, diff, grep, clean, commit, stash,
   reset, and branch inspection across all repos
-- **Consistency checks** — `check-same` verifies that shared files are
-  byte-identical across the fleet, `check-exists` verifies that required files
+- **Consistency checks** — `check same` verifies that shared files are
+  byte-identical across the fleet, `check exists` verifies that required files
   are present, and interactive `--diff`, `--copy` and `--fix-missing` modes
   repair drift
 - **Build orchestration** — run make, rsconstruct, cargo, or bootstrap across

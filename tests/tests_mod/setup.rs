@@ -1,4 +1,4 @@
-//! `rsmultigit setup`, driven non-interactively: the tests have no terminal,
+//! `rsmultigit setup interactive`, driven non-interactively: the tests have no terminal,
 //! so every answer comes from a flag and the prompts are never reached.
 
 use std::fs;
@@ -16,7 +16,14 @@ fn setup_writes_a_config_the_other_commands_can_use() {
 
     let output = run_rsmultigit_with_env(
         root,
-        &["setup", "--repos-dir", root.as_str(), "--build", "cargo"],
+        &[
+            "setup",
+            "interactive",
+            "--repos-dir",
+            root.as_str(),
+            "--build",
+            "cargo",
+        ],
         &[("RSMULTIGIT_CONFIG", cfg.as_str())],
     );
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
@@ -57,7 +64,13 @@ fn setup_no_build_leaves_the_default_method_unset() {
     let cfg = root.join("config.toml");
     let output = run_rsmultigit_with_env(
         root,
-        &["setup", "--repos-dir", root.as_str(), "--no-build"],
+        &[
+            "setup",
+            "interactive",
+            "--repos-dir",
+            root.as_str(),
+            "--no-build",
+        ],
         &[("RSMULTIGIT_CONFIG", cfg.as_str())],
     );
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
@@ -80,6 +93,7 @@ fn setup_build_and_no_build_are_exclusive() {
         root,
         &[
             "setup",
+            "interactive",
             "--repos-dir",
             root.as_str(),
             "--build",
@@ -106,7 +120,7 @@ fn setup_without_a_terminal_names_the_missing_flag() {
     // Repos dir missing: the first question would be asked.
     let output = run_rsmultigit_with_env(
         root,
-        &["setup", "--no-build"],
+        &["setup", "interactive", "--no-build"],
         &[("RSMULTIGIT_CONFIG", cfg.as_str())],
     );
     assert!(!output.status.success());
@@ -116,7 +130,7 @@ fn setup_without_a_terminal_names_the_missing_flag() {
     // Build method missing: the second question would be asked.
     let output = run_rsmultigit_with_env(
         root,
-        &["setup", "--repos-dir", root.as_str()],
+        &["setup", "interactive", "--repos-dir", root.as_str()],
         &[("RSMULTIGIT_CONFIG", cfg.as_str())],
     );
     assert!(!output.status.success());
@@ -134,7 +148,13 @@ fn setup_refuses_a_directory_without_repos() {
     let cfg = root.join("config.toml");
     let output = run_rsmultigit_with_env(
         root,
-        &["setup", "--repos-dir", root.as_str(), "--no-build"],
+        &[
+            "setup",
+            "interactive",
+            "--repos-dir",
+            root.as_str(),
+            "--no-build",
+        ],
         &[("RSMULTIGIT_CONFIG", cfg.as_str())],
     );
     assert!(!output.status.success());
@@ -149,6 +169,7 @@ fn setup_refuses_a_directory_without_repos() {
         root,
         &[
             "setup",
+            "interactive",
             "--repos-dir",
             root.join("missing").as_str(),
             "--no-build",
@@ -172,7 +193,13 @@ fn setup_keeps_an_existing_config_unless_overwrite() {
 
     let output = run_rsmultigit_with_env(
         root,
-        &["setup", "--repos-dir", root.as_str(), "--no-build"],
+        &[
+            "setup",
+            "interactive",
+            "--repos-dir",
+            root.as_str(),
+            "--no-build",
+        ],
         &[("RSMULTIGIT_CONFIG", cfg.as_str())],
     );
     assert!(!output.status.success());
@@ -190,6 +217,7 @@ fn setup_keeps_an_existing_config_unless_overwrite() {
         root,
         &[
             "setup",
+            "interactive",
             "--repos-dir",
             root.as_str(),
             "--no-build",
@@ -207,7 +235,7 @@ fn setup_keeps_an_existing_config_unless_overwrite() {
 
 #[test]
 fn setup_does_not_need_an_existing_config() {
-    // Like config-example: a broken or missing config file must not stop the
+    // Like setup config-sample: a broken or missing config file must not stop the
     // command that exists to write one.
     let tmp = setup_git_repos(&["a"]);
     let root = utf8(&tmp);
@@ -217,6 +245,7 @@ fn setup_does_not_need_an_existing_config() {
         root,
         &[
             "setup",
+            "interactive",
             "--repos-dir",
             root.as_str(),
             "--no-build",

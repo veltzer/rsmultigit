@@ -1,10 +1,10 @@
 # Example rsmultigit config. This same text is available from a running binary
-# via `rsmultigit config-example`, so to bootstrap:
+# via `rsmultigit setup config-sample`, so to bootstrap:
 #
 #   mkdir -p ~/.config/rsmultigit
-#   rsmultigit config-example > ~/.config/rsmultigit/config.toml
+#   rsmultigit setup config-sample > ~/.config/rsmultigit/config.toml
 #
-# `rsmultigit setup` writes a minimal config interactively instead (it asks
+# `rsmultigit setup interactive` writes a minimal config interactively instead (it asks
 # for the repositories directory and the default build tool).
 #
 # The config location is fixed — there is no --config flag. Every rsmultigit
@@ -19,13 +19,13 @@
 # given on the command line always wins over it. Without this key, a bare
 # `rsmultigit build` is an error.
 #
-# `crates_io_pass_entry` (optional) is the pass(1) entry `rsmultigit rust
-# publish` reads the crates.io token from, when CARGO_REGISTRY_TOKEN is not
+# `crates_io_pass_entry` (optional) is the pass(1) entry `rsmultigit cargo
+# release` reads the crates.io token from, when CARGO_REGISTRY_TOKEN is not
 # already set in the environment. The token is handed to `cargo release`
 # through its environment only and never written to disk. Default:
 # keys/crates.io.
 #
-# `[[check]]` blocks are consumed only by `rsmultigit check-same`, which verifies
+# `[[check]]` blocks are consumed only by `rsmultigit check same`, which verifies
 # that a given path has identical content across a selection of repos.
 #
 # Selection primitives (per check rule):
@@ -41,7 +41,7 @@
 #                still be forced on with `--checks <name...>` for ad-hoc checks.
 #   must_have  — bool (default false). When true, every in-scope repo must contain
 #                `path`; missing files become rule violations (reported as "missing in:"
-#                and counted as mismatches). `check-same --fix-missing` will walk
+#                and counted as mismatches). `check same --fix-missing` will walk
 #                those violators interactively and create the file from a chosen
 #                seed group.
 #
@@ -50,7 +50,7 @@
 # Repos that don't contain `path` are silently skipped when must_have = false.
 #
 # A rule that ends up matching no files at all fails ("no files matched") —
-# that usually means a stale select/path. Pass `check-same --allow-empty` to
+# that usually means a stale select/path. Pass `check same --allow-empty` to
 # let such rules pass as `ok (0 files)` instead.
 
 repos = [
@@ -60,7 +60,7 @@ repos = [
 # `rsmultigit build` with no method means `rsmultigit build rsconstruct`.
 default_build_method = "rsconstruct"
 
-# `rsmultigit rust publish` runs `pass show keys/crates.io` for the token.
+# `rsmultigit cargo release` runs `pass show keys/crates.io` for the token.
 crates_io_pass_entry = "keys/crates.io"
 
 # ── shared dev-tooling configs across all repos ───────────────────────────────
@@ -230,7 +230,7 @@ select = "rs*"
 path = "release.toml"
 must_have = true
 
-# ── presence-only rules, consumed by `check-exists` ───────────────────────────
+# ── presence-only rules, consumed by `check exists` ───────────────────────────
 #
 # An [[exists]] rule asserts that every repo it selects contains `path`, and
 # never looks at the content. Use it for files that must exist but legitimately
@@ -241,7 +241,7 @@ must_have = true
 # marker_absent and enabled all mean the same thing. There is no `must_have`
 # field, because requiring the file is the whole rule.
 #
-# `rsmultigit check-all` runs the [[check]] and [[exists]] rules together.
+# `rsmultigit check all` runs the [[check]] and [[exists]] rules together.
 
 [[exists]]
 name = "readme-present"

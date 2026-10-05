@@ -1,4 +1,4 @@
-//! Tiny interactive-prompt helpers used by `check-same --diff` / `--copy`.
+//! Tiny interactive-prompt helpers used by `check same --diff` / `--copy`.
 //!
 //! All prompt functions are parameterised on a `BufRead` reader and a `Write`
 //! writer so tests can drive them with `Cursor` buffers without touching stdin.
@@ -16,7 +16,7 @@ pub enum Choice<T> {
 }
 
 /// Convert zero-based group index to the `A`, `B`, ..., `Z`, `AA`, `AB`, ...
-/// label used everywhere else in check-same.
+/// label used everywhere else in check same.
 pub fn group_label(i: usize) -> String {
     let mut n = i;
     let mut s = String::new();

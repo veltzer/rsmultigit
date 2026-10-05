@@ -11,7 +11,7 @@ repositories are (with tab completion), checks that git repos are really
 there, and lets you pick the default build tool from a menu:
 
 ```bash
-rsmultigit setup
+rsmultigit setup interactive
 ```
 
 Or bootstrap the file from the fully commented built-in example and edit the
@@ -19,7 +19,7 @@ Or bootstrap the file from the fully commented built-in example and edit the
 
 ```bash
 mkdir -p ~/.config/rsmultigit
-rsmultigit config-example > ~/.config/rsmultigit/config.toml
+rsmultigit setup config-sample > ~/.config/rsmultigit/config.toml
 ```
 
 The minimum useful config is one glob:
@@ -40,7 +40,7 @@ rsmultigit list-repos
 See which repos need attention, one line per repo:
 
 ```bash
-rsmultigit status
+rsmultigit git status
 # [/home/me/git/myrepo]
 # 2 modified, 1 untracked, ahead 1
 ```
@@ -51,9 +51,9 @@ Clean, in-sync repos print nothing. Pass `--verbose` for the full
 Count repos with uncommitted changes, untracked files, or unpushed commits:
 
 ```bash
-rsmultigit count dirty
-rsmultigit count untracked
-rsmultigit count synchronized      # repos ahead of or behind their upstream
+rsmultigit git count dirty
+rsmultigit git count untracked
+rsmultigit git count synchronized      # repos ahead of or behind their upstream
 ```
 
 Each prints the matching repos followed by a `matched/total` line.
@@ -106,9 +106,9 @@ path = ".gitignore"
 ```
 
 ```bash
-rsmultigit check-same              # report every rule
-rsmultigit check-same --diff       # show what differs
-rsmultigit check-same --copy       # interactively copy one version over the others
+rsmultigit check same              # report every rule
+rsmultigit check same --diff       # show what differs
+rsmultigit check same --copy       # interactively copy one version over the others
 ```
 
 See [Configuration](configuration.md) for `[[check]]` and `[[exists]]` rules.

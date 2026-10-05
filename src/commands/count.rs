@@ -113,7 +113,7 @@ fn upstream_oid(repo: &Repository, head: &git2::Reference<'_>) -> Option<git2::O
 
 /// Returns true if the local branch is NOT synchronized with its upstream,
 /// i.e. is ahead of or behind it. A repo with no upstream has nothing to be
-/// out of sync with and is not counted, which is how `status` and `push`
+/// out of sync with and is not counted, which is how `git status` and `git push`
 /// treat it too.
 pub fn non_synchronized(project: &Utf8Path) -> Result<bool> {
     match ahead_behind(project)? {

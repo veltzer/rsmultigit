@@ -2,17 +2,17 @@
 
 ## What is this project?
 
-A Rust CLI tool for managing multiple Git repositories at once. Reads the list of target repos from `~/.config/rsmultigit/config.toml` and runs bulk operations (status, pull, build, grep, check-same, etc.) across all of them. Rewrite of [pymultigit](https://github.com/veltzer/pymultigit) for native speed.
+A Rust CLI tool for managing multiple Git repositories at once. Reads the list of target repos from `~/.config/rsmultigit/config.toml` and runs bulk operations (status, pull, build, grep, check same, etc.) across all of them. Rewrite of [pymultigit](https://github.com/veltzer/pymultigit) for native speed.
 
 ## Configuration
 
-rsmultigit requires a config file at `~/.config/rsmultigit/config.toml`. Tests override this via the `RSMULTIGIT_CONFIG` env var. Run `rsmultigit config-example` to print a worked example; its source is `assets/config-example.toml` (embedded at compile time via `include_str!`). `rsmultigit setup` (`commands/setup.rs`, prompts via `inquire`) writes a minimal config interactively; every question has a flag (`--repos-dir`, `--build`/`--no-build`, `--overwrite`) so tests drive it without a terminal.
+rsmultigit requires a config file at `~/.config/rsmultigit/config.toml`. Tests override this via the `RSMULTIGIT_CONFIG` env var. Run `rsmultigit setup config-sample` to print a worked example; its source is `assets/config-example.toml` (embedded at compile time via `include_str!`). `rsmultigit setup interactive` (`commands/setup.rs`, prompts via `inquire`) writes a minimal config interactively; every question has a flag (`--repos-dir`, `--build`/`--no-build`, `--overwrite`) so tests drive it without a terminal.
 
 - `repos = [...]` — list of shell-expanded globs. Matches that aren't git repos are filtered out.
 - `default_build_method = "..."` — optional; what a bare `rsmultigit build` runs (same spellings as the CLI: `bootstrap`, `make`, `rsconstruct`, `cargo`). Deserialized straight into `cli::BuildWhat`, so the CLI enum and the config key can never drift. An explicit method on the command line wins.
-- `crates_io_pass_entry = "..."` — optional, default `keys/crates.io`; the pass(1) entry `rust publish` reads the crates.io token from when `CARGO_REGISTRY_TOKEN` is unset. The token only ever travels through the child process environment.
-- `[[check]]` blocks — consumed by `check-same` (and `check-all`). Fields: `name`, `select`, `exclude?`, `marker?`, `marker_absent?` (drop repos containing this file — the in-repo opt-out, e.g. `.noci`), `path`, `enabled?` (default true), `must_have?` (default false; when true, in-scope repos missing `path` are violations).
-- `[[exists]]` blocks — consumed by `check-exists` (and `check-all`). Presence-only: they assert every selected repo has `path`, and never compare content, which is what makes them right for files that legitimately differ per repo (README.md). Same selection fields as `[[check]]` (`name`, `select`, `exclude?`, `marker?`, `marker_absent?`, `path`, `enabled?`); no `must_have`, since requiring the file is the whole rule.
+- `crates_io_pass_entry = "..."` — optional, default `keys/crates.io`; the pass(1) entry `cargo release` reads the crates.io token from when `CARGO_REGISTRY_TOKEN` is unset. The token only ever travels through the child process environment.
+- `[[check]]` blocks — consumed by `check same` (and `check all`). Fields: `name`, `select`, `exclude?`, `marker?`, `marker_absent?` (drop repos containing this file — the in-repo opt-out, e.g. `.noci`), `path`, `enabled?` (default true), `must_have?` (default false; when true, in-scope repos missing `path` are violations).
+- `[[exists]]` blocks — consumed by `check exists` (and `check all`). Presence-only: they assert every selected repo has `path`, and never compare content, which is what makes them right for files that legitimately differ per repo (README.md). Same selection fields as `[[check]]` (`name`, `select`, `exclude?`, `marker?`, `marker_absent?`, `path`, `enabled?`); no `must_have`, since requiring the file is the whole rule.
 
 ## Build & Test
 
@@ -68,7 +68,7 @@ All commands use one of three patterns in `runner.rs`:
 
 This repo uses the canonical `.github/workflows/ci.yml` shared byte-identically
 by all rs* repos (canonical copy in rsconstruct — edit it there, not here; the
-`rs-workflow-ci` rule in `check-same` guards against drift). The same applies
+`rs-workflow-ci` rule in `check same` guards against drift). The same applies
 to `build.rs`, `release.toml`, `deny.toml`, `.config/nextest.toml`,
 `scripts/ci-install-tools.sh` and `docs/src/release-info.md`.
 
@@ -94,10 +94,10 @@ Runtime deps — keep it minimal:
 - `glob` — pattern matching
 - `anyhow` — error handling
 - `serde` + `toml` — config-file parsing
-- `sha2` — SHA-256 hashing for `check-same`
+- `sha2` — SHA-256 hashing for `check same`
 - `shellexpand` — tilde/env expansion in config paths
 - `regex-lite` — `--checks-re` rule matching
-- `similar` — unified diffs for `check-same --diff`
+- `similar` — unified diffs for `check same --diff`
 - `camino` — UTF-8 paths throughout
 - `indicatif` — progress bar in the parallel runner
 

@@ -27,11 +27,13 @@ fn every_subcommand_has_a_heading_in_the_command_reference() {
     let tmp = tempfile::TempDir::new().unwrap();
     let docs = commands_md();
     let headings: Vec<&str> = docs.lines().filter(|l| l.starts_with('#')).collect();
-    // The top level, then the `git` group, whose subcommands are documented
-    // under `rsmultigit git <name>` headings.
+    // The top level, then the groups, whose subcommands are documented
+    // under `rsmultigit <group> <name>` headings.
     for (args, prefix, at_least) in [
-        (&["--help"][..], "rsmultigit", 20),
-        (&["git", "--help"][..], "rsmultigit git", 15),
+        (&["--help"][..], "rsmultigit", 10),
+        (&["git", "--help"][..], "rsmultigit git", 20),
+        (&["check", "--help"][..], "rsmultigit check", 3),
+        (&["setup", "--help"][..], "rsmultigit setup", 1),
     ] {
         let output = run_rsmultigit(crate::common::utf8(&tmp), args);
         assert!(output.status.success());
@@ -42,7 +44,7 @@ fn every_subcommand_has_a_heading_in_the_command_reference() {
             .iter()
             .filter(|name| name.as_str() != "help")
             .filter(|name| {
-                // `rsmultigit config ` must not be satisfied by `config-example`.
+                // `rsmultigit git config ` must not be satisfied by a `config-…` heading.
                 let with_space = format!("`{prefix} {name} ");
                 let with_tick = format!("`{prefix} {name}`");
                 !headings
@@ -62,7 +64,7 @@ fn every_global_flag_is_in_the_command_reference() {
     let tmp = tempfile::TempDir::new().unwrap();
     // Any subcommand's short help lists the global flags; `age` has none of
     // its own, so everything under Options: is global (plus --help).
-    let output = run_rsmultigit(crate::common::utf8(&tmp), &["age", "-h"]);
+    let output = run_rsmultigit(crate::common::utf8(&tmp), &["git", "age", "-h"]);
     assert!(output.status.success());
     let help = stdout_str(&output);
     let options = help

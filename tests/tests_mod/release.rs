@@ -1,4 +1,4 @@
-//! `rust publish` end to end, against a fake toolchain on PATH: a `cargo`
+//! `cargo release` end to end, against a fake toolchain on PATH: a `cargo`
 //! that records how it was called, a `cargo-release` that merely exists, and
 //! a `pass` that hands out a known token. Nothing here talks to crates.io.
 
@@ -16,7 +16,7 @@ fn script(bin: &Utf8Path, name: &str, body: &str) {
     fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-/// A bin dir with the three tools `rust publish` needs. The fake `cargo`
+/// A bin dir with the three tools `cargo release` needs. The fake `cargo`
 /// appends its arguments and the token it was given to `cargo.log` in its
 /// working directory (the repo); the fake `pass` logs the entry it was asked
 /// for to `pass.log` next to the scripts and prints `token-from-pass`.
@@ -68,7 +68,7 @@ fn publish_runs_cargo_release_in_cargo_repos_with_the_token_from_pass() {
     fs::write(tmp.join("crate-a/Cargo.toml"), "[package]\nname = \"a\"\n").unwrap();
     let bin = fake_bin(tmp);
 
-    let out = run(tmp, &bin, "", &["rust", "publish"], "");
+    let out = run(tmp, &bin, "", &["cargo", "release"], "");
     assert!(out.status.success(), "stderr: {}", stderr_str(&out));
     assert_eq!(
         read(tmp.join("crate-a/cargo.log")),
@@ -100,7 +100,7 @@ fn publish_skips_virtual_workspaces_and_crates_marked_publish_false() {
     .unwrap();
     let bin = fake_bin(tmp);
 
-    let out = run(tmp, &bin, "", &["rust", "publish"], "");
+    let out = run(tmp, &bin, "", &["cargo", "release"], "");
     assert!(out.status.success(), "stderr: {}", stderr_str(&out));
     assert_eq!(
         read(tmp.join("crate-a/cargo.log")),
@@ -125,7 +125,7 @@ fn publish_type_selects_the_level_and_pass_is_asked_once_for_the_fleet() {
     }
     let bin = fake_bin(tmp);
 
-    let out = run(tmp, &bin, "", &["rust", "publish", "--type", "minor"], "");
+    let out = run(tmp, &bin, "", &["cargo", "release", "--type", "minor"], "");
     assert!(out.status.success(), "stderr: {}", stderr_str(&out));
     for repo in ["crate-a", "crate-b"] {
         assert_eq!(
@@ -144,7 +144,7 @@ fn publish_reads_the_pass_entry_from_the_config() {
     let bin = fake_bin(tmp);
 
     let config = "crates_io_pass_entry = \"work/crates\"\n";
-    let out = run(tmp, &bin, config, &["rust", "publish"], "");
+    let out = run(tmp, &bin, config, &["cargo", "release"], "");
     assert!(out.status.success(), "stderr: {}", stderr_str(&out));
     assert_eq!(read(bin.join("pass.log")), "show work/crates\n");
 }
@@ -158,7 +158,7 @@ fn publish_prefers_a_token_already_in_the_environment() {
     // A pass that fails proves it was never consulted.
     script(&bin, "pass", "echo 'pass must not run' >&2; exit 1");
 
-    let out = run(tmp, &bin, "", &["rust", "publish"], "token-from-env");
+    let out = run(tmp, &bin, "", &["cargo", "release"], "token-from-env");
     assert!(out.status.success(), "stderr: {}", stderr_str(&out));
     assert_eq!(
         read(tmp.join("crate-a/cargo.log")),
@@ -177,7 +177,7 @@ fn publish_without_cargo_release_fails_before_touching_any_repo() {
     let cfg = write_config(tmp, "").to_string();
     let out = run_rsmultigit_with_env(
         tmp,
-        &["rust", "publish"],
+        &["cargo", "release"],
         &[
             ("RSMULTIGIT_CONFIG", &cfg),
             ("PATH", bin.as_str()),
@@ -202,7 +202,7 @@ fn publish_fails_when_pass_has_no_token() {
     let bin = fake_bin(tmp);
     script(&bin, "pass", "exit 1");
 
-    let out = run(tmp, &bin, "", &["rust", "publish"], "");
+    let out = run(tmp, &bin, "", &["cargo", "release"], "");
     assert!(!out.status.success());
     let err = stderr_str(&out);
     assert!(

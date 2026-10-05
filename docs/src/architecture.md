@@ -20,7 +20,7 @@ src/
     mod.rs             Module declarations
     check.rs           Config-file parsing (repos, [[check]], [[exists]]), repo
                        resolution, rule evaluation (SHA-256 grouping, presence)
-    check_run.rs       check-same / check-exists / check-all drivers: rule selection,
+    check_run.rs       check same / check exists / check all drivers: rule selection,
                        reporting, exit codes, the interactive flows
     interactive.rs     Prompt helpers for --diff / --copy / --fix-missing
     count.rs           git2-based repo inspection (dirty, untracked, ahead/behind)
@@ -60,7 +60,7 @@ run returns an error (`N of M repos failed`) at the end if there were any.
 
 ### `print_if_data`
 
-For data commands (`status`, `dirty`, `git grep`, `age`, `size`, ...). Calls a
+For data commands (`git status`, `git dirty`, `git grep`, `git age`, `git size`, ...). Calls a
 function returning `Option<String>` per repo and prints the header plus data
 only when it is `Some`, so a repo with nothing to say prints nothing. `--verbose` and `--print-not`
 also print the header for `None` repos; `--terse` prints only the repo
@@ -97,7 +97,7 @@ bar on stderr and suspends it while each repo's output is printed.
 
 ## Consistency checks
 
-`check-same` and `check-exists` do not use the runners: they are organised
+`check same` and `check exists` do not use the runners: they are organised
 by rule, not by repo. `check.rs` parses the config, applies each rule's
 `select` / `exclude` / `marker` / `marker_absent` filters to the resolved
 repo list, then either hashes `path` in every selected repo with SHA-256 and
@@ -128,9 +128,9 @@ whose value *is* git's own output formatting (`log`, `blame`, `grep`).
 ### Recorded benchmark (2026-08-21)
 
 Measured on a real 260-repo config, release build, warm page cache, five
-runs each. `rsmultigit status` spawned `git status -s` per repo;
-`rsmultigit count dirty` performs the equivalent working-tree scan
-in-process via `git2`, so the pair isolates the subprocess overhead:
+runs each, under the command names of the day. `rsmultigit status` spawned
+`git status -s` per repo; `rsmultigit count dirty` performs the equivalent
+working-tree scan in-process via `git2`, so the pair isolates the subprocess overhead:
 
 | Command                       | Wall    | User    | Sys     |
 |-------------------------------|---------|---------|---------|

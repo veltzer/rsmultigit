@@ -1,4 +1,4 @@
-//! Drivers for `check-same`, `check-exists` and `check-all`: rule selection,
+//! Drivers for `check same`, `check exists` and `check all`: rule selection,
 //! reporting, exit codes, and the interactive `--diff` / `--copy` /
 //! `--fix-missing` flows.
 //!
@@ -185,7 +185,7 @@ fn fail_on_empty_rules(command: &str, what: &str, hint: &str, empty: &[String]) 
     )
 }
 
-/// The check-same flag set, bundled to keep `run_check_same`'s signature small.
+/// The check same flag set, bundled to keep `run_check_same`'s signature small.
 pub struct CheckSameOpts<'a> {
     pub requested: &'a [String],
     pub requested_re: &'a [String],
@@ -196,7 +196,7 @@ pub struct CheckSameOpts<'a> {
     pub do_fix_missing: bool,
 }
 
-/// Run the check-same command. Returns the process exit code.
+/// Run the check same command. Returns the process exit code.
 ///
 /// Rule selection is [`select_rules`]. Passing rules print an `ok (N files)`
 /// line by default; `only_failed` (and `--terse`, whose output is a
@@ -348,7 +348,7 @@ pub fn run_check_same<R: BufRead, W: Write>(
     }
 
     fail_on_empty_rules(
-        "check-same",
+        "check same",
         "matched no files",
         "stale select/path?",
         &empty_rules,
@@ -357,7 +357,7 @@ pub fn run_check_same<R: BufRead, W: Write>(
     if failed_writes > 0 {
         let noun = if failed_writes == 1 { "file" } else { "files" };
         anyhow::bail!(
-            "check-same: {failed_writes} {noun} could not be written (see the error lines above)"
+            "check same: {failed_writes} {noun} could not be written (see the error lines above)"
         );
     }
 
@@ -368,7 +368,7 @@ pub fn run_check_same<R: BufRead, W: Write>(
     }
 }
 
-/// The check-exists flag set, mirroring [`CheckSameOpts`].
+/// The check exists flag set, mirroring [`CheckSameOpts`].
 pub struct CheckExistsOpts<'a> {
     pub requested: &'a [String],
     pub requested_re: &'a [String],
@@ -465,7 +465,7 @@ pub fn run_check_exists<W: Write>(
     }
 
     fail_on_empty_rules(
-        "check-exists",
+        "check exists",
         "selected no repos",
         "stale select?",
         &empty_rules,
@@ -909,7 +909,7 @@ mod tests {
         );
         let msg = format!("{:#}", code.unwrap_err());
         assert!(
-            msg.contains("check-same: 1 rule matched no files: \"gi\""),
+            msg.contains("check same: 1 rule matched no files: \"gi\""),
             "{msg}"
         );
 
@@ -1010,7 +1010,7 @@ mod tests {
         let (code, out) = run_same(&AppConfig::default(), &cfg, &fleet, &opts, "A\ny\n");
         assert_eq!(
             code.unwrap_err().to_string(),
-            "check-same: 1 file could not be written (see the error lines above)"
+            "check same: 1 file could not be written (see the error lines above)"
         );
         assert!(out.contains("error: failed to create directory"), "{out}");
         // The failure did not stop the remaining repo from being fixed.
@@ -1112,7 +1112,7 @@ mod tests {
         assert_eq!(out, "[rd] path=README.md select=zz*\nno repos selected\n");
         let msg = format!("{:#}", code.unwrap_err());
         assert!(
-            msg.contains("check-exists: 1 rule selected no repos: \"rd\""),
+            msg.contains("check exists: 1 rule selected no repos: \"rd\""),
             "{msg}"
         );
 

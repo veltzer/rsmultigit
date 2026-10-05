@@ -1,4 +1,4 @@
-//! `rsmultigit setup`: write a first `~/.config/rsmultigit/config.toml` for a
+//! `rsmultigit setup interactive`: write a first `~/.config/rsmultigit/config.toml` for a
 //! new user.
 //!
 //! The command asks two questions - where the git repositories live, and which
@@ -148,7 +148,7 @@ pub fn scan(dir: &Utf8Path) -> Result<Scan> {
 }
 
 /// `dir` with the home directory contracted back to `~`, so the written
-/// config reads like the one `config-example` prints and survives a rename of
+/// config reads like the one `setup config-sample` prints and survives a rename of
 /// the home directory. Paths outside the home directory are returned as-is.
 pub fn contract_home(dir: &Utf8Path) -> String {
     let home = std::env::var("HOME").unwrap_or_default();
@@ -179,12 +179,12 @@ pub fn method_name(method: BuildWhat) -> String {
 pub fn render_config(dir: &Utf8Path, build: Option<BuildWhat>) -> String {
     let mut out = String::new();
     out.push_str(
-        "# rsmultigit config, written by `rsmultigit setup`.\n\
+        "# rsmultigit config, written by `rsmultigit setup interactive`.\n\
          #\n\
          # `repos` lists shell-expanded globs; every match that is a git repository\n\
          # is operated on. Add more patterns to cover more directories.\n\
          #\n\
-         # `rsmultigit config-example` prints a fully commented example of every\n\
+         # `rsmultigit setup config-sample` prints a fully commented example of every\n\
          # key, including the [[check]] and [[exists]] rules that keep shared files\n\
          # identical across repos.\n\n",
     );
@@ -282,7 +282,7 @@ pub fn run(opts: &SetupOpts, config_path: &Utf8Path, out: &mut dyn Write) -> Res
     }
     writeln!(
         out,
-        "Next: `rsmultigit list-repos`, then `rsmultigit status`."
+        "Next: `rsmultigit list-repos`, then `rsmultigit git status`."
     )?;
     Ok(())
 }

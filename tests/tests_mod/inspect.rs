@@ -1,5 +1,5 @@
 //! Read-only commands: data commands, list-repos, log, blame, tags, and the
-//! check-exists / check-all / complete surfaces.
+//! check exists / check all / complete surfaces.
 
 use std::fs;
 
@@ -69,7 +69,7 @@ fn last_tag_and_tag_has_local_see_only_tagged_repos() {
     commit_file(&tagged, "f.txt", "x", "later");
     git(&tagged, &["tag", "v0.2"]);
 
-    let output = run_rsmultigit(dir, &["last-tag"]);
+    let output = run_rsmultigit(dir, &["git", "last-tag"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert_eq!(stdout_str(&output), format!("[{tagged}]\nv0.2"));
 
@@ -87,7 +87,7 @@ fn last_tag_and_tag_has_local_see_only_tagged_repos() {
 fn size_reports_a_human_readable_size_per_repo() {
     let tmp = setup_git_repos(&["repo"]);
     let dir = utf8(&tmp);
-    let output = run_rsmultigit(dir, &["size"]);
+    let output = run_rsmultigit(dir, &["git", "size"]);
     assert!(output.status.success(), "{}", stderr_str(&output));
     let stdout = stdout_str(&output);
     let value = stdout.lines().nth(1).unwrap_or("");
@@ -103,14 +103,14 @@ fn age_authors_and_branch_local_report_per_repo() {
     let repo = dir.join("repo");
     let branch = current_branch(&repo);
 
-    let output = run_rsmultigit(dir, &["age"]);
+    let output = run_rsmultigit(dir, &["git", "age"]);
     assert!(
         stdout_str(&output).contains("ago"),
         "{}",
         stdout_str(&output)
     );
 
-    let output = run_rsmultigit(dir, &["authors"]);
+    let output = run_rsmultigit(dir, &["git", "authors"]);
     assert!(
         stdout_str(&output).contains("Test <test@test.com>"),
         "{}",
@@ -142,7 +142,7 @@ fn check_exists_and_check_all_end_to_end() {
     );
     let env = [("RSMULTIGIT_CONFIG", cfg.as_str())];
 
-    let output = run_rsmultigit_with_env(dir, &["check-exists"], &env);
+    let output = run_rsmultigit_with_env(dir, &["check", "exists"], &env);
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(
         stdout_str(&output),
@@ -152,15 +152,15 @@ fn check_exists_and_check_all_end_to_end() {
         )
     );
 
-    let output = run_rsmultigit_with_env(dir, &["--terse", "check-exists"], &env);
+    let output = run_rsmultigit_with_env(dir, &["--terse", "check", "exists"], &env);
     assert_eq!(stdout_str(&output), "rd");
 
-    let output = run_rsmultigit_with_env(dir, &["list-checks", "exists"], &env);
+    let output = run_rsmultigit_with_env(dir, &["check", "list", "exists"], &env);
     assert_eq!(stdout_str(&output), "rd");
 
-    // check-all: the [[check]] half passes, the [[exists]] half fails, so
+    // check all: the [[check]] half passes, the [[exists]] half fails, so
     // both are reported and the exit is non-zero.
-    let output = run_rsmultigit_with_env(dir, &["check-all"], &env);
+    let output = run_rsmultigit_with_env(dir, &["check", "all"], &env);
     assert_eq!(output.status.code(), Some(1));
     let stdout = stdout_str(&output);
     assert!(
@@ -171,7 +171,7 @@ fn check_exists_and_check_all_end_to_end() {
     );
 
     fs::write(dir.join("b/README.md"), "b").unwrap();
-    let output = run_rsmultigit_with_env(dir, &["check-all", "--only-failed"], &env);
+    let output = run_rsmultigit_with_env(dir, &["check", "all", "--only-failed"], &env);
     assert!(output.status.success(), "{}", stderr_str(&output));
     assert_eq!(stdout_str(&output), "");
 }
@@ -184,11 +184,11 @@ fn complete_emits_a_script_with_the_dynamic_checks_snippet() {
         assert!(output.status.success());
         let stdout = stdout_str(&output);
         assert!(stdout.contains("_rsmultigit"), "{shell}");
-        assert!(stdout.contains("list-checks \"$kind\""), "{shell}");
-        assert!(stdout.contains("check-exists)"), "{shell}");
+        assert!(stdout.contains("check list \"$kind\""), "{shell}");
+        assert!(stdout.contains("exists)"), "{shell}");
     }
     // Only bash and zsh get the dynamic snippet.
     let output = run_rsmultigit(utf8(&tmp), &["complete", "fish"]);
     assert!(output.status.success());
-    assert!(!stdout_str(&output).contains("list-checks \"$kind\""));
+    assert!(!stdout_str(&output).contains("check list \"$kind\""));
 }

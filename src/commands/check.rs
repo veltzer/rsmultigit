@@ -24,13 +24,13 @@ pub struct CheckConfig {
     /// Spelled as on the command line (`rsconstruct`, `cargo`, ...).
     #[serde(default)]
     pub default_build_method: Option<BuildWhat>,
-    /// The pass(1) entry `rust publish` reads the crates.io token from when
+    /// The pass(1) entry `cargo release` reads the crates.io token from when
     /// `CARGO_REGISTRY_TOKEN` is not already set. Defaults to `keys/crates.io`.
-    #[serde(default = "crate::commands::rust::default_pass_entry")]
+    #[serde(default = "crate::commands::release::default_pass_entry")]
     pub crates_io_pass_entry: String,
     #[serde(default)]
     pub check: Vec<Rule>,
-    /// Presence-only rules, consumed by `check-exists`. Unlike `[[check]]`,
+    /// Presence-only rules, consumed by `check exists`. Unlike `[[check]]`,
     /// these never compare content: they assert that every in-scope repo has
     /// the file, whatever it contains. This is the right rule type for files
     /// that must exist but legitimately differ per repo (README.md, LICENSE
@@ -81,7 +81,7 @@ impl ExistsResult {
     }
 
     /// True when the rule selected no repos at all — almost always a stale
-    /// `select`, so `check-exists` treats it as a failure unless
+    /// `select`, so `check exists` treats it as a failure unless
     /// `--allow-empty` is passed. Mirrors [`RuleResult::matched_nothing`].
     pub fn matched_nothing(&self) -> bool {
         self.total_repos() == 0
@@ -142,7 +142,7 @@ impl RuleResult {
 
     /// True when the rule hashed no files and has no must_have violations to
     /// report — i.e. it checked nothing at all. Usually a stale `select`/`path`,
-    /// so check-same treats this as a failure unless --allow-empty is passed.
+    /// so check same treats this as a failure unless --allow-empty is passed.
     pub fn matched_nothing(&self) -> bool {
         self.total_files == 0 && self.must_have_violations.is_empty()
     }
@@ -470,7 +470,7 @@ mod tests {
         let cfg = CheckConfig {
             repos: vec![],
             default_build_method: None,
-            crates_io_pass_entry: crate::commands::rust::default_pass_entry(),
+            crates_io_pass_entry: crate::commands::release::default_pass_entry(),
             check: vec![],
             exists: vec![],
         };
@@ -501,7 +501,7 @@ mod tests {
                 camino::Utf8Path::from_path(tmp.path()).unwrap()
             )],
             default_build_method: None,
-            crates_io_pass_entry: crate::commands::rust::default_pass_entry(),
+            crates_io_pass_entry: crate::commands::release::default_pass_entry(),
             check: vec![],
             exists: vec![],
         };
@@ -526,7 +526,7 @@ mod tests {
                 format!("{}/*", camino::Utf8Path::from_path(tmp.path()).unwrap()),
             ],
             default_build_method: None,
-            crates_io_pass_entry: crate::commands::rust::default_pass_entry(),
+            crates_io_pass_entry: crate::commands::release::default_pass_entry(),
             check: vec![],
             exists: vec![],
         };
@@ -543,7 +543,7 @@ mod tests {
                 camino::Utf8Path::from_path(tmp.path()).unwrap()
             )],
             default_build_method: None,
-            crates_io_pass_entry: crate::commands::rust::default_pass_entry(),
+            crates_io_pass_entry: crate::commands::release::default_pass_entry(),
             check: vec![],
             exists: vec![],
         };

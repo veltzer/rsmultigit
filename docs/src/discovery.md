@@ -50,4 +50,4 @@ The location is fixed at `~/.config/rsmultigit/config.toml` and there is no
 path; the integration tests use it to point the binary at a temporary config.
 
 Four commands need no config at all, because they are how a fresh install
-bootstraps one: `setup`, `config-example`, `complete`, and `version`.
+bootstraps one: `setup`, `setup config-sample`, `complete`, and `version`.

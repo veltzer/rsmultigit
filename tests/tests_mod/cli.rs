@@ -11,7 +11,7 @@ fn help_flag_shows_usage() {
         "help should contain Usage: {stdout}"
     );
     assert!(
-        stdout.contains("count"),
+        stdout.contains("check"),
         "help should list subcommands: {stdout}"
     );
 }
@@ -76,7 +76,7 @@ fn bare_gh_lists_its_operations_with_descriptions() {
 #[test]
 fn bare_count_lists_its_choices() {
     let tmp = tempfile::TempDir::new().unwrap();
-    let output = run_rsmultigit(utf8(&tmp), &["count"]);
+    let output = run_rsmultigit(utf8(&tmp), &["git", "count"]);
     assert_eq!(output.status.code(), Some(2));
     let stderr = stderr_str(&output);
     for name in ["dirty", "untracked", "synchronized"] {
@@ -119,6 +119,31 @@ fn bare_git_lists_its_subcommands_and_no_flags() {
             stderr.contains("Run `rsmultigit git --help` for the options."),
             "{stderr}"
         );
+    }
+}
+
+#[test]
+fn bare_check_and_setup_list_their_subcommands() {
+    // The other two subcommand groups behave like `git` when invoked bare.
+    let tmp = tempfile::TempDir::new().unwrap();
+    for (group, names) in [
+        ("check", &["same", "exists", "all", "list"][..]),
+        ("setup", &["interactive", "config-sample"][..]),
+    ] {
+        let output = run_rsmultigit(utf8(&tmp), &[group]);
+        assert_eq!(output.status.code(), Some(2), "{group}");
+        let stderr = stderr_str(&output);
+        assert!(
+            stderr.contains(&format!("Usage: rsmultigit {group}")),
+            "{stderr}"
+        );
+        for name in names {
+            assert!(
+                stderr.contains(name),
+                "bare {group} should list `{name}`: {stderr}"
+            );
+        }
+        assert!(!stderr.contains("Options:"), "{group}: {stderr}");
     }
 }
 

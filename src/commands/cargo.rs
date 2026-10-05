@@ -76,6 +76,9 @@ fn args(what: CargoWhat, profile: &Profile, check: bool) -> Vec<String> {
         CargoWhat::Update => &["update"],
         CargoWhat::Clean => &["clean"],
         CargoWhat::Publish => &["publish"],
+        // Needs a token and a preflight, so main hands it to
+        // `commands::release` instead of running it here.
+        CargoWhat::Release => unreachable!("`cargo release` is dispatched to commands::release"),
     };
     let mut args: Vec<String> = base.iter().map(|s| s.to_string()).collect();
     args.extend(profile.flags());
@@ -238,6 +241,7 @@ mod tests {
             CargoWhat::Update,
             CargoWhat::Clean,
             CargoWhat::Publish,
+            CargoWhat::Release,
         ] {
             assert!(!what.takes_release(), "{what:?} should not take --release");
             assert!(!what.takes_check(), "{what:?} should not take --check");

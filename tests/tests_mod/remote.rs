@@ -63,7 +63,7 @@ fn fetch_updates_tracking_ref_and_status_reports_behind() {
     let tracking = git(&repo, &["rev-parse", &format!("origin/{branch}")]);
     assert_eq!(tracking, git(&clone, &["rev-parse", "HEAD"]));
 
-    let output = run_rsmultigit(dir, &["status"]);
+    let output = run_rsmultigit(dir, &["git", "status"]);
     assert!(
         stdout_str(&output).contains("behind 1"),
         "{}",

@@ -74,14 +74,14 @@ rsmultigit needs a config file before it will do anything. Create one
 interactively:
 
 ```bash
-rsmultigit setup
+rsmultigit setup interactive
 ```
 
 or from the built-in example, then edit the `repos` list:
 
 ```bash
 mkdir -p ~/.config/rsmultigit
-rsmultigit config-example > ~/.config/rsmultigit/config.toml
+rsmultigit setup config-sample > ~/.config/rsmultigit/config.toml
 ```
 
 See [Getting Started](getting-started.md) for what to run next.

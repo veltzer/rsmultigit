@@ -7,13 +7,13 @@ the subcommand name.
 
 | Flag | Description |
 |------|-------------|
-| `-v`, `--verbose` | Print every repo, even when no action is taken (adds the header for skipped repos; `status` switches to per-file output) |
+| `-v`, `--verbose` | Print every repo, even when no action is taken (adds the header for skipped repos; `git status` switches to per-file output) |
 | `--terse` | Minimal, machine-readable output: repo names only for data commands, just the `N/total` line for count commands, failing rule names only for the check commands |
 | `--no-header` | Suppress the `[repo]` header line printed before per-repo output |
 | `--no-output` | Suppress command output, keeping only the `[repo]` headers. Action commands run their subprocesses with output captured and discarded; a failing repo's output is still attached to its error |
 | `--print-not` | Invert selection: print the repos that do NOT match |
 | `--no-stop` | On error, print `error in <repo>: ...` to stderr and continue with the next repo instead of stopping. The run still exits non-zero (`N of M repos failed`) if any repo failed |
-| `--short-circuit` | Stop at the first failing rule. Off by default; honoured by `check-same` and `check-exists` |
+| `--short-circuit` | Stop at the first failing rule. Off by default; honoured by `check same` and `check exists` |
 | `-j`, `--jobs <N>` | Run up to N repos in parallel (default 1; 0 means one worker per CPU). Output is still printed in repo order |
 | `--venv` | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. On by default; honoured by `run`, `build`, `cargo` and `npm`; not by `uv` |
 | `--no-venv` | Turn `--venv` off: run tool subprocesses with the ambient environment |
@@ -21,10 +21,10 @@ the subcommand name.
 Example:
 
 ```bash
-rsmultigit --terse count dirty               # Just print "3/50"
+rsmultigit --terse git count dirty               # Just print "3/50"
 rsmultigit --no-stop git pull                # Pull all, report failures, keep going
 rsmultigit -j 8 git fetch                    # Fetch eight repos at a time
-rsmultigit --short-circuit check-same        # Stop at the first broken rule
+rsmultigit --short-circuit check same        # Stop at the first broken rule
 ```
 
 ## Output conventions
@@ -35,102 +35,102 @@ the repo was skipped by a precondition such as a missing `Cargo.toml`).
 `--verbose` prints the header for those repos too, `--no-header` drops the
 header everywhere, and `--terse` reduces the output to bare repo paths.
 
-Commands that take an operation word (`count dirty`, `gh clean-all`,
+Commands that take an operation word (`git count dirty`, `gh clean-all`,
 `cargo clippy`, ...) print their help, with every operation and its
 description, when the word is left out - `rsmultigit gh` is the quickest way
 to see what `gh` can do.
-
-## Count Commands
-
-`rsmultigit count <what>` tests each repo with libgit2 (no subprocess),
-prints the path of every matching repo, then a final `matched/total` line.
-
-### `rsmultigit count dirty`
-
-Repos with changes in the working tree or index: modified, deleted, renamed,
-type-changed, or newly staged files. Untracked files do not count.
-
-```bash
-rsmultigit count dirty
-rsmultigit --terse count dirty               # Only the "N/total" line
-rsmultigit --print-not count dirty           # Clean repos instead
-```
-
-### `rsmultigit count untracked`
-
-Repos that have untracked files.
-
-### `rsmultigit count synchronized`
-
-Repos that are **not** synchronized with their upstream: ahead of or behind
-it. The upstream is the branch's configured tracking branch (as set by
-`clone` or `push -u`); when none is configured, `origin/<branch>` is used.
-A repo with no upstream at all has nothing to be out of sync with and is not
-counted, which matches how `status` and `push` treat it.
-
-```bash
-rsmultigit count synchronized
-rsmultigit --print-not count synchronized    # Repos that ARE in sync
-```
-
-## Data Commands
-
-These commands compute a value per repo and print it under the `[repo]`
-header. Repos with nothing to report are skipped unless `--verbose` is set.
-With `--terse`, only the repo path is printed.
-
-### `rsmultigit status`
-
-One-line summary of every repo that needs attention: counts of conflicted,
-staged, modified, deleted and untracked files, plus `ahead N` / `behind N`
-when the branch has diverged from its upstream (see `count synchronized`
-for how the upstream is chosen). Clean, in-sync repos are skipped. Computed
-with libgit2.
-
-```bash
-rsmultigit status
-# [/home/me/git/myrepo]
-# 2 modified, 1 untracked, ahead 1
-rsmultigit --verbose status              # Full per-file `git status -s` instead
-```
-
-### `rsmultigit dirty`
-
-`git diff --stat` for repos with unstaged modifications; falls back to
-`git diff --cached --stat` when only staged changes exist.
-
-### `rsmultigit list-repos`
-
-Print the absolute path of every configured repo, one per line and with no
-header. `--verbose` adds the `[repo]` header for each entry.
-
-### `rsmultigit age`
-
-The age of the last commit as a relative date (`3 days ago`).
-
-### `rsmultigit authors`
-
-`git shortlog -sne HEAD`: authors with commit counts and emails.
-
-### `rsmultigit size`
-
-Size of the `.git` directory per repo, in human-readable units. Symlinks are
-not followed.
-
-### `rsmultigit last-tag`
-
-The most recent tag reachable from HEAD (`git describe --tags --abbrev=0`).
-Repos without tags are skipped.
 
 ## Git Commands
 
 ### `rsmultigit git <command>`
 
-The git operations, grouped under `git` so the top level holds rsmultigit's
-own reports and tool runners. Each runs the git command of the same name in
-every repo. `rsmultigit git` alone lists them. Action commands print the
-`[repo]` header for repos where the action ran; with `--verbose` it is
-printed for skipped repos too.
+Everything that inspects or operates on the repositories as git
+repositories. `rsmultigit git` alone lists the subcommands. They come in
+two kinds: the reports below (counts and per-repo data, computed with
+libgit2) and the operations after them, each of which runs the git command
+of the same name in every repo.
+
+### Counts
+
+`rsmultigit git count <what>` tests each repo with libgit2 (no subprocess),
+prints the path of every matching repo, then a final `matched/total` line.
+
+#### `rsmultigit git count dirty`
+
+Repos with changes in the working tree or index: modified, deleted, renamed,
+type-changed, or newly staged files. Untracked files do not count.
+
+```bash
+rsmultigit git count dirty
+rsmultigit --terse git count dirty               # Only the "N/total" line
+rsmultigit --print-not git count dirty           # Clean repos instead
+```
+
+#### `rsmultigit git count untracked`
+
+Repos that have untracked files.
+
+#### `rsmultigit git count synchronized`
+
+Repos that are **not** synchronized with their upstream: ahead of or behind
+it. The upstream is the branch's configured tracking branch (as set by
+`clone` or `push -u`); when none is configured, `origin/<branch>` is used.
+A repo with no upstream at all has nothing to be out of sync with and is not
+counted, which matches how `git status` and `git push` treat it.
+
+```bash
+rsmultigit git count synchronized
+rsmultigit --print-not git count synchronized    # Repos that ARE in sync
+```
+
+### Reports
+
+These commands compute a value per repo and print it under the `[repo]`
+header. Repos with nothing to report are skipped unless `--verbose` is set.
+With `--terse`, only the repo path is printed.
+
+#### `rsmultigit git status`
+
+One-line summary of every repo that needs attention: counts of conflicted,
+staged, modified, deleted and untracked files, plus `ahead N` / `behind N`
+when the branch has diverged from its upstream (see `git count synchronized`
+for how the upstream is chosen). Clean, in-sync repos are skipped. Computed
+with libgit2.
+
+```bash
+rsmultigit git status
+# [/home/me/git/myrepo]
+# 2 modified, 1 untracked, ahead 1
+rsmultigit --verbose git status              # Full per-file `git status -s` instead
+```
+
+#### `rsmultigit git dirty`
+
+`git diff --stat` for repos with unstaged modifications; falls back to
+`git diff --cached --stat` when only staged changes exist.
+
+#### `rsmultigit git age`
+
+The age of the last commit as a relative date (`3 days ago`).
+
+#### `rsmultigit git authors`
+
+`git shortlog -sne HEAD`: authors with commit counts and emails.
+
+#### `rsmultigit git size`
+
+Size of the `.git` directory per repo, in human-readable units. Symlinks are
+not followed.
+
+#### `rsmultigit git last-tag`
+
+The most recent tag reachable from HEAD (`git describe --tags --abbrev=0`).
+Repos without tags are skipped.
+
+### Operations
+
+Action commands print the `[repo]` header for repos where the action ran;
+with `--verbose` it is printed for skipped repos too.
 
 ### `rsmultigit git config <KEY>`
 
@@ -252,6 +252,13 @@ git's unrelated object pruning.
 
 `git submodule update --init --recursive` in every repo.
 
+## Repo List
+
+### `rsmultigit list-repos`
+
+Print the absolute path of every configured repo, one per line and with no
+header. `--verbose` adds the `[repo]` header for each entry.
+
 ## Running Arbitrary Commands
 
 ### `rsmultigit run <COMMAND...>` (alias: `rsmultigit exec`)
@@ -274,8 +281,8 @@ rsmultigit --no-venv run which python  # ambient python everywhere
 
 ## Consistency Checks
 
-These commands evaluate the `[[check]]` and `[[exists]]` rules in the config
-file. See [Configuration](configuration.md) for the rule fields. Unlike every
+The `check` subcommands evaluate the `[[check]]` and `[[exists]]` rules in
+the config file; `rsmultigit check` alone lists them. See [Configuration](configuration.md) for the rule fields. Unlike every
 other command, output is organised by **rule**, not by repo: each rule prints
 a header line followed by its verdict. The header is `[rule-name]` followed
 by the rule's properties as `key=value` pairs (`path` and `select` always;
@@ -283,7 +290,7 @@ by the rule's properties as `key=value` pairs (`path` and `select` always;
 `must_have=true` only when they differ from the default), so a failure can
 be read against its rule without opening the config. `--no-header` drops it.
 
-### `rsmultigit check-same`
+### `rsmultigit check same`
 
 For each enabled `[[check]]` rule, hash `path` in every selected repo and
 group the repos by content. A rule passes when there is at most one group
@@ -331,16 +338,16 @@ stdin is treated as quit, so the command never hangs when stdin is closed.
 `--only-failed`. `--short-circuit` stops after the first failing rule.
 
 ```bash
-rsmultigit check-same                         # Report every rule
-rsmultigit --terse --no-stop check-same       # Names of broken rules only, for scripts
-rsmultigit check-same --checks gitignore editorconfig
-rsmultigit check-same --checks-re '^rs-'      # Every rule whose name starts with rs-
-rsmultigit check-same --diff --only-failed    # Show what differs
-rsmultigit check-same --copy                  # Fix drift interactively
-rsmultigit check-same --fix-missing           # Create files missing from must_have repos
+rsmultigit check same                         # Report every rule
+rsmultigit --terse --no-stop check same       # Names of broken rules only, for scripts
+rsmultigit check same --checks gitignore editorconfig
+rsmultigit check same --checks-re '^rs-'      # Every rule whose name starts with rs-
+rsmultigit check same --diff --only-failed    # Show what differs
+rsmultigit check same --copy                  # Fix drift interactively
+rsmultigit check same --fix-missing           # Create files missing from must_have repos
 ```
 
-### `rsmultigit check-exists`
+### `rsmultigit check exists`
 
 For each enabled `[[exists]]` rule, assert that every selected repo contains
 `path`. Content is never compared, which makes this the right rule type for
@@ -361,25 +368,25 @@ fails with `no repos selected` and becomes a hard error at the end, unless
 `--allow-empty` is passed.
 
 `--checks`, `--checks-re`, `--only-failed`, `--allow-empty`, `--terse` and
-`--short-circuit` behave exactly as for `check-same`. There are no
+`--short-circuit` behave exactly as for `check same`. There are no
 interactive modes.
 
-### `rsmultigit check-all [--only-failed] [--allow-empty]`
+### `rsmultigit check all [--only-failed] [--allow-empty]`
 
 Run every enabled `[[check]]` rule and then every enabled `[[exists]]` rule.
 Both halves always run, so a failure in the first never hides the state of
 the second. Exit code is non-zero if either half fails.
 
 ```bash
-rsmultigit check-all --only-failed
+rsmultigit check all --only-failed
 ```
 
-### `rsmultigit list-checks [check|exists]`
+### `rsmultigit check list [check|exists]`
 
 Print the name of every `[[check]]` rule (the default) or every `[[exists]]`
 rule, one per line, including disabled ones. The bash and zsh completion
-scripts call this to complete `check-same --checks <TAB>` and
-`check-exists --checks <TAB>`.
+scripts call this to complete `check same --checks <TAB>` and
+`check exists --checks <TAB>`.
 
 ## Build Commands
 
@@ -426,7 +433,7 @@ rsmultigit build make                  # explicit method overrides the default
 rsmultigit --no-venv build rsconstruct
 ```
 
-## Cargo and Rust Commands
+## Cargo Commands
 
 These commands operate only on repositories that have a `Cargo.toml` file
 and no `.disable` file. Other repositories are skipped.
@@ -448,7 +455,8 @@ Runs one cargo operation in each Rust project. All of them honour `--venv`.
 | `fetch` | `cargo fetch` | Download dependencies without building |
 | `update` | `cargo update` | Refreshes `Cargo.lock` |
 | `clean` | `cargo clean` | Removes the `target` directory |
-| `publish` | `cargo publish` | Uploads the crate to crates.io; `rust publish` is the full release flow |
+| `publish` | `cargo publish` | Uploads the crate to crates.io; `release` is the full release flow |
+| `release` | `cargo release <type> --execute --no-confirm` | The full release flow, see below; `--type` picks the bump |
 
 `--release` appends `--release` and `--profile <name>` appends
 `--profile <name>` (`dev`, `release`, or any custom profile the crate's
@@ -456,8 +464,9 @@ Runs one cargo operation in each Rust project. All of them honour `--venv`.
 a profile: `build`, `check`, `clippy`, `test`, `nextest` and `doc`. With
 neither, `build` compiles every profile the fleet ships, dev then release,
 and the other operations keep cargo's own default. `--check` is accepted by
-`fmt` only. A flag on any other operation is an error, and the three flags
-are mutually exclusive.
+`fmt` only, and `--type` by `release` only. A flag on any other operation
+is an error, and `--release`, `--profile` and `--check` are mutually
+exclusive.
 
 ```bash
 rsmultigit cargo build                   # Every Rust repo, dev and release
@@ -469,7 +478,7 @@ rsmultigit -j 0 cargo nextest --release  # Release-mode tests, all cores
 rsmultigit cargo update                  # Refresh every Cargo.lock
 ```
 
-### `rsmultigit rust publish [--type <patch|minor|major>]`
+### `rsmultigit cargo release [--type <patch|minor|major>]`
 
 Release a new version of each Rust project by running
 `cargo release <type> --execute --no-confirm`, which bumps the version in
@@ -508,9 +517,9 @@ run:
   lands in `~/.cargo/credentials` or any other file.
 
 ```bash
-rsmultigit rust publish                  # Patch release (default)
-rsmultigit rust publish --type minor     # Minor release
-rsmultigit rust publish --type major     # Major release
+rsmultigit cargo release                 # Patch release (default)
+rsmultigit cargo release --type minor    # Minor release
+rsmultigit cargo release --type major    # Major release
 ```
 
 ## uv Commands
@@ -707,10 +716,14 @@ operation it is an error rather than a silently ignored flag.
 
 ## Utility Commands
 
-These four need no config file, because they are how a fresh install
-bootstraps one.
+These need no config file: `setup` is how a fresh install bootstraps one.
 
-### `rsmultigit setup`
+### `rsmultigit setup <command>`
+
+The two ways to get a first config file. `rsmultigit setup interactive` alone lists
+them.
+
+### `rsmultigit setup interactive`
 
 Write a first `~/.config/rsmultigit/config.toml` by answering two questions
 in the terminal:
@@ -735,11 +748,11 @@ every answer given nothing is asked at all, so the command also works in
 scripts and without a terminal:
 
 ```bash
-rsmultigit setup                                        # fully interactive
-rsmultigit setup --repos-dir ~/src                      # asks only the build tool
-rsmultigit setup --repos-dir ~/src --build cargo        # asks nothing
-rsmultigit setup --repos-dir ~/src --no-build           # no default_build_method
-rsmultigit setup --repos-dir ~/src --build make --overwrite   # replace without asking
+rsmultigit setup interactive                                  # fully interactive
+rsmultigit setup interactive --repos-dir ~/src                # asks only the build tool
+rsmultigit setup interactive --repos-dir ~/src --build cargo  # asks nothing
+rsmultigit setup interactive --repos-dir ~/src --no-build     # no default_build_method
+rsmultigit setup interactive --repos-dir ~/src --build make --overwrite  # replace without asking
 ```
 
 | Option | Meaning |
@@ -752,20 +765,20 @@ rsmultigit setup --repos-dir ~/src --build make --overwrite   # replace without 
 Without a terminal, a question that still needs asking is an error naming
 the option that answers it; nothing is written in that case.
 
-### `rsmultigit config-example`
+### `rsmultigit setup config-sample`
 
 Print a fully commented sample config to stdout.
 
 ```bash
 mkdir -p ~/.config/rsmultigit
-rsmultigit config-example > ~/.config/rsmultigit/config.toml
+rsmultigit setup config-sample > ~/.config/rsmultigit/config.toml
 ```
 
 ### `rsmultigit complete <bash|zsh|fish|elvish|powershell>`
 
 Print a shell completion script. The bash and zsh scripts additionally
-complete `check-same --checks <TAB>` and `check-exists --checks <TAB>` with
-the rule names from your config, by calling `rsmultigit list-checks` at
+complete `check same --checks <TAB>` and `check exists --checks <TAB>` with
+the rule names from your config, by calling `rsmultigit check list` at
 completion time.
 
 ```bash

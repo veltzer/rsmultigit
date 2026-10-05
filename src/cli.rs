@@ -54,7 +54,7 @@ pub struct Cli {
     pub no_stop: bool,
 
     /// Stop at the first negative result instead of processing everything.
-    /// Off by default. Honoured by `check-same` and `check-exists`, which stop
+    /// Off by default. Honoured by `check same` and `check exists`, which stop
     /// at the first broken rule instead of evaluating the remaining ones.
     #[arg(long, global = true, default_value_t = false)]
     pub short_circuit: bool,
@@ -87,17 +87,14 @@ pub struct Cli {
 }
 
 // Every variant whose required positional picks the operation (`gh <WHAT>`,
-// `count <WHAT>`, ...) carries `arg_required_else_help`, so invoking the
+// `cargo <WHAT>`, ...) carries `arg_required_else_help`, so invoking the
 // command bare prints its help instead of clap's "required arguments were not
 // provided" error. The error names only `<WHAT>`; the help lists the choices.
-// `main` upgrades that help to the long form (see `long_help_for`), so each
-// choice comes with its one-line description.
+// The same goes for the groups whose operations are subcommands (`git`,
+// `check`, `setup`). `main` upgrades that help to the long form (see
+// `long_help_for`), so each choice comes with its one-line description.
 #[derive(Subcommand)]
 pub enum Commands {
-    /// Show the age of the last commit per repo
-    Age,
-    /// Show unique commit authors per repo
-    Authors,
     /// Build projects
     Build {
         /// What build system to use. Optional when the config file sets
@@ -105,8 +102,122 @@ pub enum Commands {
         #[arg(value_enum)]
         what: Option<BuildWhat>,
     },
+    /// Run cargo operations on projects that have a Cargo.toml file
+    #[command(arg_required_else_help = true)]
+    Cargo {
+        /// What cargo operation to perform
+        #[arg(value_enum)]
+        what: CargoWhat,
+        /// Build optimized artifacts (`--release`). Only meaningful with
+        /// `build`, `check`, `clippy`, `test`, `nextest` and `doc`;
+        /// combining it with any other operation is an error. Without this
+        /// or `--profile`, `build` compiles every profile: dev, then release.
+        #[arg(long, default_value_t = false, conflicts_with = "profile")]
+        release: bool,
+        /// Build under one named profile (`--profile <NAME>`: `dev`,
+        /// `release`, or a custom profile from Cargo.toml). Same operations
+        /// as `--release`; `cargo build --profile dev` builds only dev.
+        #[arg(long, value_name = "NAME")]
+        profile: Option<String>,
+        /// Only check formatting without rewriting files (`cargo fmt --check`;
+        /// unformatted code is an error). Only meaningful with `fmt`;
+        /// combining it with any other operation is an error.
+        #[arg(long, default_value_t = false, conflicts_with_all = ["release", "profile"])]
+        check: bool,
+        /// Which version component `release` bumps (default: patch). Only
+        /// meaningful with `release`; combining it with any other operation
+        /// is an error.
+        #[arg(long = "type", value_enum, value_name = "TYPE")]
+        release_type: Option<ReleaseType>,
+    },
+    /// Check the invariants declared in ~/.config/rsmultigit/config.toml
+    #[command(arg_required_else_help = true, disable_help_subcommand = true)]
+    Check {
+        #[command(subcommand)]
+        command: CheckCommand,
+    },
+    /// Generate shell completion scripts
+    Complete {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+    /// GitHub operations (via the `gh` CLI) on repos with a github.com remote
+    #[command(arg_required_else_help = true)]
+    Gh {
+        /// What GitHub operation to perform
+        #[arg(value_enum)]
+        what: GhWhat,
+        /// How many recent non-failed deployments/releases/workflow runs to keep
+        /// (`clean-all` only)
+        #[arg(long, default_value_t = 4)]
+        keep: usize,
+        /// Print what differs but change nothing on GitHub (`sync-metadata` only)
+        #[arg(long, default_value_t = false)]
+        dry_run: bool,
+    },
+    /// Git inspection and operations across all repositories
+    #[command(arg_required_else_help = true, disable_help_subcommand = true)]
+    Git {
+        #[command(subcommand)]
+        command: GitCommand,
+    },
+    /// Print the path of every configured repo, one per line (no header by default).
+    /// Pass --verbose to also emit the [project] header for each entry.
+    ListRepos,
+    /// Run npm operations on projects that have a package.json file
+    #[command(arg_required_else_help = true)]
+    Npm {
+        /// What npm operation to perform
+        #[arg(value_enum)]
+        what: NpmWhat,
+        /// Also apply the fixes (`npm audit fix`; rewrites package.json and
+        /// package-lock.json). Only meaningful with `audit`; combining it
+        /// with any other operation is an error.
+        #[arg(long, default_value_t = false)]
+        fix: bool,
+    },
+    /// Run an arbitrary command across all repositories
+    #[command(alias = "exec")]
+    Run {
+        /// Command and arguments to execute
+        #[arg(required = true, num_args = 1.., trailing_var_arg = true, allow_hyphen_values = true)]
+        command: Vec<String>,
+    },
+    /// Create the ~/.config/rsmultigit/config.toml a new install needs
+    #[command(arg_required_else_help = true, disable_help_subcommand = true)]
+    Setup {
+        #[command(subcommand)]
+        command: SetupCommand,
+    },
+    /// Run uv operations on projects that have a pyproject.toml file
+    #[command(arg_required_else_help = true)]
+    Uv {
+        /// What uv operation to perform
+        #[arg(value_enum)]
+        what: UvWhat,
+        /// Allow upgrading locked versions (`uv lock --upgrade`).
+        /// Only meaningful with `lock`; combining it with any other
+        /// operation is an error.
+        #[arg(long, default_value_t = false)]
+        upgrade: bool,
+        /// Assert the lockfile is up to date without writing it
+        /// (`uv lock --check`; a stale lockfile is an error).
+        /// Only meaningful with `lock`; combining it with any other
+        /// operation is an error.
+        #[arg(long, default_value_t = false, conflicts_with = "upgrade")]
+        check: bool,
+    },
+    /// Print version information
+    Version,
+}
+
+/// The `check` subcommands: each evaluates one kind of rule from the config
+/// file. Organised by rule rather than by repo, so they bypass the runners.
+#[derive(Subcommand)]
+pub enum CheckCommand {
     /// Check that files declared in ~/.config/rsmultigit/config.toml are identical across repos
-    CheckSame {
+    Same {
         /// Run only the listed check rules (space- or repeat-separated).
         /// Listed names override `enabled = false`. Unknown names are a hard error.
         #[arg(long, num_args = 1.., value_delimiter = ' ')]
@@ -148,7 +259,7 @@ pub enum Commands {
     /// Check that files declared as `[[exists]]` in ~/.config/rsmultigit/config.toml
     /// are present in every repo they apply to. Content is never compared, so this
     /// is the rule type for files that must exist but legitimately differ per repo.
-    CheckExists {
+    Exists {
         /// Run only the listed exists rules (space- or repeat-separated).
         /// Listed names override `enabled = false`. Unknown names are a hard error.
         #[arg(long, num_args = 1.., value_delimiter = ' ')]
@@ -169,8 +280,8 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         allow_empty: bool,
     },
-    /// Run both check-same and check-exists. Exits non-zero if either fails.
-    CheckAll {
+    /// Run both `check same` and `check exists`. Exits non-zero if either fails.
+    All {
         /// Print only failing rules from both checks.
         #[arg(long, default_value_t = false)]
         only_failed: bool,
@@ -178,83 +289,28 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         allow_empty: bool,
     },
-    /// Generate shell completion scripts
-    Complete {
-        /// Shell to generate completions for
-        #[arg(value_enum)]
-        shell: Shell,
-    },
-    /// Print a sample rsmultigit config.toml to stdout.
-    /// Redirect to ~/.config/rsmultigit/config.toml to bootstrap a new install.
-    ConfigExample,
-    /// Count repositories matching a condition
-    #[command(arg_required_else_help = true)]
-    Count {
-        /// What to count
-        #[arg(value_enum)]
-        what: CountWhat,
-    },
-    /// Show dirty repositories
-    Dirty,
-    /// GitHub operations (via the `gh` CLI) on repos with a github.com remote
-    #[command(arg_required_else_help = true)]
-    Gh {
-        /// What GitHub operation to perform
-        #[arg(value_enum)]
-        what: GhWhat,
-        /// How many recent non-failed deployments/releases/workflow runs to keep
-        /// (`clean-all` only)
-        #[arg(long, default_value_t = 4)]
-        keep: usize,
-        /// Print what differs but change nothing on GitHub (`sync-metadata` only)
-        #[arg(long, default_value_t = false)]
-        dry_run: bool,
-    },
-    /// Git operations across all repositories (each runs the git command of
-    /// the same name)
-    #[command(arg_required_else_help = true, disable_help_subcommand = true)]
-    Git {
-        #[command(subcommand)]
-        command: GitCommand,
-    },
-    /// Show the most recent tag per repo
-    LastTag,
-    /// Print the path of every configured repo, one per line (no header by default).
-    /// Pass --verbose to also emit the [project] header for each entry.
-    ListRepos,
     /// Print the name of every rule of one kind defined in the config, one
     /// per line: the `[[check]]` rules by default, the `[[exists]]` rules with
     /// `exists`. Intended for use in shell-completion scripts. All rules are
     /// listed, including those with `enabled = false`.
-    ListChecks {
+    List {
         /// Which rule list to print
         #[arg(value_enum, default_value_t = RuleKind::Check)]
         kind: RuleKind,
     },
-    /// Run an arbitrary command across all repositories
-    #[command(alias = "exec")]
-    Run {
-        /// Command and arguments to execute
-        #[arg(required = true, num_args = 1.., trailing_var_arg = true, allow_hyphen_values = true)]
-        command: Vec<String>,
-    },
-    /// Rust operations on projects that have a Cargo.toml file
-    #[command(arg_required_else_help = true)]
-    Rust {
-        /// What rust operation to perform
-        #[arg(value_enum)]
-        what: RustWhat,
-        /// Release type
-        #[arg(long = "type", value_enum, default_value_t = ReleaseType::Patch)]
-        release_type: ReleaseType,
-    },
+}
+
+/// The `setup` subcommands: both run before any config file exists, since
+/// producing one is their whole point.
+#[derive(Subcommand)]
+pub enum SetupCommand {
     /// Write a first ~/.config/rsmultigit/config.toml for a new install.
     /// Asks which directory holds the git repositories (with tab completion)
     /// and which build tool a bare `rsmultigit build` should run, checks that
     /// the directory really contains git repos, and writes the config. Each
     /// question is skipped when its answer is given as an option; with every
     /// answer given, nothing is asked, so the command works in scripts.
-    Setup {
+    Interactive {
         /// Directory whose direct subdirectories are the git repositories
         /// (answers the first question)
         #[arg(long, value_name = "DIR")]
@@ -270,72 +326,21 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         overwrite: bool,
     },
-    /// Show the size of the .git directory per repo
-    Size,
-    /// Show status of repositories
-    Status,
-    /// Run uv operations on projects that have a pyproject.toml file
-    #[command(arg_required_else_help = true)]
-    Uv {
-        /// What uv operation to perform
-        #[arg(value_enum)]
-        what: UvWhat,
-        /// Allow upgrading locked versions (`uv lock --upgrade`).
-        /// Only meaningful with `lock`; combining it with any other
-        /// operation is an error.
-        #[arg(long, default_value_t = false)]
-        upgrade: bool,
-        /// Assert the lockfile is up to date without writing it
-        /// (`uv lock --check`; a stale lockfile is an error).
-        /// Only meaningful with `lock`; combining it with any other
-        /// operation is an error.
-        #[arg(long, default_value_t = false, conflicts_with = "upgrade")]
-        check: bool,
-    },
-    /// Run cargo operations on projects that have a Cargo.toml file
-    #[command(arg_required_else_help = true)]
-    Cargo {
-        /// What cargo operation to perform
-        #[arg(value_enum)]
-        what: CargoWhat,
-        /// Build optimized artifacts (`--release`). Only meaningful with
-        /// `build`, `check`, `clippy`, `test`, `nextest` and `doc`;
-        /// combining it with any other operation is an error. Without this
-        /// or `--profile`, `build` compiles every profile: dev, then release.
-        #[arg(long, default_value_t = false, conflicts_with = "profile")]
-        release: bool,
-        /// Build under one named profile (`--profile <NAME>`: `dev`,
-        /// `release`, or a custom profile from Cargo.toml). Same operations
-        /// as `--release`; `cargo build --profile dev` builds only dev.
-        #[arg(long, value_name = "NAME")]
-        profile: Option<String>,
-        /// Only check formatting without rewriting files (`cargo fmt --check`;
-        /// unformatted code is an error). Only meaningful with `fmt`;
-        /// combining it with any other operation is an error.
-        #[arg(long, default_value_t = false, conflicts_with_all = ["release", "profile"])]
-        check: bool,
-    },
-    /// Run npm operations on projects that have a package.json file
-    #[command(arg_required_else_help = true)]
-    Npm {
-        /// What npm operation to perform
-        #[arg(value_enum)]
-        what: NpmWhat,
-        /// Also apply the fixes (`npm audit fix`; rewrites package.json and
-        /// package-lock.json). Only meaningful with `audit`; combining it
-        /// with any other operation is an error.
-        #[arg(long, default_value_t = false)]
-        fix: bool,
-    },
-    /// Print version information
-    Version,
+    /// Print a sample rsmultigit config.toml to stdout.
+    /// Redirect to ~/.config/rsmultigit/config.toml to bootstrap a new install.
+    ConfigSample,
 }
 
-/// The `git` subcommands: each runs the git command of the same name in
-/// every repo. Kept in a group of their own so the top level holds
-/// rsmultigit's own reports and tool runners rather than a mirror of git.
+/// The `git` subcommands, in two kinds. The reports (`status`, `dirty`,
+/// `count`, `age`, `authors`, `size`, `last-tag`) inspect each repo through
+/// libgit2 and print a summary. The rest run the git command of the same
+/// name in every repo.
 #[derive(Subcommand)]
 pub enum GitCommand {
+    /// Show the age of the last commit per repo
+    Age,
+    /// Show unique commit authors per repo
+    Authors,
     /// Run git blame on a file across all repositories
     Blame {
         /// File path to blame
@@ -371,8 +376,17 @@ pub enum GitCommand {
         /// Git config key to show
         key: String,
     },
+    /// Count repositories matching a condition
+    #[command(arg_required_else_help = true)]
+    Count {
+        /// What to count
+        #[arg(value_enum)]
+        what: CountWhat,
+    },
     /// Show diff for all repositories
     Diff,
+    /// Show dirty repositories
+    Dirty,
     /// Fetch from origin for all repositories
     Fetch,
     /// Run git garbage collection
@@ -385,6 +399,8 @@ pub enum GitCommand {
         #[arg(short = 'l', long, default_value_t = false)]
         files: bool,
     },
+    /// Show the most recent tag per repo
+    LastTag,
     /// Show recent commits
     Log {
         /// Number of commits to show
@@ -413,6 +429,8 @@ pub enum GitCommand {
     },
     /// Discard unstaged changes to tracked files (git restore .)
     Restore,
+    /// Show the size of the .git directory per repo
+    Size,
     /// Stash operations
     #[command(arg_required_else_help = true)]
     Stash {
@@ -420,6 +438,8 @@ pub enum GitCommand {
         #[arg(value_enum)]
         what: StashWhat,
     },
+    /// Show status of repositories
+    Status,
     /// Update submodules recursively
     SubmoduleUpdate,
     /// List tags
@@ -433,9 +453,9 @@ pub enum GitCommand {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum RuleKind {
-    /// The `[[check]]` rules, consumed by `check-same`
+    /// The `[[check]]` rules, consumed by `check same`
     Check,
-    /// The `[[exists]]` rules, consumed by `check-exists`
+    /// The `[[exists]]` rules, consumed by `check exists`
     Exists,
 }
 
@@ -534,6 +554,10 @@ pub enum CargoWhat {
     Clean,
     /// Upload the crate to crates.io (`cargo publish`)
     Publish,
+    /// Release a new version via `cargo release` (bump, commit, tag, push,
+    /// publish), with the crates.io token fetched from pass(1). Only crates
+    /// cargo would publish are released; `--type` picks the version bump.
+    Release,
 }
 
 impl CargoWhat {
@@ -554,6 +578,11 @@ impl CargoWhat {
     /// Whether `--check` makes sense for this operation (only `fmt`).
     pub fn takes_check(self) -> bool {
         matches!(self, CargoWhat::Fmt)
+    }
+
+    /// Whether `--type` makes sense for this operation (only `release`).
+    pub fn takes_type(self) -> bool {
+        matches!(self, CargoWhat::Release)
     }
 }
 
@@ -615,13 +644,6 @@ pub enum ResetWhat {
     Mixed,
 }
 
-#[derive(Clone, ValueEnum)]
-pub enum RustWhat {
-    /// Release a new version via `cargo release` (bump, commit, tag, push,
-    /// publish), with the crates.io token fetched from pass(1)
-    Publish,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum ReleaseType {
     /// Bump the patch version (x.y.Z)
@@ -676,9 +698,9 @@ pub fn print_completions(shell: Shell) {
     let mut cmd = Cli::command();
     generate(shell, &mut cmd, "rsmultigit", &mut io::stdout());
 
-    // Append a dynamic extension that completes `check-same --checks <names>`
-    // and `check-exists --checks <names>` against `rsmultigit list-checks`
-    // (`list-checks exists` for the latter), which reads the user's config
+    // Append a dynamic extension that completes `check same --checks <names>`
+    // and `check exists --checks <names>` against `rsmultigit check list`
+    // (`check list exists` for the latter), which reads the user's config
     // file. clap_complete only knows about static ValueEnum choices, so
     // --checks (free-form names from the config) needs runtime help.
     match shell {
@@ -750,9 +772,11 @@ where
 }
 
 /// Bash snippet appended to `rsmultigit complete bash`. Wraps clap's generated
-/// `_rsmultigit` function so that tabbing after `check-same --checks` or
-/// `check-exists --checks` completes the rule names returned by
-/// `rsmultigit list-checks` / `rsmultigit list-checks exists`.
+/// `_rsmultigit` function so that tabbing after `check same --checks` or
+/// `check exists --checks` completes the rule names returned by
+/// `rsmultigit check list` / `rsmultigit check list exists`. `same` and
+/// `exists` only count right after `check`, and only the first time, so a
+/// rule that happens to be named `exists` cannot flip the kind.
 const CHECKS_COMPLETION_BASH: &str = r#"
 # rsmultigit: dynamic --checks completion (appended by `rsmultigit complete bash`)
 if declare -F _rsmultigit >/dev/null; then
@@ -764,14 +788,16 @@ if declare -F _rsmultigit >/dev/null; then
         prev="${COMP_WORDS[COMP_CWORD-1]}"
 
         local in_checks=0
+        local group=""
         local kind=""
         for ((i=1; i<COMP_CWORD; i++)); do
             local w="${COMP_WORDS[i]}"
             case "$w" in
-                check-same)   kind=check ;;
-                check-exists) kind=exists ;;
-                --checks)     in_checks=1 ;;
-                --*)          in_checks=0 ;;
+                check)    [[ -z "$group" ]] && group=check ;;
+                same)     [[ "$group" == check && -z "$kind" ]] && kind=check ;;
+                exists)   [[ "$group" == check && -z "$kind" ]] && kind=exists ;;
+                --checks) in_checks=1 ;;
+                --*)      in_checks=0 ;;
             esac
         done
         if [[ "$prev" == "--checks" ]]; then
@@ -780,7 +806,7 @@ if declare -F _rsmultigit >/dev/null; then
 
         if [[ -n "$kind" ]] && (( in_checks )); then
             local names
-            names=$(rsmultigit list-checks "$kind" 2>/dev/null)
+            names=$(rsmultigit check list "$kind" 2>/dev/null)
             if [[ -n "$names" ]]; then
                 # shellcheck disable=SC2207
                 COMPREPLY=($(compgen -W "$names" -- "$cur"))
@@ -804,14 +830,16 @@ if (( ${+functions[_rsmultigit]} )); then
     _rsmultigit() {
         local prev=${words[$CURRENT-1]}
         local seen_checks=0
+        local group=""
         local kind=""
         local i
         for ((i=1; i<CURRENT; i++)); do
             case "${words[i]}" in
-                check-same)   kind=check ;;
-                check-exists) kind=exists ;;
-                --checks)     seen_checks=1 ;;
-                --*)          seen_checks=0 ;;
+                check)    [[ -z "$group" ]] && group=check ;;
+                same)     [[ "$group" == check && -z "$kind" ]] && kind=check ;;
+                exists)   [[ "$group" == check && -z "$kind" ]] && kind=exists ;;
+                --checks) seen_checks=1 ;;
+                --*)      seen_checks=0 ;;
             esac
         done
         if [[ "$prev" == "--checks" ]]; then
@@ -820,7 +848,7 @@ if (( ${+functions[_rsmultigit]} )); then
 
         if [[ -n "$kind" ]] && (( seen_checks )); then
             local -a names
-            names=(${(f)"$(rsmultigit list-checks "$kind" 2>/dev/null)"})
+            names=(${(f)"$(rsmultigit check list "$kind" 2>/dev/null)"})
             if (( ${#names} )); then
                 _describe 'check name' names
                 return 0
@@ -841,11 +869,13 @@ mod tests {
 
     #[test]
     fn parse_count_dirty() {
-        let cli = parse(&["rsmultigit", "count", "dirty"]);
+        let cli = parse(&["rsmultigit", "git", "count", "dirty"]);
         assert!(matches!(
             cli.command,
-            Commands::Count {
-                what: CountWhat::Dirty
+            Commands::Git {
+                command: GitCommand::Count {
+                    what: CountWhat::Dirty
+                }
             }
         ));
     }
@@ -854,10 +884,9 @@ mod tests {
     fn bare_operation_commands_show_help_not_missing_argument() {
         // Every command whose positional selects the operation prints its
         // help when given bare, so the user sees the choices.
-        let bare: [&[&str]; 11] = [
-            &["count"],
+        let bare: [&[&str]; 10] = [
+            &["git", "count"],
             &["gh"],
-            &["rust"],
             &["uv"],
             &["cargo"],
             &["npm"],
@@ -915,7 +944,7 @@ mod tests {
         // The flags - the command's own and the global ones - would bury the
         // choices, so the bare invocation lists only the operations and says
         // where the flags are.
-        for sub in ["gh", "count", "cargo"] {
+        for sub in ["gh", "cargo"] {
             let help = long_help_for(["rsmultigit", sub]);
             // Rendered option lines; a description may well mention a flag
             // (`clean-all` talks about --keep), and that is fine.
@@ -953,8 +982,8 @@ mod tests {
     #[test]
     fn long_help_for_stops_at_the_deepest_subcommand_named() {
         // Trailing non-subcommand words (flags, typos) do not derail the lookup.
-        let help = long_help_for(["rsmultigit", "count", "--verbose"]);
-        assert!(help.contains("Usage: rsmultigit count"), "{help}");
+        let help = long_help_for(["rsmultigit", "git", "count", "--verbose"]);
+        assert!(help.contains("Usage: rsmultigit git count"), "{help}");
         // No subcommand at all falls back to the top-level help.
         let help = long_help_for(["rsmultigit"]);
         assert!(help.contains("Usage: rsmultigit"), "{help}");
@@ -963,22 +992,51 @@ mod tests {
 
     #[test]
     fn parse_all_subcommands() {
-        let subcommands = [
-            "status",
-            "dirty",
-            "list-repos",
-            "age",
-            "authors",
-            "size",
-            "last-tag",
-            "version",
-            "setup",
-        ];
+        let subcommands = ["list-repos", "version"];
         for sub in subcommands {
             let result = Cli::try_parse_from(["rsmultigit", sub]);
             assert!(result.is_ok(), "subcommand {sub} should parse");
         }
+        for words in [
+            &["setup", "interactive"][..],
+            &["setup", "config-sample"],
+            &["check", "same"],
+            &["check", "exists"],
+            &["check", "all"],
+            &["check", "list"],
+        ] {
+            let result =
+                Cli::try_parse_from(std::iter::once("rsmultigit").chain(words.iter().copied()));
+            assert!(result.is_ok(), "{words:?} should parse");
+        }
+        // The commands folded into a group left the top level.
+        for sub in [
+            "status",
+            "dirty",
+            "count",
+            "age",
+            "authors",
+            "size",
+            "last-tag",
+            "rust",
+            "check same",
+            "check exists",
+            "check all",
+            "check list",
+            "setup config-sample",
+        ] {
+            assert!(
+                Cli::try_parse_from(["rsmultigit", sub, "dirty"]).is_err(),
+                "top-level {sub} should be gone"
+            );
+        }
         let git_subcommands = [
+            "status",
+            "dirty",
+            "age",
+            "authors",
+            "size",
+            "last-tag",
             "pull",
             "push",
             "fetch",
@@ -1011,7 +1069,7 @@ mod tests {
         // count requires a what argument
         let count_whats = ["dirty", "untracked", "synchronized"];
         for what in count_whats {
-            let result = Cli::try_parse_from(["rsmultigit", "count", what]);
+            let result = Cli::try_parse_from(["rsmultigit", "git", "count", what]);
             assert!(result.is_ok(), "count {what} should parse");
         }
 
@@ -1078,13 +1136,6 @@ mod tests {
         let result = Cli::try_parse_from(["rsmultigit", "build"]);
         assert!(result.is_ok(), "build without a method should parse");
 
-        // rust requires a what argument
-        let rust_whats = ["publish"];
-        for what in rust_whats {
-            let result = Cli::try_parse_from(["rsmultigit", "rust", what]);
-            assert!(result.is_ok(), "rust {what} should parse");
-        }
-
         // uv requires a what argument; --upgrade parses with lock
         let uv_whats = ["lock", "sync", "build", "publish"];
         for what in uv_whats {
@@ -1116,7 +1167,7 @@ mod tests {
         // cargo requires a what argument
         let cargo_whats = [
             "build", "check", "clippy", "fmt", "test", "nextest", "doc", "deny", "fetch", "update",
-            "clean", "publish",
+            "clean", "publish", "release",
         ];
         for what in cargo_whats {
             let result = Cli::try_parse_from(["rsmultigit", "cargo", what]);
@@ -1166,30 +1217,34 @@ mod tests {
     }
 
     #[test]
-    fn parse_list_checks_kind() {
-        let cli = parse(&["rsmultigit", "list-checks"]);
+    fn parse_check_list_kind() {
+        let cli = parse(&["rsmultigit", "check", "list"]);
         assert!(matches!(
             cli.command,
-            Commands::ListChecks {
-                kind: RuleKind::Check
+            Commands::Check {
+                command: CheckCommand::List {
+                    kind: RuleKind::Check
+                }
             }
         ));
-        let cli = parse(&["rsmultigit", "list-checks", "exists"]);
+        let cli = parse(&["rsmultigit", "check", "list", "exists"]);
         assert!(matches!(
             cli.command,
-            Commands::ListChecks {
-                kind: RuleKind::Exists
+            Commands::Check {
+                command: CheckCommand::List {
+                    kind: RuleKind::Exists
+                }
             }
         ));
-        assert!(Cli::try_parse_from(["rsmultigit", "list-checks", "both"]).is_err());
+        assert!(Cli::try_parse_from(["rsmultigit", "check", "list", "both"]).is_err());
     }
 
     #[test]
     fn completion_snippets_know_both_check_commands() {
         for snippet in [CHECKS_COMPLETION_BASH, CHECKS_COMPLETION_ZSH] {
-            assert!(snippet.contains("check-same)"));
-            assert!(snippet.contains("check-exists)"));
-            assert!(snippet.contains(r#"list-checks "$kind""#));
+            assert!(snippet.contains("same)"));
+            assert!(snippet.contains("exists)"));
+            assert!(snippet.contains(r#"check list "$kind""#));
         }
     }
 
@@ -1267,6 +1322,7 @@ mod tests {
             "--print-not",
             "--no-stop",
             "--short-circuit",
+            "git",
             "count",
             "dirty",
         ]);
@@ -1353,7 +1409,7 @@ mod tests {
 
     #[test]
     fn short_circuit_defaults_to_off() {
-        let cli = parse(&["rsmultigit", "check-same"]);
+        let cli = parse(&["rsmultigit", "check", "same"]);
         assert!(!cli.short_circuit);
     }
 
@@ -1496,38 +1552,41 @@ mod tests {
     }
 
     #[test]
-    fn parse_rust_publish_defaults_to_patch() {
-        let cli = parse(&["rsmultigit", "rust", "publish"]);
+    fn parse_cargo_release_type() {
+        let cli = parse(&["rsmultigit", "cargo", "release"]);
         match &cli.command {
-            Commands::Rust { what, release_type } => {
-                assert!(matches!(what, RustWhat::Publish));
-                assert_eq!(*release_type, ReleaseType::Patch);
+            Commands::Cargo {
+                what, release_type, ..
+            } => {
+                assert_eq!(*what, CargoWhat::Release);
+                assert_eq!(*release_type, None);
             }
-            _ => panic!("expected Rust"),
+            _ => panic!("expected Cargo"),
         }
-    }
-
-    #[test]
-    fn parse_rust_publish_with_type() {
         for (arg, expected) in [
             ("patch", ReleaseType::Patch),
             ("minor", ReleaseType::Minor),
             ("major", ReleaseType::Major),
         ] {
-            let cli = parse(&["rsmultigit", "rust", "publish", "--type", arg]);
+            let cli = parse(&["rsmultigit", "cargo", "release", "--type", arg]);
             match &cli.command {
-                Commands::Rust { release_type, .. } => {
-                    assert_eq!(*release_type, expected);
+                Commands::Cargo { release_type, .. } => {
+                    assert_eq!(*release_type, Some(expected));
                 }
-                _ => panic!("expected Rust"),
+                _ => panic!("expected Cargo"),
             }
         }
+        let result = Cli::try_parse_from(["rsmultigit", "cargo", "release", "--type", "huge"]);
+        assert!(result.is_err());
     }
 
     #[test]
-    fn parse_rust_publish_bad_type_fails() {
-        let result = Cli::try_parse_from(["rsmultigit", "rust", "publish", "--type", "huge"]);
-        assert!(result.is_err());
+    fn cargo_type_applies_to_release_only() {
+        for what in CargoWhat::value_variants() {
+            assert_eq!(what.takes_type(), *what == CargoWhat::Release, "{what:?}");
+        }
+        assert!(!CargoWhat::Release.takes_release());
+        assert!(!CargoWhat::Release.takes_check());
     }
 
     #[test]
