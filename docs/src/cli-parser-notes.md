@@ -61,10 +61,12 @@ stopped to see.
 **What we do.** Every such variant carries `arg_required_else_help`, and
 `main::parse_cli` intercepts both outcomes (the help-on-empty error and a
 `MissingRequiredArgument` naming `<WHAT>`) to print the command's help via
-`cli::long_help_for`. That renders the command with a `help_template` of
-`{positionals}` only - so each operation comes with its long description and
-no flag is listed - and an `after_help` trailer pointing at `--help`, which
-keeps the full output. Exit status 2 on stderr, as clap would. The positional
+`cli::long_help_for`. That renders the command's about and usage, then a
+`Commands:` table of its operations - each with its description, no flag
+listed - and a trailer pointing at `--help`, which keeps the full output.
+The table is built by us (`operations_of` + `operations_list`), not by clap's
+`{positionals}`, whose long form is an indented `Possible values:` block that
+looks nothing like a subcommand list. Exit status 2 on stderr, as clap would. The positional
 is called `what` on every such command; that name is the contract the
 intercept relies on. A missing free-form positional (`git blame <FILE>`)
 keeps clap's own error.
@@ -72,8 +74,10 @@ keeps clap's own error.
 A group of subcommands (`git`) gets the same treatment: the variant carries
 `arg_required_else_help` (and `disable_help_subcommand`, so no `help` entry
 pads the list), the intercept also catches `MissingSubcommand` (the
-`rsmultigit git --no-stop` form), and `long_help_for` switches to a
-`{subcommands}` template when the command it lands on has subcommands.
+`rsmultigit git --no-stop` form), and `operations_of` takes the subcommands
+instead of the `what` values when the command it lands on has subcommands.
+Both kinds then go through the same `operations_list`, so `rsmultigit git`
+and `rsmultigit npm` print the same form.
 
 ## Aliases and shell completion
 

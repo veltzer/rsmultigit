@@ -788,28 +788,76 @@ pub fn print_completions(shell: Shell) {
     }
 }
 
-/// Help template for a command invoked without its operation word: the
-/// positionals (so `<WHAT>` with every choice described) and nothing else.
-/// Options stay out — on a command with the global flags that is a dozen
-/// entries which bury the choices the user actually stopped to see — and
-/// the trailer points at `--help`, where they remain.
+/// Help template for a command invoked without its operation word: about and
+/// usage, then the operations list and the `--help` trailer, both passed in
+/// as `after-help` (see `operations_list`). Options stay out - on a command
+/// with the global flags that is a dozen entries which bury the choices the
+/// user actually stopped to see - and the trailer points at `--help`, where
+/// they remain.
 const OPERATIONS_HELP_TEMPLATE: &str =
-    "{before-help}{about-with-newline}\n{usage-heading} {usage}\n\n{positionals}{after-help}";
+    "{before-help}{about-with-newline}\n{usage-heading} {usage}{after-help}";
 
-/// The same for a command whose operations are subcommands (`git`): the
-/// subcommand list takes the place of the positionals.
-fn subcommands_help_template() -> StyledStr {
+/// The operations of `cmd`, each with its description: its subcommands for a
+/// group (`git`), the possible values of its `what` positional for a command
+/// that takes the operation as a word (`npm <WHAT>`). Hidden entries are left
+/// out, as clap leaves them out of its own help.
+fn operations_of(cmd: &clap::Command) -> Vec<(String, String)> {
+    if cmd.has_subcommands() {
+        return cmd
+            .get_subcommands()
+            .filter(|sub| !sub.is_hide_set())
+            .map(|sub| {
+                let about = sub.get_about().map(|a| a.to_string()).unwrap_or_default();
+                (sub.get_name().to_string(), about)
+            })
+            .collect();
+    }
+    cmd.get_arguments()
+        .find(|arg| arg.get_id() == "what")
+        .map(|arg| {
+            arg.get_possible_values()
+                .into_iter()
+                .filter(|value| !value.is_hide_set())
+                .map(|value| {
+                    let help = value.get_help().map(|h| h.to_string()).unwrap_or_default();
+                    (value.get_name().to_string(), help)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The `Commands:` section listing `operations`, laid out the way clap lays
+/// out its subcommand list: names styled as literals in a column as wide as
+/// the longest one, two spaces, then the description. Subcommand groups and
+/// `<WHAT>` commands both go through here, so the two look the same.
+fn operations_list(operations: &[(String, String)]) -> String {
     let h = STYLES.get_header();
-    format!("{{before-help}}{{about-with-newline}}\n{{usage-heading}} {{usage}}\n\n{h}Commands:{h:#}\n{{subcommands}}{{after-help}}").into()
+    let l = STYLES.get_literal();
+    let width = operations
+        .iter()
+        .map(|(name, _)| name.len())
+        .max()
+        .unwrap_or(0);
+    let indent = " ".repeat(2 + width + 2);
+    let mut out = format!("{h}Commands:{h:#}\n");
+    for (name, help) in operations {
+        let pad = " ".repeat(width - name.len());
+        let help = help.trim().replace('\n', &format!("\n{indent}"));
+        out.push_str(format!("  {l}{name}{l:#}{pad}  {help}").trim_end());
+        out.push('\n');
+    }
+    out
 }
 
 /// The help of the (sub)command that `args` (argv, program name included)
-/// names, for printing when such a command is invoked without the positional
-/// that selects its operation. clap's `arg_required_else_help` renders the
-/// short help there, which lists the choices as bare names and then every
-/// flag; this renders the *long* description of each choice and *no* flags,
-/// which is what someone who stopped at `rsmultigit gh` is looking for.
-/// The top-level command (no subcommand named) keeps its normal long help.
+/// names, for printing when such a command is invoked without the operation
+/// (the `what` positional or the subcommand) it requires. clap's
+/// `arg_required_else_help` renders the short help there, which lists the
+/// choices as bare names and then every flag; this lists every operation with
+/// its description and *no* flags, which is what someone who stopped at
+/// `rsmultigit gh` is looking for. The top-level command (no subcommand named)
+/// keeps its normal long help.
 pub fn long_help_for<I, S>(args: I) -> StyledStr
 where
     I: IntoIterator<Item = S>,
@@ -840,14 +888,12 @@ where
             .find_subcommand_mut(name)
             .expect("subcommand path was taken from this very Command");
     }
-    let template = if cur.has_subcommands() {
-        subcommands_help_template()
-    } else {
-        OPERATIONS_HELP_TEMPLATE.into()
-    };
+    let operations = operations_list(&operations_of(cur));
     cur.clone()
-        .help_template(template)
-        .after_help(format!("Run `{full_name} --help` for the options."))
+        .help_template(OPERATIONS_HELP_TEMPLATE)
+        .after_help(format!(
+            "{operations}\nRun `{full_name} --help` for the options."
+        ))
         .render_long_help()
 }
 
@@ -1057,6 +1103,37 @@ mod tests {
             full.contains("Options:") && full.contains("--keep"),
             "{full}"
         );
+    }
+
+    #[test]
+    fn long_help_for_lists_groups_and_operation_words_alike() {
+        // Every command that demands an operation - a subcommand group or a
+        // `<WHAT>` word - is listed by the same code, as a `Commands:` table.
+        fn walk(cmd: &clap::Command, path: &mut Vec<String>) {
+            for sub in cmd.get_subcommands() {
+                path.push(sub.get_name().to_string());
+                if sub.is_arg_required_else_help_set() {
+                    let operations = operations_of(sub);
+                    assert!(
+                        !operations.is_empty(),
+                        "bare `{}` has no operations to list",
+                        path.join(" ")
+                    );
+                    let mut argv = vec!["rsmultigit".to_string()];
+                    argv.extend(path.iter().cloned());
+                    let help = long_help_for(&argv).to_string();
+                    assert!(help.contains("\n\nCommands:\n"), "{help}");
+                    assert!(!help.contains("Possible values"), "{help}");
+                    let (name, _) = &operations[0];
+                    assert!(help.contains(&format!("\n  {name}  ")), "{help}");
+                }
+                walk(sub, path);
+                path.pop();
+            }
+        }
+        let mut cmd = Cli::command();
+        cmd.build();
+        walk(&cmd, &mut Vec::new());
     }
 
     #[test]
