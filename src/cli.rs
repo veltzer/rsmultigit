@@ -221,6 +221,8 @@ pub enum Commands {
         #[command(subcommand)]
         command: SetupCommand,
     },
+    /// Show status of repositories (shortcut for `git status`)
+    Status,
     /// Run uv operations on projects that have a pyproject.toml file
     #[command(arg_required_else_help = true)]
     Uv {
@@ -1149,7 +1151,9 @@ mod tests {
 
     #[test]
     fn parse_all_subcommands() {
-        let subcommands = ["version"];
+        // `status` is the one git operation kept at the top level, as a
+        // shortcut for `git status`.
+        let subcommands = ["version", "status"];
         for sub in subcommands {
             let result = Cli::try_parse_from(["rsmultigit", sub]);
             assert!(result.is_ok(), "subcommand {sub} should parse");
@@ -1174,7 +1178,6 @@ mod tests {
         }
         // The commands folded into a group left the top level.
         for sub in [
-            "status",
             "dirty",
             "count",
             "age",
@@ -1214,6 +1217,9 @@ mod tests {
         for sub in git_subcommands {
             let result = Cli::try_parse_from(["rsmultigit", "git", sub]);
             assert!(result.is_ok(), "subcommand git {sub} should parse");
+            if sub == "status" {
+                continue;
+            }
             // The git operations left the top level.
             assert!(
                 Cli::try_parse_from(["rsmultigit", sub]).is_err(),

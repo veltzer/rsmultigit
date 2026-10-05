@@ -101,7 +101,7 @@ for every field.
 ## Quick Start
 
 ```bash
-rsmultigit git status             # one-line summary of every repo that needs attention
+rsmultigit status                 # one-line summary of every repo that needs attention
 rsmultigit -j 8 git pull          # pull all repos, 8 at a time
 rsmultigit git count dirty        # count repos with uncommitted changes
 rsmultigit git grep "TODO"        # git grep across all repos
@@ -120,7 +120,7 @@ Everything that inspects or operates on the repos as git repositories;
 
 | Command | Description |
 |---------|-------------|
-| `git status` | One-line summary per repo needing attention (`--verbose` for `git status -s`) |
+| `git status` (shortcut: `status`) | One-line summary per repo needing attention (`--verbose` for `git status -s`) |
 | `git dirty` | Show `git diff --stat` for repos with modifications |
 | `git count dirty` | Count repositories with uncommitted changes |
 | `git count untracked` | Count repositories with untracked files |

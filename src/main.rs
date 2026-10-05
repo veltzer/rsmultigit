@@ -120,6 +120,7 @@ fn main() -> Result<()> {
 
         // ── do_for_all_projects ──
         Commands::Git { command } => run_git_command(&config, &projects, command)?,
+        Commands::Status => run_git_command(&config, &projects, &GitCommand::Status)?,
         Commands::Run { command } => {
             let command = command.clone();
             let venv = config.venv;

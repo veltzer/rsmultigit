@@ -40,7 +40,7 @@ rsmultigit list repos
 See which repos need attention, one line per repo:
 
 ```bash
-rsmultigit git status
+rsmultigit status        # shortcut for `rsmultigit git status`
 # [/home/me/git/myrepo]
 # 2 modified, 1 untracked, ahead 1
 ```

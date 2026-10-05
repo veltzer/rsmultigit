@@ -96,16 +96,16 @@ These commands compute a value per repo and print it under the `[repo]`
 header. Repos with nothing to report are skipped unless `--verbose` is set.
 With `--terse`, only the repo path is printed.
 
-#### `rsmultigit git status`
+#### `rsmultigit git status` / `rsmultigit status`
 
 One-line summary of every repo that needs attention: counts of conflicted,
 staged, modified, deleted and untracked files, plus `ahead N` / `behind N`
 when the branch has diverged from its upstream (see
 `git count unsynchronized` for how the upstream is chosen). Clean, in-sync repos are skipped. Computed
-with libgit2.
+with libgit2. `rsmultigit status` is a top-level shortcut for the same command.
 
 ```bash
-rsmultigit git status
+rsmultigit status                        # Same as `rsmultigit git status`
 # [/home/me/git/myrepo]
 # 2 modified, 1 untracked, ahead 1
 rsmultigit --verbose git status              # Full per-file `git status -s` instead

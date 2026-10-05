@@ -62,6 +62,31 @@ fn status_shows_dirty_repo() {
 }
 
 #[test]
+fn top_level_status_matches_git_status() {
+    let tmp = setup_git_repos(&["clean", "dirty"]);
+    fs::write(utf8(&tmp).join("dirty").join("new.txt"), "x").unwrap();
+
+    for flags in [&[][..], &["--verbose"][..]] {
+        let git_args: Vec<&str> = flags.iter().copied().chain(["git", "status"]).collect();
+        let top_args: Vec<&str> = flags.iter().copied().chain(["status"]).collect();
+        let via_git = run_rsmultigit(utf8(&tmp), &git_args);
+        let via_top = run_rsmultigit(utf8(&tmp), &top_args);
+        assert!(via_git.status.success());
+        assert!(via_top.status.success());
+        let stdout = stdout_str(&via_top);
+        assert!(
+            stdout.contains("dirty"),
+            "should show the dirty repo: {stdout}"
+        );
+        assert_eq!(
+            stdout_str(&via_git),
+            stdout,
+            "`status` should be exactly `git status` (flags {flags:?})"
+        );
+    }
+}
+
+#[test]
 fn status_shows_repo_with_unpushed_commits() {
     let tmp = setup_git_repos(&["insync", "ahead"]);
     let repo_path = utf8(&tmp).join("ahead");
