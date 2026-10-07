@@ -8,7 +8,7 @@ every repo** → **print per-repo results in repo order**.
 
 ## Module structure
 
-```
+```text
 src/
   main.rs              Entry point: CLI dispatch
   cli.rs               Clap derive definitions (Cli + Commands + value enums),

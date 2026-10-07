@@ -767,7 +767,7 @@ rsmultigit gh sync-metadata             # Show them and update GitHub
 
 Sample output for one repository with every field out of step:
 
-```
+```text
 [demos-os-linux]
 description
   local:  demos-os-linux is a project to demo and explore the Linux API

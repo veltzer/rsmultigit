@@ -169,11 +169,13 @@ The rest each run the git command of the same name in every repo:
 | `check list [exists]` | Print the rule names (for shell completion) |
 
 ### Running commands
+
 | Command | Description |
 |---------|-------------|
 | `run <cmd...>` (alias `exec`) | Run an arbitrary command in every repo (`run make clean` for `make clean`) |
 
 ### Build and tooling
+
 | Command | Description |
 |---------|-------------|
 | `build` | Build with the config file's `default_build_method` |
@@ -196,6 +198,7 @@ The rest each run the git command of the same name in every repo:
 | `gh sync-metadata [--dry-run]` | Sync GitHub description, topics and feature policy from `config/project.lua`, printing only what differs |
 
 ### Other
+
 | Command | Description |
 |---------|-------------|
 | `setup interactive [--repos-dir <DIR>] [--build <METHOD>\|--no-build] [--overwrite]` | Interactively write a first config file: pick the repositories directory and the default build tool |

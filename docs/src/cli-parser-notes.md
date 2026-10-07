@@ -15,7 +15,7 @@ so `rsmultigit --help` is scannable instead of a flat alphabetical wall.
 (and the builder equivalent `Command::help_heading`) only group **arguments**,
 not **subcommands**. Per-subcommand-variant `help_heading` doesn't compile:
 
-```
+```text
 error[E0599]: no method named `help_heading` found for struct `clap::Command`
 ```
 

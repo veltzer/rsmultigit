@@ -44,7 +44,7 @@ explicit repo path, so tests run in parallel without coordination.
 Integration tests are in `tests/` and run the compiled `rsmultigit` binary
 as a subprocess against temporary git repositories:
 
-```
+```text
 tests/
   main.rs              Test entry point, loads modules
   common/mod.rs        Shared helpers
