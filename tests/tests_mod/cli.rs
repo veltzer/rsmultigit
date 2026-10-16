@@ -127,7 +127,10 @@ fn bare_check_and_setup_list_their_subcommands() {
     // The other two subcommand groups behave like `git` when invoked bare.
     let tmp = tempfile::TempDir::new().unwrap();
     for (group, names) in [
-        ("check", &["same", "exists", "all", "list"][..]),
+        (
+            "check",
+            &["same", "exists", "submodules", "all", "list"][..],
+        ),
         ("setup", &["interactive", "config-sample"][..]),
     ] {
         let output = run_rsmultigit(utf8(&tmp), &[group]);

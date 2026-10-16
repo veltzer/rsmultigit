@@ -84,7 +84,10 @@ mean exactly what they mean for `[[check]]`. There is no `must_have`,
 because requiring the file *is* the whole rule. A directory at `path` does
 not satisfy the rule; it must be a file.
 
-`rsmultigit check all` runs the `[[check]]` and `[[exists]]` rules together.
+`rsmultigit check all` runs the `[[check]]` and `[[exists]]` rules together,
+followed by `check submodules`, which needs no rules: it discovers the
+submodules of every configured repo and requires each one to be pinned to
+the same commit wherever it appears.
 
 ## Global flags
 

@@ -12,7 +12,7 @@ Full documentation: <https://veltzer.github.io/rsmultigit/>
 
 - **Batch operations** — pull, push, fetch, diff, grep, clean, commit, and build across all repos at once
 - **Native git inspection** — status, dirty and sync checks use libgit2 in-process, with no `git` subprocess per repo
-- **Consistency checks** — `check same` verifies that shared files (`.gitignore`, CI workflows, lint configs, ...) are byte-identical across the fleet, `check exists` verifies that required files are present, and `--diff`, `--copy` and `--fix-missing` repair drift interactively
+- **Consistency checks** — `check same` verifies that shared files (`.gitignore`, CI workflows, lint configs, ...) are byte-identical across the fleet, `check exists` verifies that required files are present, `check submodules` verifies that a submodule shared by several repos is pinned to the same commit everywhere, and `--diff`, `--copy` and `--fix-missing` repair drift interactively
 - **Build orchestration** — make, rsconstruct, cargo, bootstrap, with each repo's `.venv` activated automatically
 - **Tooling passthrough** — `uv lock` / `uv sync` on Python projects, `cargo build|check|clippy|fmt|test|nextest|doc|deny|fetch|update|clean|publish` on Rust projects, `gh` cleanup, release/workflow inspection and metadata sync on GitHub repos
 - **Parallel execution** — `-j N` runs repos concurrently while keeping output in repo order
@@ -165,7 +165,8 @@ The rest each run the git command of the same name in every repo:
 |---------|-------------|
 | `check same [--diff] [--copy] [--fix-missing]` | Verify the `[[check]]` files are byte-identical across the repos they select |
 | `check exists` | Verify the `[[exists]]` files are present in every repo they select |
-| `check all` | Run both; non-zero if either fails |
+| `check submodules` | Verify every submodule shared by several repos is checked out at the same commit in all of them (no rules needed) |
+| `check all` | Run all three; non-zero if any fails |
 | `check list [exists]` | Print the rule names (for shell completion) |
 
 ### Running commands

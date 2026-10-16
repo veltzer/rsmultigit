@@ -5,6 +5,8 @@ mod build;
 
 #[path = "tests_mod/check_same.rs"]
 mod check_same;
+#[path = "tests_mod/check_submodules.rs"]
+mod check_submodules;
 #[path = "tests_mod/cli.rs"]
 mod cli;
 #[path = "tests_mod/count.rs"]

@@ -16,6 +16,7 @@ use cli::{
     UvWhat,
 };
 use commands::check_run::{self, CheckExistsOpts, CheckSameOpts};
+use commands::check_submodules;
 use config::AppConfig;
 
 /// `Cli::parse()`, except that a command invoked without the positional that
@@ -403,15 +404,21 @@ fn run_check_command(
             },
             &mut stdout.lock(),
         )?,
+        CheckCommand::Submodules { only_failed } => check_submodules::run_check_submodules(
+            config,
+            projects,
+            *only_failed,
+            &mut stdout.lock(),
+        )?,
         CheckCommand::All {
             only_failed,
             allow_empty,
         } => {
-            // Both halves always run: the point of `check all` is one verdict
-            // over every invariant, so a failure in the first must not hide
-            // the state of the second. An empty-rule bail in either half still
-            // propagates as an error, since that is a config bug rather than
-            // drift.
+            // All three parts always run: the point of `check all` is one
+            // verdict over every invariant, so a failure in one must not hide
+            // the state of the others. An empty-rule bail in `same` or
+            // `exists` still propagates as an error, since that is a config
+            // bug rather than drift.
             let same = check_run::run_check_same(
                 config,
                 file_config,
@@ -440,7 +447,17 @@ fn run_check_command(
                 },
                 &mut stdout.lock(),
             )?;
-            if same != 0 || exists != 0 { 1 } else { 0 }
+            let submodules = check_submodules::run_check_submodules(
+                config,
+                projects,
+                *only_failed,
+                &mut stdout.lock(),
+            )?;
+            if same != 0 || exists != 0 || submodules != 0 {
+                1
+            } else {
+                0
+            }
         }
         CheckCommand::List { kind } => {
             let names: Vec<&str> = match kind {

@@ -351,7 +351,8 @@ rsmultigit --no-venv run which python  # ambient python everywhere
 ## Consistency Checks
 
 The `check` subcommands evaluate the `[[check]]` and `[[exists]]` rules in
-the config file; `rsmultigit check` alone lists them. See [Configuration](configuration.md) for the rule fields. Unlike every
+the config file, plus one invariant that needs no rule, the submodule pins;
+`rsmultigit check` alone lists them. See [Configuration](configuration.md) for the rule fields. Unlike every
 other command, output is organised by **rule**, not by repo: each rule prints
 a header line followed by its verdict. The header is `[rule-name]` followed
 by the rule's properties as `key=value` pairs (`path` and `select` always;
@@ -440,11 +441,46 @@ fails with `no repos selected` and becomes a hard error at the end, unless
 `--short-circuit` behave exactly as for `check same`. There are no
 interactive modes.
 
+### `rsmultigit check submodules`
+
+Scan every configured repo for submodules, group them by remote URL, and
+assert that each submodule is checked out at the same commit wherever it
+appears. No configuration is involved: a submodule is the fleet's way of
+sharing a repo, and the pin is the part that drifts when one consumer bumps
+it and the others do not. URLs are normalised before grouping, so the same
+repo added over ssh in one place and https in another is one submodule.
+
+The commit compared is the one checked out in the submodule's working
+directory, the same view `check same` takes of ordinary files: what is on
+disk and what a build uses. A submodule that is not checked out falls back
+to the commit recorded in the superproject's index, then in HEAD.
+
+```text
+[shared-themes] url=github.com/veltzer/shared-themes
+ok (4 repos @ aa5e688)
+[shared-tags] url=github.com/veltzer/shared-tags
+3 repos, 2 commits
+  1f2e3d4 (2 repos):
+    /home/me/git/teaching-slides (shared/shared-tags)
+    /home/me/git/teaching-syllabi (shared/shared-tags)
+  9a8b7c6 (1 repo):
+    /home/me/git/teaching-animations (shared/shared-tags)
+```
+
+Groups are ordered largest first. Exit code is 1 when any submodule is
+pinned to more than one commit, or to none. A fleet without submodules
+passes. A submodule used by a single repo passes too; it is listed so the
+report shows everything the fleet pins.
+
+`--only-failed`, `--terse` (failing submodule names only) and
+`--short-circuit` behave as for `check same`. There are no rules to select
+and no interactive modes.
+
 ### `rsmultigit check all [--only-failed] [--allow-empty]`
 
-Run every enabled `[[check]]` rule and then every enabled `[[exists]]` rule.
-Both halves always run, so a failure in the first never hides the state of
-the second. Exit code is non-zero if either half fails.
+Run every enabled `[[check]]` rule, then every enabled `[[exists]]` rule,
+then `check submodules`. All three always run, so a failure in one never
+hides the state of the others. Exit code is non-zero if any of them fails.
 
 ```bash
 rsmultigit check all --only-failed

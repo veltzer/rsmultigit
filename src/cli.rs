@@ -313,12 +313,22 @@ pub enum CheckCommand {
         #[arg(long, default_value_t = false)]
         allow_empty: bool,
     },
-    /// Run both `check same` and `check exists`. Exits non-zero if either fails.
-    All {
-        /// Print only failing rules from both checks.
+    /// Check that every submodule shared by several repos is checked out at the
+    /// same commit in all of them. Needs no rules: the submodules of every
+    /// configured repo are discovered and grouped by remote URL.
+    Submodules {
+        /// Print only failing submodules, suppressing the `ok` lines that
+        /// consistent submodules print by default. (--terse implies this.)
         #[arg(long, default_value_t = false)]
         only_failed: bool,
-        /// Treat rules that match nothing as passing, in both checks.
+    },
+    /// Run `check same`, `check exists` and `check submodules`. Exits non-zero
+    /// if any of them fails.
+    All {
+        /// Print only failing rules and submodules from all three checks.
+        #[arg(long, default_value_t = false)]
+        only_failed: bool,
+        /// Treat rules that match nothing as passing, in `same` and `exists`.
         #[arg(long, default_value_t = false)]
         allow_empty: bool,
     },
