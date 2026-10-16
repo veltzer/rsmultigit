@@ -26,7 +26,7 @@ fn check_same_all_identical_reports_ok() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -37,7 +37,7 @@ path = ".gitignore"
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     assert_eq!(
         stdout_str(&output),
-        "[gi] path=.gitignore select=*\nok (3 files)"
+        "[check-same gi] path=.gitignore select=*\nok (3 files)"
     );
 }
 
@@ -50,7 +50,7 @@ fn check_same_only_failed_silences_passing_checks() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -73,12 +73,12 @@ fn check_same_only_failed_still_reports_failures() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
 
-[[check]]
+[[check-same]]
 name = "readme"
 select = "*"
 path = "README"
@@ -88,9 +88,9 @@ path = "README"
     let output = run(utf8(&tmp), &cfg, &["check", "same", "--only-failed"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same gi]"), "stdout: {stdout}");
     assert!(
-        !stdout.contains("[readme]"),
+        !stdout.contains("[check-same readme]"),
         "passing readme should be silent: {stdout}"
     );
 }
@@ -105,12 +105,12 @@ fn check_same_mixed_results_report_ok_and_failure() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
 
-[[check]]
+[[check-same]]
 name = "readme"
 select = "*"
 path = "README"
@@ -120,9 +120,9 @@ path = "README"
     let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same gi]"), "stdout: {stdout}");
     assert!(stdout.contains("2 files, 2 groups"), "stdout: {stdout}");
-    assert!(stdout.contains("[readme]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same readme]"), "stdout: {stdout}");
     assert!(stdout.contains("ok (2 files)"), "stdout: {stdout}");
 }
 
@@ -135,7 +135,7 @@ fn check_same_divergent_exits_nonzero() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -145,7 +145,7 @@ path = ".gitignore"
     let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same gi]"), "stdout: {stdout}");
     assert!(stdout.contains("3 files, 2 groups"), "stdout: {stdout}");
     assert!(stdout.contains("group A (2 files)"), "stdout: {stdout}");
     assert!(stdout.contains("group B (1 files)"), "stdout: {stdout}");
@@ -159,7 +159,7 @@ fn check_same_terse_prints_only_rule_name() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -179,7 +179,7 @@ fn check_same_no_header_suppresses_rule_label() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -190,7 +190,7 @@ path = ".gitignore"
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(
-        !stdout.contains("[gi]"),
+        !stdout.contains("[check-same gi]"),
         "stdout should not contain [gi]: {stdout}"
     );
     assert!(stdout.contains("2 files, 2 groups"), "stdout: {stdout}");
@@ -206,12 +206,12 @@ fn check_same_only_runs_named_rule() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
 
-[[check]]
+[[check-same]]
 name = "readme"
 select = "*"
 path = "README"
@@ -222,9 +222,12 @@ path = "README"
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     // Only the requested (passing) rule appears; gi's divergence must not.
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[readme]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same readme]"), "stdout: {stdout}");
     assert!(stdout.contains("ok (2 files)"), "stdout: {stdout}");
-    assert!(!stdout.contains("[gi]"), "gi should not have run: {stdout}");
+    assert!(
+        !stdout.contains("[check-same gi]"),
+        "gi should not have run: {stdout}"
+    );
 }
 
 #[test]
@@ -240,17 +243,17 @@ fn check_same_checks_accepts_multiple_names() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
 
-[[check]]
+[[check-same]]
 name = "readme"
 select = "*"
 path = "README"
 
-[[check]]
+[[check-same]]
 name = "license"
 select = "*"
 path = "LICENSE"
@@ -265,10 +268,10 @@ path = "LICENSE"
     );
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
-    assert!(stdout.contains("[license]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same gi]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same license]"), "stdout: {stdout}");
     assert!(
-        !stdout.contains("[readme]"),
+        !stdout.contains("[check-same readme]"),
         "readme should be skipped: {stdout}"
     );
 }
@@ -283,12 +286,12 @@ fn check_same_checks_preserves_request_order() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
 
-[[check]]
+[[check-same]]
 name = "readme"
 select = "*"
 path = "README"
@@ -303,8 +306,10 @@ path = "README"
     );
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
-    let readme_pos = stdout.find("[readme]").expect("missing [readme]");
-    let gi_pos = stdout.find("[gi]").expect("missing [gi]");
+    let readme_pos = stdout
+        .find("[check-same readme]")
+        .expect("missing [readme]");
+    let gi_pos = stdout.find("[check-same gi]").expect("missing [gi]");
     assert!(readme_pos < gi_pos, "expected readme before gi: {stdout}");
 }
 
@@ -321,17 +326,17 @@ fn check_same_checks_re_selects_matching_rules() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "rs-gitignore"
 select = "*"
 path = ".gitignore"
 
-[[check]]
+[[check-same]]
 name = "rs-readme"
 select = "*"
 path = "README"
 
-[[check]]
+[[check-same]]
 name = "py-license"
 select = "*"
 path = "LICENSE"
@@ -341,10 +346,16 @@ path = "LICENSE"
     let output = run(utf8(&tmp), &cfg, &["check", "same", "--checks-re", "^rs-"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[rs-gitignore]"), "stdout: {stdout}");
-    assert!(stdout.contains("[rs-readme]"), "stdout: {stdout}");
     assert!(
-        !stdout.contains("[py-license]"),
+        stdout.contains("[check-same rs-gitignore]"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("[check-same rs-readme]"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("[check-same py-license]"),
         "py-license should be skipped: {stdout}"
     );
 }
@@ -359,12 +370,12 @@ fn check_same_checks_re_combines_with_checks() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
 
-[[check]]
+[[check-same]]
 name = "readme"
 select = "*"
 path = "README"
@@ -387,9 +398,9 @@ path = "README"
     );
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same gi]"), "stdout: {stdout}");
     assert_eq!(
-        stdout.matches("[readme]").count(),
+        stdout.matches("[check-same readme]").count(),
         1,
         "readme must run exactly once: {stdout}"
     );
@@ -403,7 +414,7 @@ fn check_same_checks_re_overrides_enabled_false() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -414,7 +425,7 @@ enabled = false
     let output = run(utf8(&tmp), &cfg, &["check", "same", "--checks-re", "gi"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same gi]"), "stdout: {stdout}");
 }
 
 #[test]
@@ -424,7 +435,7 @@ fn check_same_checks_re_no_match_fails() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -439,7 +450,7 @@ path = ".gitignore"
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(
-        stderr.contains("^bogus") && stderr.contains("matches no check name"),
+        stderr.contains("^bogus") && stderr.contains("matches no check-same rule name"),
         "stderr: {stderr}"
     );
 }
@@ -451,7 +462,7 @@ fn check_same_checks_re_invalid_regex_fails() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -461,7 +472,10 @@ path = ".gitignore"
     let output = run(utf8(&tmp), &cfg, &["check", "same", "--checks-re", "("]);
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
-    assert!(stderr.contains("invalid check regex"), "stderr: {stderr}");
+    assert!(
+        stderr.contains("invalid check-same rule regex"),
+        "stderr: {stderr}"
+    );
 }
 
 #[test]
@@ -471,7 +485,7 @@ fn check_same_unknown_rule_fails() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -486,7 +500,7 @@ path = ".gitignore"
     assert!(!output.status.success());
     let stderr = stderr_str(&output);
     assert!(
-        stderr.contains("nonexistent") && stderr.contains("unknown check name"),
+        stderr.contains("nonexistent") && stderr.contains("unknown check-same rule name"),
         "stderr: {stderr}"
     );
 }
@@ -498,7 +512,7 @@ fn check_same_mixed_known_and_unknown_names_fails() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -536,7 +550,7 @@ fn check_same_respects_select_glob() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "py-make"
 select = "py*"
 path = "Makefile"
@@ -562,7 +576,7 @@ fn check_same_marker_requires_file() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 marker = ".tag"
@@ -587,7 +601,7 @@ fn check_same_disabled_rule_is_skipped() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -612,7 +626,7 @@ fn check_same_checks_override_enabled_false() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -623,7 +637,7 @@ enabled = false
     let output = run(utf8(&tmp), &cfg, &["check", "same", "--checks", "gi"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same gi]"), "stdout: {stdout}");
 }
 
 #[test]
@@ -634,7 +648,7 @@ fn check_same_verbose_reports_consistent_rules() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -644,7 +658,7 @@ path = ".gitignore"
     let output = run(utf8(&tmp), &cfg, &["check", "same", "--verbose"]);
     assert!(output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same gi]"), "stdout: {stdout}");
     assert!(stdout.contains("ok"), "stdout: {stdout}");
 }
 
@@ -660,7 +674,7 @@ fn check_same_diff_emits_unified_diff_for_two_groups() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -695,7 +709,7 @@ fn check_same_diff_three_groups_prompts_for_pair() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -726,7 +740,7 @@ fn check_same_diff_off_by_default() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -749,7 +763,7 @@ fn check_same_diff_binary_files() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "bin"
 select = "*"
 path = "blob.bin"
@@ -773,7 +787,7 @@ fn check_same_diff_suppressed_by_terse() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -794,7 +808,7 @@ fn check_same_config_without_repos_fails() {
     fs::write(
         &cfg_path,
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -821,7 +835,7 @@ fn check_same_rule_matching_no_files_fails_by_default() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -831,7 +845,7 @@ path = ".gitignore"
     let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(!output.status.success(), "empty rule should exit 1");
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same gi]"), "stdout: {stdout}");
     assert!(
         stdout.contains("no files matched (2 skipped)"),
         "stdout: {stdout}"
@@ -851,12 +865,12 @@ fn check_same_trailing_error_lists_all_empty_rules() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
 
-[[check]]
+[[check-same]]
 name = "mk"
 select = "*"
 path = "Makefile"
@@ -880,7 +894,7 @@ fn check_same_rule_selecting_no_repos_fails_by_default() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "zzz*"
 path = ".gitignore"
@@ -903,7 +917,7 @@ fn check_same_allow_empty_restores_ok_for_empty_rule() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -919,7 +933,7 @@ path = ".gitignore"
     );
     assert_eq!(
         stdout_str(&output),
-        "[gi] path=.gitignore select=*\nok (0 files)"
+        "[check-same gi] path=.gitignore select=*\nok (0 files)"
     );
     assert!(
         !stderr_str(&output).contains("matched no files"),
@@ -933,7 +947,7 @@ fn check_same_empty_rule_terse_prints_rule_name() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -953,7 +967,7 @@ fn check_same_empty_must_have_rule_reports_missing_not_empty() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -991,8 +1005,8 @@ fn config_example_does_not_require_existing_config() {
         "should contain a `repos =` line: {stdout}"
     );
     assert!(
-        stdout.contains("[[check]]"),
-        "should contain at least one [[check]] block"
+        stdout.contains("[[check-same]]"),
+        "should contain at least one [[check-same]] block"
     );
 }
 
@@ -1057,18 +1071,18 @@ fn list_checks_prints_every_rule_name() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "alpha"
 select = "*"
 path = "a"
 
-[[check]]
+[[check-same]]
 name = "beta"
 select = "*"
 path = "b"
 enabled = false
 
-[[check]]
+[[check-same]]
 name = "gamma"
 select = "*"
 path = "c"
@@ -1107,7 +1121,7 @@ fn check_same_diff_three_groups_feeds_pair_and_exits() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1148,7 +1162,7 @@ fn check_same_diff_three_groups_loops_for_more_pairs() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1181,7 +1195,7 @@ fn check_same_copy_overwrites_destination_group() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1212,7 +1226,7 @@ fn check_same_copy_declined_leaves_files_alone() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1237,7 +1251,7 @@ fn check_same_copy_always_exits_zero() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1276,7 +1290,7 @@ fn check_same_copy_preserves_destination_mode() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1318,7 +1332,7 @@ fn check_same_copy_three_groups_picks_from_and_to() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1353,7 +1367,7 @@ fn check_same_copy_rejects_same_group_as_from_and_to() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1390,7 +1404,7 @@ fn check_same_must_have_false_ignores_missing_files() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1413,7 +1427,7 @@ fn check_same_must_have_true_flags_missing_files() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1450,7 +1464,7 @@ fn check_same_fix_missing_creates_files() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1495,7 +1509,7 @@ fn check_same_fix_missing_creates_parent_directories() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "wf"
 select = "*"
 path = ".github/workflows/build.yml"
@@ -1526,7 +1540,7 @@ fn check_same_fix_missing_declined_leaves_alone() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1555,7 +1569,7 @@ fn check_same_fix_missing_with_no_groups_skips() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1582,7 +1596,7 @@ fn check_same_fix_missing_always_exits_zero() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1610,12 +1624,12 @@ fn check_same_short_circuit_stops_after_first_failing_rule() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
 
-[[check]]
+[[check-same]]
 name = "readme"
 select = "*"
 path = "README"
@@ -1625,9 +1639,9 @@ path = "README"
     let output = run(utf8(&tmp), &cfg, &["check", "same", "--short-circuit"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same gi]"), "stdout: {stdout}");
     assert!(
-        !stdout.contains("[readme]"),
+        !stdout.contains("[check-same readme]"),
         "short-circuit must not evaluate later rules: {stdout}"
     );
 }
@@ -1643,12 +1657,12 @@ fn check_same_short_circuit_skips_later_passing_rules_too() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
 
-[[check]]
+[[check-same]]
 name = "readme"
 select = "*"
 path = "README"
@@ -1658,8 +1672,8 @@ path = "README"
     let output = run(utf8(&tmp), &cfg, &["check", "same", "--short-circuit"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
-    assert!(!stdout.contains("[readme]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same gi]"), "stdout: {stdout}");
+    assert!(!stdout.contains("[check-same readme]"), "stdout: {stdout}");
 }
 
 #[test]
@@ -1675,17 +1689,17 @@ fn check_same_short_circuit_keeps_earlier_passing_rules() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "readme"
 select = "*"
 path = "README"
 
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
 
-[[check]]
+[[check-same]]
 name = "authors"
 select = "*"
 path = "AUTHORS"
@@ -1695,10 +1709,10 @@ path = "AUTHORS"
     let output = run(utf8(&tmp), &cfg, &["check", "same", "--short-circuit"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[readme]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same readme]"), "stdout: {stdout}");
     assert!(stdout.contains("ok (2 files)"), "stdout: {stdout}");
-    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
-    assert!(!stdout.contains("[authors]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same gi]"), "stdout: {stdout}");
+    assert!(!stdout.contains("[check-same authors]"), "stdout: {stdout}");
 }
 
 #[test]
@@ -1711,12 +1725,12 @@ fn check_same_short_circuit_terse_prints_one_name() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
 
-[[check]]
+[[check-same]]
 name = "readme"
 select = "*"
 path = "README"
@@ -1742,12 +1756,12 @@ fn check_same_short_circuit_stops_on_empty_rule_failure() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "nothing"
 select = "*"
 path = "does-not-exist"
 
-[[check]]
+[[check-same]]
 name = "readme"
 select = "*"
 path = "README"
@@ -1758,7 +1772,7 @@ path = "README"
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
     assert!(stdout.contains("no files matched"), "stdout: {stdout}");
-    assert!(!stdout.contains("[readme]"), "stdout: {stdout}");
+    assert!(!stdout.contains("[check-same readme]"), "stdout: {stdout}");
 }
 
 #[test]
@@ -1771,12 +1785,12 @@ fn check_same_without_short_circuit_reports_every_failure() {
     let cfg = write_config(
         utf8(&tmp),
         r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
 
-[[check]]
+[[check-same]]
 name = "readme"
 select = "*"
 path = "README"
@@ -1786,14 +1800,14 @@ path = "README"
     let output = run(utf8(&tmp), &cfg, &["check", "same"]);
     assert!(!output.status.success());
     let stdout = stdout_str(&output);
-    assert!(stdout.contains("[gi]"), "stdout: {stdout}");
-    assert!(stdout.contains("[readme]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same gi]"), "stdout: {stdout}");
+    assert!(stdout.contains("[check-same readme]"), "stdout: {stdout}");
 }
 
 // ── failure modes found by the 2026-10-05 scan ───────────────────────────────
 
 const GI_RULE: &str = r#"
-[[check]]
+[[check-same]]
 name = "gi"
 select = "*"
 path = ".gitignore"
@@ -1812,7 +1826,7 @@ fn check_same_unreadable_file_fails_its_rule_and_the_run_goes_on() {
     fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
     let cfg = write_config(
         dir,
-        &format!("{GI_RULE}\n[[check]]\nname = \"other\"\nselect = \"*\"\npath = \"other\"\n"),
+        &format!("{GI_RULE}\n[[check-same]]\nname = \"other\"\nselect = \"*\"\npath = \"other\"\n"),
     );
 
     let output = run(dir, &cfg, &["check", "same"]);
@@ -1823,7 +1837,7 @@ fn check_same_unreadable_file_fails_its_rule_and_the_run_goes_on() {
     assert!(stdout.contains("  unreadable:"), "{stdout}");
     assert!(stdout.contains("a/.gitignore"), "{stdout}");
     // The run carried on to the second rule, which differs.
-    assert!(stdout.contains("[other]"), "{stdout}");
+    assert!(stdout.contains("[check-same other]"), "{stdout}");
     assert!(stdout.contains("2 groups"), "{stdout}");
 }
 

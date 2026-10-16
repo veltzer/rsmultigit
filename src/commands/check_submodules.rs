@@ -1,13 +1,14 @@
-//! `check submodules`: every submodule that several fleet repos share must be
-//! checked out at the same commit in all of them.
+//! `check submodules`: each `[[check-submodules]]` rule names a submodule by its
+//! remote URL and requires every selected repo that carries it to have it
+//! checked out at the same commit.
 //!
 //! A submodule is the fleet's way of sharing a repo (design tokens, tag
 //! vocabularies, term lists) and the pin is the part that drifts: one
 //! consumer bumps it, the others do not, and the sites stop agreeing on
 //! something that was meant to be identical. Nothing in the submodule
-//! machinery itself notices. This check does, without any configuration:
-//! the fleet's repos are scanned, their submodules grouped by remote URL,
-//! and a group whose members pin different commits is a failure.
+//! machinery itself notices. A rule here does, for the submodules it names
+//! and nothing else: a submodule without a rule is deliberately free to
+//! differ per repo.
 //!
 //! The commit compared is the one checked out in the submodule's working
 //! directory, the same view `check same` takes of ordinary files: what is on
@@ -20,6 +21,8 @@ use std::io::Write;
 use anyhow::{Context, Result};
 use camino::Utf8PathBuf;
 
+use crate::commands::check::{self, CheckConfig, SubmoduleRule};
+use crate::commands::check_run::{fail_on_empty_rules, rule_header, select_rules};
 use crate::config::AppConfig;
 
 /// One submodule as found in one repo.
@@ -34,16 +37,17 @@ pub struct SubmoduleUse {
     pub commit: Option<String>,
 }
 
-/// Every use of one submodule across the fleet.
+/// Outcome of evaluating one `[[check-submodules]]` rule.
 #[derive(Debug)]
 pub struct SubmoduleResult {
-    /// The last path segment of the normalised URL: `shared-themes`.
     pub name: String,
-    /// The normalised URL every member shares: `github.com/veltzer/shared-themes`.
-    pub url: String,
     /// Uses grouped by commit, largest group first, each group sorted by repo.
     /// The `None` key collects uses that record no commit at all.
     pub groups: Vec<(Option<String>, Vec<SubmoduleUse>)>,
+    /// Repos the rule selected that do not carry the submodule. Not a
+    /// violation: the rule constrains the pin where the submodule is used,
+    /// not which repos use it.
+    pub skipped: Vec<Utf8PathBuf>,
 }
 
 impl SubmoduleResult {
@@ -52,17 +56,25 @@ impl SubmoduleResult {
         self.groups.len() <= 1 && self.groups.iter().all(|(commit, _)| commit.is_some())
     }
 
+    /// Number of repos that carry the submodule.
     pub fn total_repos(&self) -> usize {
         self.groups.iter().map(|(_, uses)| uses.len()).sum()
     }
+
+    /// True when no selected repo carries the submodule, which almost always
+    /// means a stale `select` or a misspelled `url`. Mirrors the other rule
+    /// types: a failure unless `--allow-empty` is passed.
+    pub fn matched_nothing(&self) -> bool {
+        self.total_repos() == 0
+    }
 }
 
-/// Reduce a submodule URL to the identity of the repo it names, so the same
-/// submodule added over ssh in one repo and https in another is one group:
-/// scheme and user dropped, the scp-style colon turned into a slash, trailing
-/// slash and `.git` removed, case folded. A relative URL (`../shared-themes`)
-/// is kept as written; it resolves against each superproject's own remote,
-/// which this check does not consult.
+/// Reduce a submodule URL to the identity of the repo it names, so a rule's
+/// `url` matches the submodule however it was added: scheme and user
+/// dropped, the scp-style colon turned into a slash, trailing slash and
+/// `.git` removed, case folded. A relative URL (`../shared-themes`) is kept
+/// as written; it resolves against each superproject's own remote, which
+/// this check does not consult.
 pub fn normalize_url(url: &str) -> String {
     let mut s = url.trim().to_string();
     for scheme in ["git+ssh://", "ssh://", "https://", "http://", "git://"] {
@@ -83,109 +95,154 @@ pub fn normalize_url(url: &str) -> String {
     {
         s.replace_range(colon..=colon, "/");
     }
+    // Case first, so `.GIT` is stripped like `.git`.
+    let s = s.to_ascii_lowercase();
     let s = s.trim_end_matches('/');
     let s = s.strip_suffix(".git").unwrap_or(s);
-    s.trim_end_matches('/').to_ascii_lowercase()
-}
-
-/// The display name of a submodule: the last segment of its normalised URL.
-fn name_of(url: &str) -> String {
-    url.rsplit('/')
-        .find(|segment| !segment.is_empty() && *segment != "..")
-        .unwrap_or(url)
-        .to_string()
+    s.trim_end_matches('/').to_string()
 }
 
 fn short(oid: git2::Oid) -> String {
     oid.to_string()[..7].to_string()
 }
 
-/// Scan `repos` for submodules and group them by normalised URL. A repo
-/// without submodules contributes nothing; a submodule declared without a
-/// URL is keyed by its path instead, which keeps it visible rather than
-/// silently dropped.
-pub fn evaluate_submodules(repos: &[Utf8PathBuf]) -> Result<Vec<SubmoduleResult>> {
-    let mut by_url: BTreeMap<String, Vec<SubmoduleUse>> = BTreeMap::new();
-    for repo in repos {
-        let git = git2::Repository::open(repo).with_context(|| format!("failed to open {repo}"))?;
+/// Evaluate one rule: in every repo it selects, find the submodules whose
+/// normalised URL is the rule's, and group them by the commit checked out.
+pub fn evaluate_submodule_rule(
+    rule: &SubmoduleRule,
+    repos: &[Utf8PathBuf],
+) -> Result<SubmoduleResult> {
+    let candidates = check::select_repos(&rule.selection(), repos)?;
+    let want = normalize_url(&rule.url);
+
+    let mut by_commit: BTreeMap<Option<String>, Vec<SubmoduleUse>> = BTreeMap::new();
+    let mut skipped: Vec<Utf8PathBuf> = Vec::new();
+    for repo in candidates {
+        let git =
+            git2::Repository::open(&repo).with_context(|| format!("failed to open {repo}"))?;
         let submodules = git
             .submodules()
             .with_context(|| format!("failed to read submodules of {repo}"))?;
+        let mut found = false;
         for sm in submodules {
-            let path = sm.path().to_string_lossy().to_string();
-            // A URL git2 cannot hand back as text counts as absent, and the
-            // submodule is keyed by its path.
-            let key = sm
-                .url()
-                .ok()
-                .flatten()
-                .map(normalize_url)
-                .unwrap_or_else(|| path.clone());
+            // A submodule with no URL, or one git2 cannot hand back as text,
+            // cannot be the one the rule names.
+            let Some(url) = sm.url().ok().flatten() else {
+                continue;
+            };
+            if normalize_url(url) != want {
+                continue;
+            }
+            found = true;
             let commit = sm
                 .workdir_id()
                 .or_else(|| sm.index_id())
                 .or_else(|| sm.head_id())
                 .map(short);
-            by_url.entry(key).or_default().push(SubmoduleUse {
-                repo: repo.clone(),
-                path,
-                commit,
-            });
+            by_commit
+                .entry(commit.clone())
+                .or_default()
+                .push(SubmoduleUse {
+                    repo: repo.clone(),
+                    path: sm.path().to_string_lossy().to_string(),
+                    commit,
+                });
+        }
+        if !found {
+            skipped.push(repo);
         }
     }
 
-    let mut results = Vec::new();
-    for (url, uses) in by_url {
-        let mut by_commit: BTreeMap<Option<String>, Vec<SubmoduleUse>> = BTreeMap::new();
-        for u in uses {
-            by_commit.entry(u.commit.clone()).or_default().push(u);
-        }
-        let mut groups: Vec<(Option<String>, Vec<SubmoduleUse>)> = by_commit.into_iter().collect();
-        for (_, members) in &mut groups {
-            members.sort_by(|a, b| a.repo.cmp(&b.repo));
-        }
-        groups.sort_by_key(|(_, members)| std::cmp::Reverse(members.len()));
-        results.push(SubmoduleResult {
-            name: name_of(&url),
-            url,
-            groups,
-        });
+    let mut groups: Vec<(Option<String>, Vec<SubmoduleUse>)> = by_commit.into_iter().collect();
+    for (_, members) in &mut groups {
+        members.sort_by(|a, b| a.repo.cmp(&b.repo));
     }
-    Ok(results)
+    groups.sort_by_key(|(_, members)| std::cmp::Reverse(members.len()));
+
+    Ok(SubmoduleResult {
+        name: rule.name.clone(),
+        groups,
+        skipped,
+    })
+}
+
+/// The check submodules flag set, bundled to keep the runner's signature small.
+pub struct CheckSubmodulesOpts<'a> {
+    pub requested: &'a [String],
+    pub requested_re: &'a [String],
+    pub only_failed: bool,
+    pub allow_empty: bool,
 }
 
 /// Run the check submodules command. Returns the process exit code.
 ///
-/// Passing submodules print `ok (N repos @ <commit>)` unless `only_failed`
-/// or `--terse` is set; `--terse` prints only the names of failing
-/// submodules, one per line. A fleet without any submodule passes: there is
-/// nothing to drift. With `--short-circuit`, evaluation stops at the first
-/// failing submodule.
+/// Rule selection is [`select_rules`]. Passing rules print
+/// `ok (N repos @ <commit>)` unless `only_failed` or `--terse` is set;
+/// `--terse` prints only the names of failing rules, one per line. A rule
+/// that finds the submodule in no selected repo fails unless `allow_empty`
+/// is set; see [`fail_on_empty_rules`] for the end-of-run error. With the
+/// global `--short-circuit` flag, evaluation stops at the first failing rule.
 pub fn run_check_submodules<W: Write>(
     app: &AppConfig,
+    file_config: &CheckConfig,
     projects: &[Utf8PathBuf],
-    only_failed: bool,
+    opts: &CheckSubmodulesOpts<'_>,
     out: &mut W,
 ) -> Result<i32> {
-    let results = evaluate_submodules(projects)?;
-    if results.is_empty() {
+    let CheckSubmodulesOpts {
+        requested,
+        requested_re,
+        only_failed,
+        allow_empty,
+    } = *opts;
+
+    let rules = select_rules(
+        &file_config.submodule,
+        requested,
+        requested_re,
+        "check-submodules rule",
+    )?;
+    if rules.is_empty() {
         if app.verbose {
-            writeln!(out, "no submodules found")?;
+            writeln!(out, "no submodule rules to check")?;
         }
         return Ok(0);
     }
 
     let mut any_failed = false;
-    for result in &results {
+    let mut empty_rules: Vec<String> = Vec::new();
+
+    for rule in rules {
+        let result = evaluate_submodule_rule(rule, projects)?;
+
+        if result.matched_nothing() && !allow_empty {
+            any_failed = true;
+            empty_rules.push(result.name.clone());
+            if app.terse {
+                writeln!(out, "{}", result.name)?;
+            } else {
+                rule_header(app, out, rule)?;
+                writeln!(out, "no repos have this submodule")?;
+            }
+            if app.short_circuit {
+                break;
+            }
+            continue;
+        }
+
         if result.is_consistent() {
             if !only_failed && !app.terse {
-                header(app, out, result)?;
+                rule_header(app, out, rule)?;
                 let commit = result
                     .groups
                     .first()
                     .and_then(|(commit, _)| commit.as_deref())
                     .unwrap_or("-");
-                writeln!(out, "ok ({} repos @ {commit})", result.total_repos())?;
+                write!(out, "ok ({} repos @ {commit}", result.total_repos())?;
+                if !result.skipped.is_empty() {
+                    write!(out, ", {} skipped", result.skipped.len())?;
+                }
+                writeln!(out, ")")?;
             }
             continue;
         }
@@ -194,18 +251,22 @@ pub fn run_check_submodules<W: Write>(
         if app.terse {
             writeln!(out, "{}", result.name)?;
         } else {
-            header(app, out, result)?;
+            rule_header(app, out, rule)?;
             let noun = if result.groups.len() == 1 {
                 "commit"
             } else {
                 "commits"
             };
-            writeln!(
+            write!(
                 out,
                 "{} repos, {} {noun}",
                 result.total_repos(),
                 result.groups.len()
             )?;
+            if !result.skipped.is_empty() {
+                write!(out, " ({} skipped)", result.skipped.len())?;
+            }
+            writeln!(out)?;
             if !app.no_output {
                 for (commit, members) in &result.groups {
                     let label = commit.as_deref().unwrap_or("no commit recorded");
@@ -222,15 +283,14 @@ pub fn run_check_submodules<W: Write>(
         }
     }
 
-    Ok(if any_failed { 1 } else { 0 })
-}
+    fail_on_empty_rules(
+        "check submodules",
+        "found the submodule in no repo",
+        "stale select or url?",
+        &empty_rules,
+    )?;
 
-/// `[name] url=<normalised url>`, unless `--no-header` suppressed it.
-fn header<W: Write>(app: &AppConfig, out: &mut W, result: &SubmoduleResult) -> Result<()> {
-    if !app.no_header {
-        writeln!(out, "[{}] url={}", result.name, result.url)?;
-    }
-    Ok(())
+    Ok(if any_failed { 1 } else { 0 })
 }
 
 #[cfg(test)]
@@ -247,16 +307,15 @@ mod tests {
             "ssh://git@github.com/veltzer/shared-themes.git",
             "git+ssh://git@github.com/Veltzer/Shared-Themes",
             "GitHub.com/veltzer/shared-themes",
+            "github.com/veltzer/shared-themes.GIT",
         ] {
             assert_eq!(normalize_url(url), expected, "{url}");
         }
     }
 
     #[test]
-    fn relative_urls_are_kept_and_named_by_their_last_segment() {
+    fn relative_urls_are_kept() {
         assert_eq!(normalize_url("../shared-themes.git"), "../shared-themes");
-        assert_eq!(name_of("../shared-themes"), "shared-themes");
-        assert_eq!(name_of("github.com/veltzer/shared-tags"), "shared-tags");
     }
 
     #[test]
@@ -274,27 +333,26 @@ mod tests {
             path: "shared/x".into(),
             commit: commit.map(str::to_string),
         };
-        let one = SubmoduleResult {
+        let result = |groups| SubmoduleResult {
             name: "x".into(),
-            url: "h/x".into(),
-            groups: vec![(Some("abc1234".into()), vec![use_at("a", Some("abc1234"))])],
+            groups,
+            skipped: Vec::new(),
         };
+        let one = result(vec![(
+            Some("abc1234".into()),
+            vec![use_at("a", Some("abc1234"))],
+        )]);
         assert!(one.is_consistent());
-        let two = SubmoduleResult {
-            name: "x".into(),
-            url: "h/x".into(),
-            groups: vec![
-                (Some("abc1234".into()), vec![use_at("a", Some("abc1234"))]),
-                (Some("def5678".into()), vec![use_at("b", Some("def5678"))]),
-            ],
-        };
+        assert!(!one.matched_nothing());
+        let two = result(vec![
+            (Some("abc1234".into()), vec![use_at("a", Some("abc1234"))]),
+            (Some("def5678".into()), vec![use_at("b", Some("def5678"))]),
+        ]);
         assert!(!two.is_consistent());
         assert_eq!(two.total_repos(), 2);
-        let unpinned = SubmoduleResult {
-            name: "x".into(),
-            url: "h/x".into(),
-            groups: vec![(None, vec![use_at("a", None)])],
-        };
+        let unpinned = result(vec![(None, vec![use_at("a", None)])]);
         assert!(!unpinned.is_consistent());
+        let none = result(Vec::new());
+        assert!(none.matched_nothing());
     }
 }

@@ -12,7 +12,7 @@ Full documentation: <https://veltzer.github.io/rsmultigit/>
 
 - **Batch operations** — pull, push, fetch, diff, grep, clean, commit, and build across all repos at once
 - **Native git inspection** — status, dirty and sync checks use libgit2 in-process, with no `git` subprocess per repo
-- **Consistency checks** — `check same` verifies that shared files (`.gitignore`, CI workflows, lint configs, ...) are byte-identical across the fleet, `check exists` verifies that required files are present, `check submodules` verifies that a submodule shared by several repos is pinned to the same commit everywhere, and `--diff`, `--copy` and `--fix-missing` repair drift interactively
+- **Consistency checks** — `check same` verifies that shared files (`.gitignore`, CI workflows, lint configs, ...) are byte-identical across the fleet, `check exists` verifies that required files are present, `check submodules` verifies that the declared submodules are pinned to the same commit in every repo that carries them, and `--diff`, `--copy` and `--fix-missing` repair drift interactively
 - **Build orchestration** — make, rsconstruct, cargo, bootstrap, with each repo's `.venv` activated automatically
 - **Tooling passthrough** — `uv lock` / `uv sync` on Python projects, `cargo build|check|clippy|fmt|test|nextest|doc|deny|fetch|update|clean|publish` on Rust projects, `gh` cleanup, release/workflow inspection and metadata sync on GitHub repos
 - **Parallel execution** — `-j N` runs repos concurrently while keeping output in repo order
@@ -84,12 +84,12 @@ repos = ["~/git/*"]                  # shell-expanded globs; non-git matches are
 default_build_method = "rsconstruct" # what a bare `rsmultigit build` runs
 crates_io_pass_entry = "keys/crates.io" # where `cargo release` finds the crates.io token
 
-[[check]]                            # files that must be byte-identical
+[[check-same]]                            # files that must be byte-identical
 name = "gitignore"
 select = "*"
 path = ".gitignore"
 
-[[exists]]                           # files that must be present
+[[check-exists]]                           # files that must be present
 name = "readme-present"
 select = "*"
 path = "README.md"
@@ -163,11 +163,11 @@ The rest each run the git command of the same name in every repo:
 
 | Command | Description |
 |---------|-------------|
-| `check same [--diff] [--copy] [--fix-missing]` | Verify the `[[check]]` files are byte-identical across the repos they select |
-| `check exists` | Verify the `[[exists]]` files are present in every repo they select |
-| `check submodules` | Verify every submodule shared by several repos is checked out at the same commit in all of them (no rules needed) |
+| `check same [--diff] [--copy] [--fix-missing]` | Verify the `[[check-same]]` files are byte-identical across the repos they select |
+| `check exists` | Verify the `[[check-exists]]` files are present in every repo they select |
+| `check submodules` | Verify each `[[check-submodules]]` rule's submodule is checked out at the same commit in every selected repo that carries it |
 | `check all` | Run all three; non-zero if any fails |
-| `check list [exists]` | Print the rule names (for shell completion) |
+| `check list [same\|exists\|submodules]` | Print the rule names (for shell completion) |
 
 ### Running commands
 

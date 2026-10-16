@@ -185,7 +185,7 @@ pub fn render_config(dir: &Utf8Path, build: Option<BuildWhat>) -> String {
          # is operated on. Add more patterns to cover more directories.\n\
          #\n\
          # `rsmultigit setup config-sample` prints a fully commented example of every\n\
-         # key, including the [[check]] and [[exists]] rules that keep shared files\n\
+         # key, including the [[check-same]] and [[check-exists]] rules that keep shared files\n\
          # identical across repos.\n\n",
     );
     out.push_str(&format!(

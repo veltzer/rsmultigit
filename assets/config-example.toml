@@ -25,7 +25,7 @@
 # through its environment only and never written to disk. Default:
 # keys/crates.io.
 #
-# `[[check]]` blocks are consumed only by `rsmultigit check same`, which verifies
+# `[[check-same]]` blocks are consumed only by `rsmultigit check same`, which verifies
 # that a given path has identical content across a selection of repos.
 #
 # Selection primitives (per check rule):
@@ -65,33 +65,33 @@ crates_io_pass_entry = "keys/crates.io"
 
 # ── shared dev-tooling configs across all repos ───────────────────────────────
 
-[[check]]
+[[check-same]]
 name = "pylintrc"
 select = "*"
 path = ".pylintrc"
 
-[[check]]
+[[check-same]]
 name = "gitignore"
 select = "*"
 path = ".gitignore"
 
-[[check]]
+[[check-same]]
 name = "editorconfig"
 select = "*"
 path = ".editorconfig"
 must_have = true
 
-[[check]]
+[[check-same]]
 name = "shellcheckrc"
 select = "*"
 path = ".shellcheckrc"
 
-[[check]]
+[[check-same]]
 name = "jshintrc"
 select = "*"
 path = ".jshintrc"
 
-[[check]]
+[[check-same]]
 name = "jshintignore"
 select = "*"
 path = ".jshintignore"
@@ -101,52 +101,52 @@ path = ".jshintignore"
 # diverge by design (src_dirs pruned per repo, rsconstruct.local.toml merged
 # in and removed on 2026-08-24), so this rule reports many groups; it stays
 # as the tracker for the goal.
-[[check]]
+[[check-same]]
 name = "rsconstruct-toml"
 select = "*"
 path = "rsconstruct.toml"
 enabled = false
 
-[[check]]
+[[check-same]]
 name = "license"
 select = "*"
 path = "LICENSE"
 must_have = true
 
-[[check]]
+[[check-same]]
 name = "readme-template"
 select = "*"
 path = "tera.templates/README.md.tera"
 
-[[check]]
+[[check-same]]
 name = "requirements-thawed-template"
 select = "*"
 path = "templates/requirements.thawed.txt.mako"
 
-[[check]]
+[[check-same]]
 name = "github-funding"
 select = "*"
 path = ".github/FUNDING.yml"
 
-[[check]]
+[[check-same]]
 name = "sphinx-conf"
 select = "*"
 path = "tera.templates/sphinx/conf.py.tera"
 
-[[check]]
+[[check-same]]
 name = "sphinx-index"
 select = "*"
 path = "sphinx/index.rst"
 
 # Disabled: no repo has mdl configs any more (markdown linting moved to
 # rumdl via rsconstruct), so these rules match nothing.
-[[check]]
+[[check-same]]
 name = "mdlrc"
 select = "*"
 path = ".mdlrc"
 enabled = false
 
-[[check]]
+[[check-same]]
 name = "mdl-style"
 select = "*"
 path = ".mdl.style.rb"
@@ -154,7 +154,7 @@ enabled = false
 
 # ── GCP repos ─────────────────────────────────────────────────────────────────
 
-[[check]]
+[[check-same]]
 name = "gcp-gcloudignore"
 select = "gcp-*"
 marker = ".gcp.conf"
@@ -163,14 +163,14 @@ path = ".gcloudignore"
 # Disabled: app.yaml is per-app deployment config. gcp-machines' copy carries
 # env_variables (ADMIN_EMAILS/ACCESS_TOKEN) that its own src/main.py reads, so
 # the three files legitimately differ and byte-identity is the wrong invariant.
-[[check]]
+[[check-same]]
 name = "gcp-app-yaml"
 select = "gcp-*"
 marker = ".gcp.conf"
 path = "app.yaml"
 enabled = false
 
-[[check]]
+[[check-same]]
 name = "workflow-build-yml"
 select = "*"
 marker = "rsconstruct.toml"
@@ -182,7 +182,7 @@ path = ".github/workflows/build.yml"
 # carries no per-repo values, so it is byte-identical by design. (project.lua
 # and version.lua legitimately differ per repo and are deliberately not
 # checked.)
-[[check]]
+[[check-same]]
 name = "config-personal-lua"
 select = "*"
 # veltzer.github.io carries a zero-byte config/personal.lua (and an empty
@@ -192,39 +192,39 @@ exclude = "veltzer.github.io"
 path = "config/personal.lua"
 
 # yamllint config: one shared ruleset wherever YAML is linted.
-[[check]]
+[[check-same]]
 name = "yamllint"
 select = "*"
 path = ".yamllint.yaml"
 
 # The test package initializer is boilerplate, identical in every repo that
 # has a tests/ package.
-[[check]]
+[[check-same]]
 name = "tests-init"
 select = "*"
 path = "tests/__init__.py"
 
 # ── rs* Rust repos: canonical files, synced from rsconstruct ──────────────────
 
-[[check]]
+[[check-same]]
 name = "rs-release-info"
 select = "rs*"
 path = "docs/src/release-info.md"
 must_have = true
 
-[[check]]
+[[check-same]]
 name = "rs-workflow-ci"
 select = "rs*"
 path = ".github/workflows/ci.yml"
 must_have = true
 
-[[check]]
+[[check-same]]
 name = "rs-build-rs"
 select = "rs*"
 path = "build.rs"
 must_have = true
 
-[[check]]
+[[check-same]]
 name = "rs-release-toml"
 select = "rs*"
 path = "release.toml"
@@ -232,18 +232,38 @@ must_have = true
 
 # ── presence-only rules, consumed by `check exists` ───────────────────────────
 #
-# An [[exists]] rule asserts that every repo it selects contains `path`, and
+# An [[check-exists]] rule asserts that every repo it selects contains `path`, and
 # never looks at the content. Use it for files that must exist but legitimately
 # differ per repo — a README describes its own project, so byte-identity is the
 # wrong invariant while presence is the right one.
 #
-# Selection works exactly as it does for [[check]]: select, exclude, marker,
+# Selection works exactly as it does for [[check-same]]: select, exclude, marker,
 # marker_absent and enabled all mean the same thing. There is no `must_have`
 # field, because requiring the file is the whole rule.
 #
-# `rsmultigit check all` runs the [[check]] and [[exists]] rules together.
+# `rsmultigit check all` runs the [[check-same]], [[check-exists]] and [[check-submodules]] rules
+# together.
 
-[[exists]]
+[[check-exists]]
 name = "readme-present"
 select = "*"
 path = "README.md"
+
+# ── submodule pin rules, consumed by `check submodules` ───────────────────────
+#
+# A [[check-submodules]] rule names a submodule by its remote URL and asserts that
+# every selected repo carrying it has it checked out at the same commit. This
+# is the invariant for a repo the fleet shares through submodules (design
+# tokens, a tag vocabulary): one consumer bumping the pin while the others stay
+# behind is drift nothing else notices. Only submodules with a rule are
+# checked; one without a rule may differ per repo.
+#
+# `url` is matched after normalisation on both sides (scheme, user, `.git` and
+# case ignored), so this spelling matches a submodule added over ssh or https.
+# Selection works exactly as it does for [[check-same]]. A selected repo that does
+# not carry the submodule is skipped, not failed.
+
+[[check-submodules]]
+name = "shared-themes"
+select = "*"
+url = "github.com/example/shared-themes"

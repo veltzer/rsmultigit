@@ -26,7 +26,7 @@ Unit tests live in `#[cfg(test)]` modules inside each source file:
 | Module | What's tested |
 |--------|---------------|
 | `cli` | Every subcommand and value enum parses; global flags before and after the subcommand; `--venv`/`--no-venv` precedence; `default_build_method` accepts exactly the CLI spellings |
-| `commands::check` | Config parsing, `repos` resolution (git filter, dedupe, empty-list errors), rule selection filters, SHA-256 grouping, `must_have`, `matched_nothing`, `[[exists]]` evaluation |
+| `commands::check` | Config parsing, `repos` resolution (git filter, dedupe, empty-list errors), rule selection filters, SHA-256 grouping, `must_have`, `matched_nothing`, `[[check-exists]]` evaluation |
 | `commands::check_run` | `--checks` / `--checks-re` resolution; whole `check same` and `check exists` runs against in-memory stdin/stdout: output format, exit codes, `--terse`, `--only-failed`, `--short-circuit`, `--allow-empty`, `--diff`, `--copy`, `--fix-missing` |
 | `commands::count` | `is_dirty`, `has_untracked`, `ahead_behind` (configured upstream, origin fallback, detached HEAD) against temp git repos built with git2 |
 | `commands::status` | The one-line status summary |
@@ -86,7 +86,7 @@ the `RSMULTIGIT_CONFIG` environment variable, so tests never touch
 | `commit_file(repo, name, content, message)` | Write a file and commit it |
 | `add_bare_origin(repo, bare)` | Create a bare repo at `bare`, add it as `origin`, push with tracking |
 | `clone_of(bare, path)` | A second working clone of `bare`, for commits made "elsewhere" |
-| `write_config(dir, extra)` | Write `<dir>/config.toml` with `repos = ["<dir>/*"]` plus `extra` (for `[[check]]` blocks); returns its path |
+| `write_config(dir, extra)` | Write `<dir>/config.toml` with `repos = ["<dir>/*"]` plus `extra` (for `[[check-same]]` blocks); returns its path |
 | `run_rsmultigit(dir, args)` | Run the binary in `dir` against a default config written by `write_config` |
 | `run_rsmultigit_with_env(dir, args, env)` | Run the binary with extra environment variables (used to pass a custom `RSMULTIGIT_CONFIG`) |
 | `run_rsmultigit_with_stdin(dir, args, env, bytes)` | Same, with `bytes` fed to stdin, for the interactive check same flows |

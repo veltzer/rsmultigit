@@ -7,7 +7,7 @@ use std::process::{Command, Output, Stdio};
 use tempfile::TempDir;
 
 /// Write a minimal config file at <dir>/config.toml with `repos = ["<dir>/*"]`
-/// and the given `extra` body appended (for `[[check]]` blocks, etc).
+/// and the given `extra` body appended (for `[[check-same]]` blocks, etc).
 /// Returns the config path, to be fed into `RSMULTIGIT_CONFIG`.
 pub fn write_config(dir: &Utf8Path, extra: &str) -> Utf8PathBuf {
     let path = dir.join("config.toml");

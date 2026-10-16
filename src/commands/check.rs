@@ -28,15 +28,41 @@ pub struct CheckConfig {
     /// `CARGO_REGISTRY_TOKEN` is not already set. Defaults to `keys/crates.io`.
     #[serde(default = "crate::commands::release::default_pass_entry")]
     pub crates_io_pass_entry: String,
-    #[serde(default)]
+    #[serde(default, rename = "check-same")]
     pub check: Vec<Rule>,
-    /// Presence-only rules, consumed by `check exists`. Unlike `[[check]]`,
+    /// Presence-only rules, consumed by `check exists`. Unlike `[[check-same]]`,
     /// these never compare content: they assert that every in-scope repo has
     /// the file, whatever it contains. This is the right rule type for files
     /// that must exist but legitimately differ per repo (README.md, LICENSE
     /// where the year varies, and so on).
-    #[serde(default)]
+    #[serde(default, rename = "check-exists")]
     pub exists: Vec<ExistsRule>,
+    /// Submodule pin rules, consumed by `check submodules`. Each names a
+    /// submodule by its remote URL and requires every selected repo that
+    /// carries it to have it checked out at the same commit. Only the
+    /// submodules with a rule are checked; the rest may differ per repo.
+    #[serde(default, rename = "check-submodules")]
+    pub submodule: Vec<SubmoduleRule>,
+}
+
+/// A submodule pin rule. Shares the selection vocabulary of [`Rule`] and
+/// [`ExistsRule`]; `url` identifies the submodule, matched after both sides
+/// are normalised (scheme, user, `.git` and case ignored), so the rule may
+/// spell it `github.com/owner/repo` however the repos added it.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubmoduleRule {
+    pub name: String,
+    pub select: String,
+    #[serde(default)]
+    pub exclude: Option<String>,
+    #[serde(default)]
+    pub marker: Option<String>,
+    #[serde(default)]
+    pub marker_absent: Option<String>,
+    pub url: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
 }
 
 /// A presence-only rule. Shares the selection vocabulary of [`Rule`] —
@@ -174,8 +200,13 @@ pub fn load_config(path: &Utf8Path) -> Result<CheckConfig> {
     let paths = config
         .check
         .iter()
-        .map(|r| ("check", &r.name, &r.path))
-        .chain(config.exists.iter().map(|r| ("exists", &r.name, &r.path)));
+        .map(|r| ("check-same", &r.name, &r.path))
+        .chain(
+            config
+                .exists
+                .iter()
+                .map(|r| ("check-exists", &r.name, &r.path)),
+        );
     for (kind, name, rule_path) in paths {
         validate_rule_path(rule_path)
             .with_context(|| format!("[[{kind}]] rule `{name}` in {path}"))?;
@@ -254,13 +285,13 @@ fn match_glob(pattern: &str, name: &str) -> Result<bool> {
         .with_context(|| format!("invalid glob pattern: {pattern}"))
 }
 
-/// The selection fields shared by `[[check]]` and `[[exists]]` rules, borrowed
-/// so one filter implementation serves both.
-struct Selection<'a> {
-    select: &'a str,
-    exclude: Option<&'a str>,
-    marker: Option<&'a str>,
-    marker_absent: Option<&'a str>,
+/// The selection fields shared by `[[check-same]]`, `[[check-exists]]` and
+/// `[[check-submodules]]` rules, borrowed so one filter implementation serves all.
+pub(crate) struct Selection<'a> {
+    pub(crate) select: &'a str,
+    pub(crate) exclude: Option<&'a str>,
+    pub(crate) marker: Option<&'a str>,
+    pub(crate) marker_absent: Option<&'a str>,
 }
 
 impl Rule {
@@ -285,10 +316,24 @@ impl ExistsRule {
     }
 }
 
+impl SubmoduleRule {
+    pub(crate) fn selection(&self) -> Selection<'_> {
+        Selection {
+            select: &self.select,
+            exclude: self.exclude.as_deref(),
+            marker: self.marker.as_deref(),
+            marker_absent: self.marker_absent.as_deref(),
+        }
+    }
+}
+
 /// Apply `select`, `exclude`, `marker` and `marker_absent` filters to the
 /// discovered repo list.
 /// `repos` are absolute or relative paths to repo roots.
-fn select_repos(rule: &Selection<'_>, repos: &[Utf8PathBuf]) -> Result<Vec<Utf8PathBuf>> {
+pub(crate) fn select_repos(
+    rule: &Selection<'_>,
+    repos: &[Utf8PathBuf],
+) -> Result<Vec<Utf8PathBuf>> {
     let mut out = Vec::new();
     for repo in repos {
         let name = match repo.file_name() {
@@ -420,10 +465,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let cfg = Utf8Path::from_path(tmp.path()).unwrap().join("c.toml");
         for (kind, bad, needle) in [
-            ("check", "/etc/hostname", "absolute"),
-            ("exists", "../outside", "`..`"),
-            ("check", "a/../../b", "`..`"),
-            ("check", "", "empty"),
+            ("check-same", "/etc/hostname", "absolute"),
+            ("check-exists", "../outside", "`..`"),
+            ("check-same", "a/../../b", "`..`"),
+            ("check-same", "", "empty"),
         ] {
             fs::write(
                 &cfg,
@@ -440,7 +485,7 @@ mod tests {
         }
         fs::write(
             &cfg,
-            "repos = [\"x\"]\n[[check]]\nname = \"r\"\nselect = \"*\"\npath = \".github/workflows/ci.yml\"\n",
+            "repos = [\"x\"]\n[[check-same]]\nname = \"r\"\nselect = \"*\"\npath = \".github/workflows/ci.yml\"\n",
         )
         .unwrap();
         assert!(load_config(&cfg).is_ok());
@@ -451,13 +496,13 @@ mod tests {
         let cases = [
             ("top level", "repo = []\n", "repo"),
             (
-                "[[check]]",
-                "[[check]]\nname = \"a\"\nselect = \"*\"\npath = \"f\"\nmust_hav = true\n",
+                "[[check-same]]",
+                "[[check-same]]\nname = \"a\"\nselect = \"*\"\npath = \"f\"\nmust_hav = true\n",
                 "must_hav",
             ),
             (
-                "[[exists]]",
-                "[[exists]]\nname = \"a\"\nselect = \"*\"\npath = \"f\"\nexlude = \"x\"\n",
+                "[[check-exists]]",
+                "[[check-exists]]\nname = \"a\"\nselect = \"*\"\npath = \"f\"\nexlude = \"x\"\n",
                 "exlude",
             ),
         ];
@@ -486,12 +531,12 @@ mod tests {
     #[test]
     fn config_parses() {
         let toml = r#"
-            [[check]]
+            [[check-same]]
             name = "gi"
             select = "*"
             path = ".gitignore"
 
-            [[check]]
+            [[check-same]]
             name = "py-make"
             select = "py*"
             exclude = "pydraft*"
@@ -514,7 +559,7 @@ mod tests {
     #[test]
     fn enabled_defaults_to_true() {
         let toml = r#"
-            [[check]]
+            [[check-same]]
             name = "a"
             select = "*"
             path = "x"
@@ -557,6 +602,7 @@ mod tests {
             crates_io_pass_entry: crate::commands::release::default_pass_entry(),
             check: vec![],
             exists: vec![],
+            submodule: vec![],
         };
         assert!(resolve_repos(&cfg).is_err());
     }
@@ -588,6 +634,7 @@ mod tests {
             crates_io_pass_entry: crate::commands::release::default_pass_entry(),
             check: vec![],
             exists: vec![],
+            submodule: vec![],
         };
         let repos = resolve_repos(&cfg).unwrap();
         assert_eq!(repos.len(), 2);
@@ -613,6 +660,7 @@ mod tests {
             crates_io_pass_entry: crate::commands::release::default_pass_entry(),
             check: vec![],
             exists: vec![],
+            submodule: vec![],
         };
         let repos = resolve_repos(&cfg).unwrap();
         assert_eq!(repos.len(), 1);
@@ -630,6 +678,7 @@ mod tests {
             crates_io_pass_entry: crate::commands::release::default_pass_entry(),
             check: vec![],
             exists: vec![],
+            submodule: vec![],
         };
         assert!(resolve_repos(&cfg).is_err());
     }
@@ -637,7 +686,7 @@ mod tests {
     #[test]
     fn enabled_can_be_disabled() {
         let toml = r#"
-            [[check]]
+            [[check-same]]
             name = "a"
             select = "*"
             path = "x"
@@ -841,7 +890,7 @@ mod tests {
     #[test]
     fn must_have_defaults_to_false() {
         let toml = r#"
-            [[check]]
+            [[check-same]]
             name = "a"
             select = "*"
             path = "x"
@@ -1147,7 +1196,7 @@ mod tests {
     #[test]
     fn exists_config_parses() {
         let toml = r#"
-            [[exists]]
+            [[check-exists]]
             name = "readme"
             select = "*"
             path = "README.md"
@@ -1156,19 +1205,19 @@ mod tests {
         assert_eq!(config.exists.len(), 1);
         assert_eq!(config.exists[0].name, "readme");
         assert!(config.exists[0].enabled);
-        // [[check]] and [[exists]] are independent lists.
+        // [[check-same]] and [[check-exists]] are independent lists.
         assert!(config.check.is_empty());
     }
 
     #[test]
     fn exists_and_check_rules_coexist() {
         let toml = r#"
-            [[check]]
+            [[check-same]]
             name = "gi"
             select = "*"
             path = ".gitignore"
 
-            [[exists]]
+            [[check-exists]]
             name = "readme"
             select = "*"
             path = "README.md"

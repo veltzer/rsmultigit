@@ -3,8 +3,8 @@ use std::fs;
 use camino::Utf8Path;
 
 use crate::common::{
-    commit_file, git, run_rsmultigit, run_rsmultigit_with_env, setup_git_repos, stderr_str,
-    stdout_str, utf8, write_config,
+    commit_file, git, run_rsmultigit_with_env, setup_git_repos, stderr_str, stdout_str, utf8,
+    write_config,
 };
 
 /// Add `lib` as the submodule `shared/lib` of `repo` and commit it. The file
@@ -29,14 +29,24 @@ fn add_submodule(repo: &Utf8Path, lib: &Utf8Path) {
     git(&checkout, &["config", "user.name", "Test"]);
 }
 
-/// Two consumers of one library, pinned to the same commit.
+/// Two consumers of one library, pinned to the same commit, plus a bystander
+/// repo `c` with no submodule.
 fn fleet_with_shared_submodule() -> tempfile::TempDir {
-    let tmp = setup_git_repos(&["a", "b", "lib"]);
+    let tmp = setup_git_repos(&["a", "b", "c", "lib"]);
     let dir = utf8(&tmp);
     commit_file(&dir.join("lib"), "lib.txt", "v1\n", "lib v1");
     add_submodule(&dir.join("a"), &dir.join("lib"));
     add_submodule(&dir.join("b"), &dir.join("lib"));
     tmp
+}
+
+/// A `[[check-submodules]]` rule for `lib`, spelled with a trailing `.git` and odd
+/// case to show the URL match is normalised.
+fn lib_rule(dir: &Utf8Path, select: &str) -> String {
+    format!(
+        "[[check-submodules]]\nname = \"lib\"\nselect = \"{select}\"\nurl = \"{}.GIT\"\n",
+        dir.join("lib")
+    )
 }
 
 #[test]
@@ -47,19 +57,28 @@ fn check_submodules_reports_ok_when_every_repo_pins_the_same_commit() {
         &dir.join("a/shared/lib"),
         &["rev-parse", "--short=7", "HEAD"],
     );
+    let cfg = write_config(dir, &lib_rule(dir, "*"));
+    let env = [("RSMULTIGIT_CONFIG", cfg.as_str())];
 
-    let output = run_rsmultigit(dir, &["check", "submodules"]);
+    let output = run_rsmultigit_with_env(dir, &["check", "submodules"], &env);
     assert!(output.status.success(), "{}", stderr_str(&output));
     let stdout = stdout_str(&output);
-    assert!(stdout.starts_with("[lib] url="), "{stdout}");
     assert!(
-        stdout.ends_with(&format!("\nok (2 repos @ {pin})")),
+        stdout.starts_with("[check-submodules lib] url="),
+        "{stdout}"
+    );
+    // `c` and `lib` are selected by `*` but carry no such submodule: skipped.
+    assert!(
+        stdout.ends_with(&format!("\nok (2 repos @ {pin}, 2 skipped)")),
         "{stdout}"
     );
 
-    let output = run_rsmultigit(dir, &["check", "submodules", "--only-failed"]);
+    let output = run_rsmultigit_with_env(dir, &["check", "submodules", "--only-failed"], &env);
     assert!(output.status.success());
     assert_eq!(stdout_str(&output), "");
+
+    let output = run_rsmultigit_with_env(dir, &["check", "list", "submodules"], &env);
+    assert_eq!(stdout_str(&output), "lib");
 }
 
 #[test]
@@ -77,13 +96,19 @@ fn check_submodules_fails_when_one_repo_moves_its_pin() {
         &["rev-parse", "--short=7", "HEAD"],
     );
     assert_ne!(old, new);
+    let cfg = write_config(dir, &lib_rule(dir, "?"));
+    let env = [("RSMULTIGIT_CONFIG", cfg.as_str())];
 
-    let output = run_rsmultigit(dir, &["check", "submodules"]);
+    let output = run_rsmultigit_with_env(dir, &["check", "submodules"], &env);
     assert_eq!(output.status.code(), Some(1));
     let stdout = stdout_str(&output);
     let lines: Vec<&str> = stdout.lines().collect();
-    assert!(lines[0].starts_with("[lib] url="), "{stdout}");
-    assert_eq!(lines[1], "2 repos, 2 commits", "{stdout}");
+    assert!(
+        lines[0].starts_with("[check-submodules lib] url="),
+        "{stdout}"
+    );
+    assert!(lines[0].ends_with(" select=?"), "{stdout}");
+    assert_eq!(lines[1], "2 repos, 2 commits (1 skipped)", "{stdout}");
     // Groups are the same size, so their order is the commit order; find each.
     for (pin, repo) in [(&old, "a"), (&new, "b")] {
         let head = format!("  {pin} (1 repo):");
@@ -95,11 +120,11 @@ fn check_submodules_fails_when_one_repo_moves_its_pin() {
         assert_eq!(lines[at + 1], member, "{stdout}");
     }
 
-    let output = run_rsmultigit(dir, &["--terse", "check", "submodules"]);
+    let output = run_rsmultigit_with_env(dir, &["--terse", "check", "submodules"], &env);
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(stdout_str(&output), "lib");
 
-    let output = run_rsmultigit(dir, &["--no-output", "check", "submodules"]);
+    let output = run_rsmultigit_with_env(dir, &["--no-output", "check", "submodules"], &env);
     assert_eq!(
         stdout_str(&output).lines().count(),
         2,
@@ -109,15 +134,62 @@ fn check_submodules_fails_when_one_repo_moves_its_pin() {
 }
 
 #[test]
+fn only_declared_submodules_are_checked() {
+    // The pins differ, but no rule names the submodule: nothing to report.
+    let tmp = fleet_with_shared_submodule();
+    let dir = utf8(&tmp);
+    commit_file(&dir.join("b/shared/lib"), "lib.txt", "v2\n", "lib v2");
+    let cfg = write_config(dir, "");
+    let env = [("RSMULTIGIT_CONFIG", cfg.as_str())];
+
+    let output = run_rsmultigit_with_env(dir, &["check", "submodules"], &env);
+    assert!(output.status.success(), "{}", stderr_str(&output));
+    assert_eq!(stdout_str(&output), "");
+    let output = run_rsmultigit_with_env(dir, &["--verbose", "check", "submodules"], &env);
+    assert_eq!(stdout_str(&output), "no submodule rules to check");
+}
+
+#[test]
+fn a_rule_whose_submodule_is_nowhere_fails_unless_allowed() {
+    let tmp = fleet_with_shared_submodule();
+    let dir = utf8(&tmp);
+    let rule = "[[check-submodules]]\nname = \"ghost\"\nselect = \"*\"\nurl = \"github.com/nobody/ghost\"\n";
+    let cfg = write_config(dir, rule);
+    let env = [("RSMULTIGIT_CONFIG", cfg.as_str())];
+
+    let output = run_rsmultigit_with_env(dir, &["check", "submodules"], &env);
+    assert!(!output.status.success());
+    assert_eq!(
+        stdout_str(&output),
+        "[check-submodules ghost] url=github.com/nobody/ghost select=*\nno repos have this submodule"
+    );
+    assert!(
+        stderr_str(&output).contains("found the submodule in no repo"),
+        "{}",
+        stderr_str(&output)
+    );
+
+    let output = run_rsmultigit_with_env(dir, &["check", "submodules", "--allow-empty"], &env);
+    assert!(output.status.success(), "{}", stderr_str(&output));
+    assert_eq!(
+        stdout_str(&output),
+        "[check-submodules ghost] url=github.com/nobody/ghost select=*\nok (0 repos @ -, 4 skipped)"
+    );
+}
+
+#[test]
 fn check_all_includes_submodules() {
     let tmp = fleet_with_shared_submodule();
     let dir = utf8(&tmp);
-    for name in ["a", "b"] {
+    for name in ["a", "b", "c", "lib"] {
         fs::write(dir.join(name).join(".gitignore"), "same\n").unwrap();
     }
     let cfg = write_config(
         dir,
-        "[[check]]\nname = \"gi\"\nselect = \"*\"\npath = \".gitignore\"\n",
+        &format!(
+            "[[check-same]]\nname = \"gi\"\nselect = \"*\"\npath = \".gitignore\"\n\n{}",
+            lib_rule(dir, "*")
+        ),
     );
     let env = [("RSMULTIGIT_CONFIG", cfg.as_str())];
 
@@ -129,17 +201,9 @@ fn check_all_includes_submodules() {
     let output = run_rsmultigit_with_env(dir, &["check", "all", "--only-failed"], &env);
     assert_eq!(output.status.code(), Some(1));
     let stdout = stdout_str(&output);
-    assert!(stdout.starts_with("[lib] url="), "{stdout}");
+    assert!(
+        stdout.starts_with("[check-submodules lib] url="),
+        "{stdout}"
+    );
     assert!(!stdout.contains("[gi]"), "{stdout}");
-}
-
-#[test]
-fn a_fleet_without_submodules_passes() {
-    let tmp = setup_git_repos(&["a", "b"]);
-    let dir = utf8(&tmp);
-    let output = run_rsmultigit(dir, &["check", "submodules"]);
-    assert!(output.status.success(), "{}", stderr_str(&output));
-    assert_eq!(stdout_str(&output), "");
-    let output = run_rsmultigit(dir, &["--verbose", "check", "submodules"]);
-    assert_eq!(stdout_str(&output), "no submodules found");
 }

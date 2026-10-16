@@ -289,7 +289,7 @@ pub enum CheckCommand {
         #[arg(long, default_value_t = false)]
         fix_missing: bool,
     },
-    /// Check that files declared as `[[exists]]` in ~/.config/rsmultigit/config.toml
+    /// Check that files declared as `[[check-exists]]` in ~/.config/rsmultigit/config.toml
     /// are present in every repo they apply to. Content is never compared, so this
     /// is the rule type for files that must exist but legitimately differ per repo.
     Exists {
@@ -313,32 +313,48 @@ pub enum CheckCommand {
         #[arg(long, default_value_t = false)]
         allow_empty: bool,
     },
-    /// Check that every submodule shared by several repos is checked out at the
-    /// same commit in all of them. Needs no rules: the submodules of every
-    /// configured repo are discovered and grouped by remote URL.
+    /// Check that the submodules declared as `[[check-submodules]]` in
+    /// ~/.config/rsmultigit/config.toml are checked out at the same commit in
+    /// every repo they apply to. Only declared submodules are checked.
     Submodules {
-        /// Print only failing submodules, suppressing the `ok` lines that
-        /// consistent submodules print by default. (--terse implies this.)
+        /// Run only the listed submodule rules (space- or repeat-separated).
+        /// Listed names override `enabled = false`. Unknown names are a hard error.
+        #[arg(long, num_args = 1.., value_delimiter = ' ')]
+        checks: Vec<String>,
+        /// Run only submodule rules whose name matches one of the given regular
+        /// expressions (unanchored, like grep; use ^...$ to match a full name).
+        /// Combines with --checks. Matched rules override `enabled = false`.
+        /// A pattern matching no rule name is a hard error.
+        #[arg(long, num_args = 1.., value_delimiter = ' ')]
+        checks_re: Vec<String>,
+        /// Print only failing rules, suppressing the `ok` lines that passing
+        /// rules print by default. (--terse implies this.)
         #[arg(long, default_value_t = false)]
         only_failed: bool,
+        /// Treat a rule whose submodule no selected repo carries as passing.
+        /// By default such a rule fails: finding it nowhere almost always
+        /// means a stale `select` or a misspelled `url`, not a healthy check.
+        #[arg(long, default_value_t = false)]
+        allow_empty: bool,
     },
     /// Run `check same`, `check exists` and `check submodules`. Exits non-zero
     /// if any of them fails.
     All {
-        /// Print only failing rules and submodules from all three checks.
+        /// Print only failing rules from all three checks.
         #[arg(long, default_value_t = false)]
         only_failed: bool,
-        /// Treat rules that match nothing as passing, in `same` and `exists`.
+        /// Treat rules that match nothing as passing, in all three checks.
         #[arg(long, default_value_t = false)]
         allow_empty: bool,
     },
     /// Print the name of every rule of one kind defined in the config, one
-    /// per line: the `[[check]]` rules by default, the `[[exists]]` rules with
-    /// `exists`. Intended for use in shell-completion scripts. All rules are
+    /// per line: the `[[check-same]]` rules by default (`same`), the
+    /// `[[check-exists]]` rules with `exists`, the `[[check-submodules]]`
+    /// rules with `submodules`. Intended for use in shell-completion scripts. All rules are
     /// listed, including those with `enabled = false`.
     List {
         /// Which rule list to print
-        #[arg(value_enum, default_value_t = RuleKind::Check)]
+        #[arg(value_enum, default_value_t = RuleKind::Same)]
         kind: RuleKind,
     },
 }
@@ -531,12 +547,16 @@ pub enum GitCommand {
     },
 }
 
+/// The rule kinds, named after the `check` subcommand that runs each, which
+/// is also the config stanza each comes from (`[[check-same]]`, ...).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum RuleKind {
-    /// The `[[check]]` rules, consumed by `check same`
-    Check,
-    /// The `[[exists]]` rules, consumed by `check exists`
+    /// The `[[check-same]]` rules, consumed by `check same`
+    Same,
+    /// The `[[check-exists]]` rules, consumed by `check exists`
     Exists,
+    /// The `[[check-submodules]]` rules, consumed by `check submodules`
+    Submodules,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -788,9 +808,10 @@ pub fn print_completions(shell: Shell) {
     let mut cmd = Cli::command();
     generate(shell, &mut cmd, "rsmultigit", &mut io::stdout());
 
-    // Append a dynamic extension that completes `check same --checks <names>`
-    // and `check exists --checks <names>` against `rsmultigit check list`
-    // (`check list exists` for the latter), which reads the user's config
+    // Append a dynamic extension that completes `check same --checks <names>`,
+    // `check exists --checks <names>` and `check submodules --checks <names>`
+    // against `rsmultigit check list` (`check list exists` / `check list
+    // submodules` for the latter two), which reads the user's config
     // file. clap_complete only knows about static ValueEnum choices, so
     // --checks (free-form names from the config) needs runtime help.
     match shell {
@@ -932,8 +953,9 @@ if declare -F _rsmultigit >/dev/null; then
             local w="${COMP_WORDS[i]}"
             case "$w" in
                 check)    [[ -z "$group" ]] && group=check ;;
-                same)     [[ "$group" == check && -z "$kind" ]] && kind=check ;;
+                same)     [[ "$group" == check && -z "$kind" ]] && kind=same ;;
                 exists)   [[ "$group" == check && -z "$kind" ]] && kind=exists ;;
+                submodules) [[ "$group" == check && -z "$kind" ]] && kind=submodules ;;
                 --checks) in_checks=1 ;;
                 --*)      in_checks=0 ;;
             esac
@@ -974,8 +996,9 @@ if (( ${+functions[_rsmultigit]} )); then
         for ((i=1; i<CURRENT; i++)); do
             case "${words[i]}" in
                 check)    [[ -z "$group" ]] && group=check ;;
-                same)     [[ "$group" == check && -z "$kind" ]] && kind=check ;;
+                same)     [[ "$group" == check && -z "$kind" ]] && kind=same ;;
                 exists)   [[ "$group" == check && -z "$kind" ]] && kind=exists ;;
+                submodules) [[ "$group" == check && -z "$kind" ]] && kind=submodules ;;
                 --checks) seen_checks=1 ;;
                 --*)      seen_checks=0 ;;
             esac
@@ -1403,7 +1426,7 @@ mod tests {
             cli.command,
             Commands::Check {
                 command: CheckCommand::List {
-                    kind: RuleKind::Check
+                    kind: RuleKind::Same
                 }
             }
         ));
@@ -1416,6 +1439,15 @@ mod tests {
                 }
             }
         ));
+        let cli = parse(&["rsmultigit", "check", "list", "submodules"]);
+        assert!(matches!(
+            cli.command,
+            Commands::Check {
+                command: CheckCommand::List {
+                    kind: RuleKind::Submodules
+                }
+            }
+        ));
         assert!(Cli::try_parse_from(["rsmultigit", "check", "list", "both"]).is_err());
     }
 
@@ -1424,6 +1456,7 @@ mod tests {
         for snippet in [CHECKS_COMPLETION_BASH, CHECKS_COMPLETION_ZSH] {
             assert!(snippet.contains("same)"));
             assert!(snippet.contains("exists)"));
+            assert!(snippet.contains("submodules)"));
             assert!(snippet.contains(r#"check list "$kind""#));
         }
     }

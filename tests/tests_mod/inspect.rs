@@ -211,7 +211,7 @@ fn check_exists_and_check_all_end_to_end() {
     }
     let cfg = write_config(
         dir,
-        "[[check]]\nname = \"gi\"\nselect = \"*\"\npath = \".gitignore\"\n\n[[exists]]\nname = \"rd\"\nselect = \"*\"\npath = \"README.md\"\n",
+        "[[check-same]]\nname = \"gi\"\nselect = \"*\"\npath = \".gitignore\"\n\n[[check-exists]]\nname = \"rd\"\nselect = \"*\"\npath = \"README.md\"\n",
     );
     let env = [("RSMULTIGIT_CONFIG", cfg.as_str())];
 
@@ -220,7 +220,7 @@ fn check_exists_and_check_all_end_to_end() {
     assert_eq!(
         stdout_str(&output),
         format!(
-            "[rd] path=README.md select=*\n2 repos, 1 missing README.md\n  missing in:\n    {}",
+            "[check-exists rd] path=README.md select=*\n2 repos, 1 missing README.md\n  missing in:\n    {}",
             dir.join("b")
         )
     );
@@ -231,14 +231,14 @@ fn check_exists_and_check_all_end_to_end() {
     let output = run_rsmultigit_with_env(dir, &["check", "list", "exists"], &env);
     assert_eq!(stdout_str(&output), "rd");
 
-    // check all: the [[check]] half passes, the [[exists]] half fails, so
+    // check all: the [[check-same]] half passes, the [[check-exists]] half fails, so
     // both are reported and the exit is non-zero.
     let output = run_rsmultigit_with_env(dir, &["check", "all"], &env);
     assert_eq!(output.status.code(), Some(1));
     let stdout = stdout_str(&output);
     assert!(
         stdout.starts_with(
-            "[gi] path=.gitignore select=*\nok (2 files)\n[rd] path=README.md select=*\n"
+            "[check-same gi] path=.gitignore select=*\nok (2 files)\n[check-exists rd] path=README.md select=*\n"
         ),
         "{stdout}"
     );

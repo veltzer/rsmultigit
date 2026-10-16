@@ -40,7 +40,7 @@ rsmultigit --verbose list repos    # with the usual [repo] header per entry
 
 ## Per-rule selection
 
-The `[[check]]` and `[[exists]]` rules narrow the discovered list further
+The `[[check-same]]` and `[[check-exists]]` rules narrow the discovered list further
 with `select`, `exclude`, `marker` and `marker_absent`. Those filters apply
 only to the consistency checks; every other command runs over the whole
 `repos` list. See [Configuration](configuration.md).

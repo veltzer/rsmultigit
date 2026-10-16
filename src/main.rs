@@ -16,7 +16,7 @@ use cli::{
     UvWhat,
 };
 use commands::check_run::{self, CheckExistsOpts, CheckSameOpts};
-use commands::check_submodules;
+use commands::check_submodules::{self, CheckSubmodulesOpts};
 use config::AppConfig;
 
 /// `Cli::parse()`, except that a command invoked without the positional that
@@ -404,10 +404,21 @@ fn run_check_command(
             },
             &mut stdout.lock(),
         )?,
-        CheckCommand::Submodules { only_failed } => check_submodules::run_check_submodules(
+        CheckCommand::Submodules {
+            checks,
+            checks_re,
+            only_failed,
+            allow_empty,
+        } => check_submodules::run_check_submodules(
             config,
+            file_config,
             projects,
-            *only_failed,
+            &CheckSubmodulesOpts {
+                requested: checks,
+                requested_re: checks_re,
+                only_failed: *only_failed,
+                allow_empty: *allow_empty,
+            },
             &mut stdout.lock(),
         )?,
         CheckCommand::All {
@@ -449,8 +460,14 @@ fn run_check_command(
             )?;
             let submodules = check_submodules::run_check_submodules(
                 config,
+                file_config,
                 projects,
-                *only_failed,
+                &CheckSubmodulesOpts {
+                    requested: &[],
+                    requested_re: &[],
+                    only_failed: *only_failed,
+                    allow_empty: *allow_empty,
+                },
                 &mut stdout.lock(),
             )?;
             if same != 0 || exists != 0 || submodules != 0 {
@@ -461,8 +478,13 @@ fn run_check_command(
         }
         CheckCommand::List { kind } => {
             let names: Vec<&str> = match kind {
-                RuleKind::Check => file_config.check.iter().map(|r| r.name.as_str()).collect(),
+                RuleKind::Same => file_config.check.iter().map(|r| r.name.as_str()).collect(),
                 RuleKind::Exists => file_config.exists.iter().map(|r| r.name.as_str()).collect(),
+                RuleKind::Submodules => file_config
+                    .submodule
+                    .iter()
+                    .map(|r| r.name.as_str())
+                    .collect(),
             };
             for name in names {
                 println!("{name}");

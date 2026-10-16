@@ -99,7 +99,7 @@ rsmultigit build                   # uses default_build_method from the config
 Declare the files that must not drift between repos, then check them:
 
 ```toml
-[[check]]
+[[check-same]]
 name = "gitignore"
 select = "*"
 path = ".gitignore"
@@ -111,7 +111,7 @@ rsmultigit check same --diff       # show what differs
 rsmultigit check same --copy       # interactively copy one version over the others
 ```
 
-See [Configuration](configuration.md) for `[[check]]` and `[[exists]]` rules.
+See [Configuration](configuration.md) for `[[check-same]]` and `[[check-exists]]` rules.
 
 ## Error handling
 

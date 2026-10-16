@@ -31,13 +31,13 @@ crates_io_pass_entry = "keys/crates.io"
 | `default_build_method` | no | What a bare `rsmultigit build` runs: `bootstrap`, `make`, `rsconstruct` or `cargo`, spelled as on the command line. A method given on the command line always wins. Without the key, `rsmultigit build` with no method is an error |
 | `crates_io_pass_entry` | no | The pass(1) entry `rsmultigit cargo release` reads the crates.io token from when `CARGO_REGISTRY_TOKEN` is not set in the environment. Default `keys/crates.io` |
 
-## `[[check]]` rules: files that must be identical
+## `[[check-same]]` rules: files that must be identical
 
-Each `[[check]]` block names one file that must have byte-identical content
+Each `[[check-same]]` block names one file that must have byte-identical content
 in every repo it applies to. `rsmultigit check same` evaluates them.
 
 ```toml
-[[check]]
+[[check-same]]
 name = "workflow-build-yml"
 select = "*"
 marker = "rsconstruct.toml"
@@ -65,29 +65,51 @@ matching no files at all fails, because that almost always means a stale
 Selection filters are applied in the order listed: `select`, then
 `exclude`, then `marker`, then `marker_absent`.
 
-## `[[exists]]` rules: files that must be present
+## `[[check-exists]]` rules: files that must be present
 
-Each `[[exists]]` block asserts that a file is present in every repo it
+Each `[[check-exists]]` block asserts that a file is present in every repo it
 applies to, without ever comparing content. This is the rule type for files
 that must exist but legitimately differ per repo, such as a README.
 `rsmultigit check exists` evaluates them.
 
 ```toml
-[[exists]]
+[[check-exists]]
 name = "readme-present"
 select = "*"
 path = "README.md"
 ```
 
 `name`, `select`, `exclude`, `marker`, `marker_absent`, `path` and `enabled`
-mean exactly what they mean for `[[check]]`. There is no `must_have`,
+mean exactly what they mean for `[[check-same]]`. There is no `must_have`,
 because requiring the file *is* the whole rule. A directory at `path` does
 not satisfy the rule; it must be a file.
 
-`rsmultigit check all` runs the `[[check]]` and `[[exists]]` rules together,
-followed by `check submodules`, which needs no rules: it discovers the
-submodules of every configured repo and requires each one to be pinned to
-the same commit wherever it appears.
+## `[[check-submodules]]` rules: submodules that must be pinned alike
+
+Each `[[check-submodules]]` block names a submodule by its remote URL and asserts
+that every selected repo carrying it has it checked out at the same commit.
+This is the rule type for a repo the fleet shares through submodules, such
+as design tokens or a tag vocabulary, where one consumer bumping the pin
+while the others stay behind is exactly the drift nothing else notices.
+`rsmultigit check submodules` evaluates them.
+
+```toml
+[[check-submodules]]
+name = "shared-themes"
+select = "*"
+url = "github.com/veltzer/shared-themes"
+```
+
+`name`, `select`, `exclude`, `marker`, `marker_absent` and `enabled` mean
+exactly what they mean for `[[check-same]]`. `url` identifies the submodule and
+is matched after normalisation on both sides: scheme, user, a trailing
+`.git` and case are ignored, so the spelling above matches a submodule added
+as `git@github.com:veltzer/shared-themes.git`. A selected repo that does not
+carry the submodule is skipped, not failed. Only submodules with a rule are
+checked; one without a rule may differ per repo.
+
+`rsmultigit check all` runs the `[[check-same]]`, `[[check-exists]]` and
+`[[check-submodules]]` rules together.
 
 ## Global flags
 

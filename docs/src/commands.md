@@ -350,11 +350,12 @@ rsmultigit --no-venv run which python  # ambient python everywhere
 
 ## Consistency Checks
 
-The `check` subcommands evaluate the `[[check]]` and `[[exists]]` rules in
-the config file, plus one invariant that needs no rule, the submodule pins;
-`rsmultigit check` alone lists them. See [Configuration](configuration.md) for the rule fields. Unlike every
+The `check` subcommands evaluate the `[[check-same]]`, `[[check-exists]]` and
+`[[check-submodules]]` rules in the config file; `rsmultigit check` alone lists them. See [Configuration](configuration.md) for the rule fields. Unlike every
 other command, output is organised by **rule**, not by repo: each rule prints
-a header line followed by its verdict. The header is `[rule-name]` followed
+a header line followed by its verdict. The header is `[kind rule-name]`,
+the kind being the stanza the rule came from and the command that runs it
+(`check-same`, `check-exists`, `check-submodules`), followed
 by the rule's properties as `key=value` pairs (`path` and `select` always;
 `exclude`, `marker`, `marker_absent` when set; `enabled=false` and
 `must_have=true` only when they differ from the default), so a failure can
@@ -362,14 +363,14 @@ be read against its rule without opening the config. `--no-header` drops it.
 
 ### `rsmultigit check same`
 
-For each enabled `[[check]]` rule, hash `path` in every selected repo and
+For each enabled `[[check-same]]` rule, hash `path` in every selected repo and
 group the repos by content. A rule passes when there is at most one group
 and, for `must_have = true` rules, no selected repo lacks the file.
 
 ```text
-[gitignore] path=.gitignore select=*
+[check-same gitignore] path=.gitignore select=*
 ok (212 files)
-[workflow-build-yml] path=.github/workflows/build.yml select=* marker_absent=.noci must_have=true
+[check-same workflow-build-yml] path=.github/workflows/build.yml select=* marker_absent=.noci must_have=true
 34 files, 2 groups (1 missing, 3 skipped)
   group A (31 files):
     /home/me/git/alpha/.github/workflows/build.yml
@@ -419,14 +420,14 @@ rsmultigit check same --fix-missing           # Create files missing from must_h
 
 ### `rsmultigit check exists`
 
-For each enabled `[[exists]]` rule, assert that every selected repo contains
+For each enabled `[[check-exists]]` rule, assert that every selected repo contains
 `path`. Content is never compared, which makes this the right rule type for
 files that must exist but legitimately differ per repo (a README, say).
 
 ```text
-[readme-present] path=README.md select=*
+[check-exists readme-present] path=README.md select=*
 ok (212 repos)
-[license-present] path=LICENSE select=*
+[check-exists license-present] path=LICENSE select=*
 212 repos, 2 missing LICENSE
   missing in:
     /home/me/git/alpha
@@ -443,22 +444,26 @@ interactive modes.
 
 ### `rsmultigit check submodules`
 
-Scan every configured repo for submodules, group them by remote URL, and
-assert that each submodule is checked out at the same commit wherever it
-appears. No configuration is involved: a submodule is the fleet's way of
-sharing a repo, and the pin is the part that drifts when one consumer bumps
-it and the others do not. URLs are normalised before grouping, so the same
-repo added over ssh in one place and https in another is one submodule.
+For each enabled `[[check-submodules]]` rule, find the submodule the rule's `url`
+names in every selected repo and assert that all of them have it checked
+out at the same commit. A submodule is the fleet's way of sharing a repo,
+and the pin is the part that drifts when one consumer bumps it and the
+others do not. Only submodules with a rule are checked: one without a rule
+is free to differ per repo, by decision rather than by accident.
 
-The commit compared is the one checked out in the submodule's working
-directory, the same view `check same` takes of ordinary files: what is on
-disk and what a build uses. A submodule that is not checked out falls back
-to the commit recorded in the superproject's index, then in HEAD.
+The URL is matched after normalisation on both sides, so the rule may say
+`github.com/owner/repo` while the repos added it over ssh or https, with or
+without `.git`. The commit compared is the one checked out in the
+submodule's working directory, the same view `check same` takes of ordinary
+files: what is on disk and what a build uses. A submodule that is not
+checked out falls back to the commit recorded in the superproject's index,
+then in HEAD. A selected repo that does not carry the submodule is skipped,
+not failed: the rule constrains the pin, not which repos use the submodule.
 
 ```text
-[shared-themes] url=github.com/veltzer/shared-themes
-ok (4 repos @ aa5e688)
-[shared-tags] url=github.com/veltzer/shared-tags
+[check-submodules shared-themes] url=github.com/veltzer/shared-themes select=*
+ok (4 repos @ aa5e688, 208 skipped)
+[check-submodules shared-tags] url=github.com/veltzer/shared-tags select=teaching-*
 3 repos, 2 commits
   1f2e3d4 (2 repos):
     /home/me/git/teaching-slides (shared/shared-tags)
@@ -467,31 +472,35 @@ ok (4 repos @ aa5e688)
     /home/me/git/teaching-animations (shared/shared-tags)
 ```
 
-Groups are ordered largest first. Exit code is 1 when any submodule is
-pinned to more than one commit, or to none. A fleet without submodules
-passes. A submodule used by a single repo passes too; it is listed so the
-report shows everything the fleet pins.
+Groups are ordered largest first. Exit code is 1 when any rule's submodule
+is pinned to more than one commit, or to none. A rule whose submodule no
+selected repo carries fails with `no repos have this submodule` and becomes
+a hard error at the end, unless `--allow-empty` is passed, since finding it
+nowhere almost always means a stale `select` or a misspelled `url`.
 
-`--only-failed`, `--terse` (failing submodule names only) and
-`--short-circuit` behave as for `check same`. There are no rules to select
-and no interactive modes.
+`--checks`, `--checks-re`, `--only-failed`, `--allow-empty`, `--terse` and
+`--short-circuit` behave exactly as for `check same`. There are no
+interactive modes.
 
 ### `rsmultigit check all [--only-failed] [--allow-empty]`
 
-Run every enabled `[[check]]` rule, then every enabled `[[exists]]` rule,
-then `check submodules`. All three always run, so a failure in one never
-hides the state of the others. Exit code is non-zero if any of them fails.
+Run every enabled `[[check-same]]` rule, then every enabled `[[check-exists]]` rule,
+then every enabled `[[check-submodules]]` rule. All three always run, so a failure
+in one never hides the state of the others. Exit code is non-zero if any of
+them fails.
 
 ```bash
 rsmultigit check all --only-failed
 ```
 
-### `rsmultigit check list [check|exists]`
+### `rsmultigit check list [same|exists|submodules]`
 
-Print the name of every `[[check]]` rule (the default) or every `[[exists]]`
-rule, one per line, including disabled ones. The bash and zsh completion
-scripts call this to complete `check same --checks <TAB>` and
-`check exists --checks <TAB>`.
+Print the name of every `[[check-same]]` rule (the default), every
+`[[check-exists]]` rule or every `[[check-submodules]]` rule, one per line,
+including disabled ones. The kind is named after the subcommand that runs it.
+The bash and zsh completion scripts call this to complete
+`check same --checks <TAB>`, `check exists --checks <TAB>` and
+`check submodules --checks <TAB>`.
 
 ## Build Commands
 

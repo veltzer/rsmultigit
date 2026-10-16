@@ -18,7 +18,7 @@ src/
   subprocess_utils.rs  Shell command helpers, venv activation, per-thread output capture
   commands/
     mod.rs             Module declarations
-    check.rs           Config-file parsing (repos, [[check]], [[exists]]), repo
+    check.rs           Config-file parsing (repos, [[check-same]], [[check-exists]]), repo
                        resolution, rule evaluation (SHA-256 grouping, presence)
     check_run.rs       check same / check exists / check all drivers: rule selection,
                        reporting, exit codes, the interactive flows

@@ -13,12 +13,16 @@ use std::io::{BufRead, Write};
 use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 
-use crate::commands::check::{self, CheckConfig, ExistsRule, Rule, RuleResult};
+use crate::commands::check::{self, CheckConfig, ExistsRule, Rule, RuleResult, SubmoduleRule};
 use crate::commands::interactive::{Choice, confirm, group_label, pick_group};
 use crate::config::AppConfig;
 
 /// What `--checks` / `--checks-re` resolution needs to know about a rule.
 pub trait NamedRule {
+    /// The stanza the rule came from, which is also the command that runs
+    /// it: `check-same`, `check-exists`, `check-submodules`. Printed in the
+    /// report header so a `check all` run reads unambiguously.
+    fn kind(&self) -> &'static str;
     fn name(&self) -> &str;
     fn enabled(&self) -> bool;
     /// The rule's properties as `key=value` pairs for the report header.
@@ -27,8 +31,10 @@ pub trait NamedRule {
     fn properties(&self) -> Vec<(&'static str, String)>;
 }
 
-/// The selection fields `[[check]]` and `[[exists]]` share, in config order.
+/// The selection fields the rule types share, in config order. `path` is
+/// the rule's subject (`path` for files, `url` for submodules).
 fn selection_properties(
+    path_key: &'static str,
     path: &str,
     select: &str,
     exclude: Option<&String>,
@@ -36,7 +42,7 @@ fn selection_properties(
     marker_absent: Option<&String>,
     enabled: bool,
 ) -> Vec<(&'static str, String)> {
-    let mut props = vec![("path", path.to_string()), ("select", select.to_string())];
+    let mut props = vec![(path_key, path.to_string()), ("select", select.to_string())];
     let optional = [
         ("exclude", exclude),
         ("marker", marker),
@@ -54,6 +60,9 @@ fn selection_properties(
 }
 
 impl NamedRule for Rule {
+    fn kind(&self) -> &'static str {
+        "check-same"
+    }
     fn name(&self) -> &str {
         &self.name
     }
@@ -62,6 +71,7 @@ impl NamedRule for Rule {
     }
     fn properties(&self) -> Vec<(&'static str, String)> {
         let mut props = selection_properties(
+            "path",
             &self.path,
             &self.select,
             self.exclude.as_ref(),
@@ -77,6 +87,9 @@ impl NamedRule for Rule {
 }
 
 impl NamedRule for ExistsRule {
+    fn kind(&self) -> &'static str {
+        "check-exists"
+    }
     fn name(&self) -> &str {
         &self.name
     }
@@ -85,7 +98,31 @@ impl NamedRule for ExistsRule {
     }
     fn properties(&self) -> Vec<(&'static str, String)> {
         selection_properties(
+            "path",
             &self.path,
+            &self.select,
+            self.exclude.as_ref(),
+            self.marker.as_ref(),
+            self.marker_absent.as_ref(),
+            self.enabled,
+        )
+    }
+}
+
+impl NamedRule for SubmoduleRule {
+    fn kind(&self) -> &'static str {
+        "check-submodules"
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn enabled(&self) -> bool {
+        self.enabled
+    }
+    fn properties(&self) -> Vec<(&'static str, String)> {
+        selection_properties(
+            "url",
+            &self.url,
             &self.select,
             self.exclude.as_ref(),
             self.marker.as_ref(),
@@ -155,11 +192,16 @@ fn quoted_list<S: std::fmt::Debug>(items: impl IntoIterator<Item = S>) -> String
 }
 
 /// Print the line that introduces a rule's report, unless `--no-header`
-/// suppressed it: `[name]` followed by the rule's properties, so a failure
-/// can be read against its rule without opening the config.
-fn rule_header<W: Write, R: NamedRule>(app: &AppConfig, out: &mut W, rule: &R) -> Result<()> {
+/// suppressed it: `[kind name]` followed by the rule's properties, so a
+/// failure can be read against its rule without opening the config, and a
+/// `check all` run says which kind of rule each line belongs to.
+pub(crate) fn rule_header<W: Write, R: NamedRule>(
+    app: &AppConfig,
+    out: &mut W,
+    rule: &R,
+) -> Result<()> {
     if !app.no_header {
-        write!(out, "[{}]", rule.name())?;
+        write!(out, "[{} {}]", rule.kind(), rule.name())?;
         for (key, value) in rule.properties() {
             write!(out, " {key}={value}")?;
         }
@@ -173,7 +215,12 @@ fn rule_header<W: Write, R: NamedRule>(app: &AppConfig, out: &mut W, rule: &R) -
 /// error on stderr, the last thing on screen, naming every empty rule. It
 /// takes precedence over the exit-0 modes (`--copy`, `--fix-missing`): an
 /// empty rule is a config bug, not drift those modes could fix.
-fn fail_on_empty_rules(command: &str, what: &str, hint: &str, empty: &[String]) -> Result<()> {
+pub(crate) fn fail_on_empty_rules(
+    command: &str,
+    what: &str,
+    hint: &str,
+    empty: &[String],
+) -> Result<()> {
     if empty.is_empty() {
         return Ok(());
     }
@@ -244,7 +291,12 @@ pub fn run_check_same<R: BufRead, W: Write>(
         anyhow::bail!("check same: {flag} is interactive and cannot be combined with {quiet}");
     }
 
-    let rules = select_rules(&file_config.check, requested, requested_re, "check")?;
+    let rules = select_rules(
+        &file_config.check,
+        requested,
+        requested_re,
+        "check-same rule",
+    )?;
     if rules.is_empty() {
         if app.verbose {
             writeln!(out, "no rules to check")?;
@@ -399,7 +451,7 @@ pub struct CheckExistsOpts<'a> {
     pub allow_empty: bool,
 }
 
-/// Run the `[[exists]]` rules: assert presence, never compare content.
+/// Run the `[[check-exists]]` rules: assert presence, never compare content.
 ///
 /// Output and flag handling deliberately mirror [`run_check_same`] so the
 /// two commands read the same way: `--terse` prints bare failing rule
@@ -420,7 +472,12 @@ pub fn run_check_exists<W: Write>(
         allow_empty,
     } = *opts;
 
-    let rules = select_rules(&file_config.exists, requested, requested_re, "exists rule")?;
+    let rules = select_rules(
+        &file_config.exists,
+        requested,
+        requested_re,
+        "check-exists rule",
+    )?;
     if rules.is_empty() {
         if app.verbose {
             writeln!(out, "no exists rules to check")?;
@@ -744,7 +801,10 @@ mod tests {
     fn rule_header_lists_set_properties_only() {
         let mut out = Vec::new();
         rule_header(&AppConfig::default(), &mut out, &rule("plain", true)).unwrap();
-        assert_eq!(String::from_utf8(out).unwrap(), "[plain] path=f select=*\n");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "[check-same plain] path=f select=*\n"
+        );
 
         let full = Rule {
             exclude: Some("rs-old".into()),
@@ -757,7 +817,7 @@ mod tests {
         rule_header(&AppConfig::default(), &mut out, &full).unwrap();
         assert_eq!(
             String::from_utf8(out).unwrap(),
-            "[full] path=f select=* exclude=rs-old marker=Cargo.toml \
+            "[check-same full] path=f select=* exclude=rs-old marker=Cargo.toml \
              marker_absent=.noci enabled=false must_have=true\n"
         );
     }
@@ -780,23 +840,29 @@ mod tests {
     #[test]
     fn select_rules_by_name_keeps_request_order_and_forces_disabled() {
         let rules = [rule("a", true), rule("b", false), rule("c", true)];
-        let got = select_rules(&rules, &strings(&["c", "b"]), &[], "check").unwrap();
+        let got = select_rules(&rules, &strings(&["c", "b"]), &[], "check-same rule").unwrap();
         assert_eq!(names(&got), ["c", "b"]);
     }
 
     #[test]
     fn select_rules_unknown_name_is_an_error() {
         let rules = [rule("a", true)];
-        let err = select_rules(&rules, &strings(&["zz"]), &[], "check").unwrap_err();
+        let err = select_rules(&rules, &strings(&["zz"]), &[], "check-same rule").unwrap_err();
         let msg = format!("{err:#}");
-        assert!(msg.contains("unknown check name(s)"), "{msg}");
+        assert!(msg.contains("unknown check-same rule name(s)"), "{msg}");
         assert!(msg.contains("\"zz\""), "{msg}");
     }
 
     #[test]
     fn select_rules_regex_adds_matches_without_duplicates() {
         let rules = [rule("rs-a", true), rule("py-b", false), rule("rs-c", false)];
-        let got = select_rules(&rules, &strings(&["rs-c"]), &strings(&["^rs-"]), "check").unwrap();
+        let got = select_rules(
+            &rules,
+            &strings(&["rs-c"]),
+            &strings(&["^rs-"]),
+            "check-same rule",
+        )
+        .unwrap();
         // rs-c came first by name; the regex adds rs-a and does not repeat rs-c.
         assert_eq!(names(&got), ["rs-c", "rs-a"]);
     }
@@ -804,10 +870,10 @@ mod tests {
     #[test]
     fn select_rules_regex_errors() {
         let rules = [rule("a", true)];
-        let bad = select_rules(&rules, &[], &strings(&["("]), "exists rule").unwrap_err();
-        assert!(format!("{bad:#}").contains("invalid exists rule regex"));
-        let none = select_rules(&rules, &[], &strings(&["^zz"]), "exists rule").unwrap_err();
-        assert!(format!("{none:#}").contains("matches no exists rule name"));
+        let bad = select_rules(&rules, &[], &strings(&["("]), "check-exists rule").unwrap_err();
+        assert!(format!("{bad:#}").contains("invalid check-exists rule regex"));
+        let none = select_rules(&rules, &[], &strings(&["^zz"]), "check-exists rule").unwrap_err();
+        assert!(format!("{none:#}").contains("matches no check-exists rule name"));
     }
 
     // ---- whole-command tests, driven through in-memory buffers ----
@@ -885,8 +951,10 @@ mod tests {
         (code, String::from_utf8(out).unwrap())
     }
 
-    const ONE_CHECK: &str = "[[check]]\nname = \"gi\"\nselect = \"*\"\npath = \".gitignore\"\n";
-    const ONE_EXISTS: &str = "[[exists]]\nname = \"rd\"\nselect = \"*\"\npath = \"README.md\"\n";
+    const ONE_CHECK: &str =
+        "[[check-same]]\nname = \"gi\"\nselect = \"*\"\npath = \".gitignore\"\n";
+    const ONE_EXISTS: &str =
+        "[[check-exists]]\nname = \"rd\"\nselect = \"*\"\npath = \"README.md\"\n";
 
     #[test]
     fn check_same_reports_ok_for_identical_files() {
@@ -899,7 +967,10 @@ mod tests {
             "",
         );
         assert_eq!(code.unwrap(), 0);
-        assert_eq!(out, "[gi] path=.gitignore select=*\nok (2 files)\n");
+        assert_eq!(
+            out,
+            "[check-same gi] path=.gitignore select=*\nok (2 files)\n"
+        );
     }
 
     #[test]
@@ -915,7 +986,7 @@ mod tests {
         assert_eq!(code.unwrap(), 1);
         assert!(
             out.starts_with(
-                "[gi] path=.gitignore select=*\n3 files, 2 groups\n  group A (2 files):\n"
+                "[check-same gi] path=.gitignore select=*\n3 files, 2 groups\n  group A (2 files):\n"
             ),
             "{out}"
         );
@@ -947,7 +1018,7 @@ mod tests {
         );
         assert_eq!(
             out,
-            "[gi] path=.gitignore select=*\nno files matched (1 skipped)\n"
+            "[check-same gi] path=.gitignore select=*\nno files matched (1 skipped)\n"
         );
         let msg = format!("{:#}", code.unwrap_err());
         assert!(
@@ -961,7 +1032,10 @@ mod tests {
         };
         let (code, out) = run_same(&AppConfig::default(), &config(ONE_CHECK), &fleet, &opts, "");
         assert_eq!(code.unwrap(), 0);
-        assert_eq!(out, "[gi] path=.gitignore select=*\nok (0 files)\n");
+        assert_eq!(
+            out,
+            "[check-same gi] path=.gitignore select=*\nok (0 files)\n"
+        );
     }
 
     #[test]
@@ -1015,8 +1089,8 @@ mod tests {
         };
         let (code, out) = run_same(&AppConfig::default(), &cfg, &fleet, &opts, "q\n");
         assert_eq!(code.unwrap(), 0);
-        assert!(out.contains("[gi]"), "{out}");
-        assert!(!out.contains("[gi2]"), "{out}");
+        assert!(out.contains("[check-same gi]"), "{out}");
+        assert!(!out.contains("[check-same gi2]"), "{out}");
     }
 
     #[test]
@@ -1043,8 +1117,9 @@ mod tests {
         // A plain file where the missing file's directory should go: the
         // directory cannot be created, whoever runs the test.
         fs::write(fleet.repos[1].join("sub"), "in the way").unwrap();
-        let cfg =
-            config("[[check]]\nname = \"f\"\nselect = \"*\"\npath = \"sub/f\"\nmust_have = true\n");
+        let cfg = config(
+            "[[check-same]]\nname = \"f\"\nselect = \"*\"\npath = \"sub/f\"\nmust_have = true\n",
+        );
         let opts = CheckSameOpts {
             do_fix_missing: true,
             ..same_opts()
@@ -1072,7 +1147,10 @@ mod tests {
             &exists_opts(),
         );
         assert_eq!(code.unwrap(), 0);
-        assert_eq!(out, "[rd] path=README.md select=*\nok (2 repos)\n");
+        assert_eq!(
+            out,
+            "[check-exists rd] path=README.md select=*\nok (2 repos)\n"
+        );
 
         let fleet = make_fleet("README.md", &[Some("a"), None]);
         let (code, out) = run_exists(
@@ -1085,7 +1163,7 @@ mod tests {
         assert_eq!(
             out,
             format!(
-                "[rd] path=README.md select=*\n2 repos, 1 missing README.md\n  missing in:\n    {}\n",
+                "[check-exists rd] path=README.md select=*\n2 repos, 1 missing README.md\n  missing in:\n    {}\n",
                 fleet.repos[1]
             )
         );
@@ -1151,7 +1229,10 @@ mod tests {
         let fleet = make_fleet("README.md", &[Some("a")]);
         let cfg = config(&ONE_EXISTS.replace("select = \"*\"", "select = \"zz*\""));
         let (code, out) = run_exists(&AppConfig::default(), &cfg, &fleet, &exists_opts());
-        assert_eq!(out, "[rd] path=README.md select=zz*\nno repos selected\n");
+        assert_eq!(
+            out,
+            "[check-exists rd] path=README.md select=zz*\nno repos selected\n"
+        );
         let msg = format!("{:#}", code.unwrap_err());
         assert!(
             msg.contains("check exists: 1 rule selected no repos: \"rd\""),
@@ -1164,7 +1245,10 @@ mod tests {
         };
         let (code, out) = run_exists(&AppConfig::default(), &cfg, &fleet, &opts);
         assert_eq!(code.unwrap(), 0);
-        assert_eq!(out, "[rd] path=README.md select=zz*\nok (0 repos)\n");
+        assert_eq!(
+            out,
+            "[check-exists rd] path=README.md select=zz*\nok (0 repos)\n"
+        );
     }
 
     #[test]
