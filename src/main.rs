@@ -144,7 +144,7 @@ fn main() -> Result<()> {
                 anyhow::bail!("--dry-run only applies to `gh sync-metadata`");
             }
             if keep.is_some() && !what.takes_keep() {
-                anyhow::bail!("--keep only applies to `gh clean-all`");
+                anyhow::bail!("--keep only applies to `gh clean-all` and `gh clean-all-graphql`");
             }
             match what {
                 GhWhat::CleanAll => {
@@ -155,6 +155,17 @@ fn main() -> Result<()> {
                         commands::gh::check_github,
                         move |project: &Utf8Path| -> anyhow::Result<()> {
                             commands::gh::clean_all(project, keep)
+                        },
+                    )?;
+                }
+                GhWhat::CleanAllGraphql => {
+                    let keep = keep.unwrap_or(4);
+                    runner::do_for_all_projects_with_check(
+                        &config,
+                        &projects,
+                        commands::gh::check_github,
+                        move |project: &Utf8Path| -> anyhow::Result<()> {
+                            commands::gh::clean_all_graphql(project, keep)
                         },
                     )?;
                 }

@@ -746,6 +746,30 @@ rsmultigit gh clean-all              # Keep the 4 most recent of each
 rsmultigit gh clean-all --keep 10    # Keep the 10 most recent of each
 ```
 
+### `rsmultigit gh clean-all-graphql [--keep <N>]`
+
+Does the same cleanup as `clean-all`, with the same `--keep` policy and the
+same output, but makes far fewer round trips to GitHub:
+
+- One [GraphQL](https://docs.github.com/en/graphql) query (100 per page)
+  lists the deployments together with their latest status, and the
+  releases. `clean-all` spends one REST call per deployment just reading
+  its status.
+- Deployments are deactivated and deleted with aliased mutations, up to 50
+  deployments per request.
+- GraphQL cannot list workflow runs or delete releases or runs, so those
+  calls stay on REST. The runs are listed 100 per page, not 30, and the
+  release and run deletes run 8 at a time, alongside the deployment
+  mutations.
+
+`clean-all` stops at the first delete that fails. `clean-all-graphql`
+carries on with the rest and reports every failure at the end.
+
+```bash
+rsmultigit gh clean-all-graphql              # Keep the 4 most recent of each
+rsmultigit -j 4 gh clean-all-graphql --keep 10
+```
+
 ### `rsmultigit gh artifacts`
 
 List the assets attached to each repository's latest GitHub release as a
@@ -826,7 +850,7 @@ features
 ```
 
 `--dry-run` is accepted by `sync-metadata` only, and `--keep` by
-`clean-all` only; on any other `gh` operation either is an error rather
+`clean-all` and `clean-all-graphql` only; on any other `gh` operation either is an error rather
 than a silently ignored flag.
 
 ## Utility Commands

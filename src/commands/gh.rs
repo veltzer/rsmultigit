@@ -214,6 +214,403 @@ fn is_failed_conclusion(conclusion: &str) -> bool {
     )
 }
 
+// ── clean-all-graphql ──────────────────────────────────────────────────
+//
+// Same policy as `clean_all`, but with fewer and overlapping round trips:
+//
+// - One GraphQL query (100 per page) lists the deployments together with
+//   their latest status, and the releases. The REST version makes one call
+//   per deployment just to read its status.
+// - Deployments are deactivated and deleted by aliased mutations, many per
+//   request. The mutations in one request run in order, so each deployment
+//   is deactivated before it is deleted.
+// - GraphQL has no mutation that deletes a release or a workflow run, and
+//   no listing of a repo's workflow runs. Those stay on REST: the runs are
+//   listed 100 per page instead of the default 30, and the deletes run on
+//   a few threads at once.
+//
+// The repository is named through gh's `{owner}`/`{repo}` placeholders, so
+// there is no separate `gh repo view` call either.
+
+/// Items per page of a GraphQL connection (GitHub's maximum).
+const GRAPHQL_PAGE_SIZE: usize = 100;
+/// Deployments per mutation request; each one takes two mutations.
+const DEPLOYMENTS_PER_MUTATION: usize = 50;
+/// How many REST deletes run at once. Small, so the batch stays clear of
+/// GitHub's secondary rate limit, which also counts concurrent requests.
+const REST_DELETE_THREADS: usize = 8;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GqlDeployment {
+    /// The GraphQL node id that the mutations take.
+    node_id: String,
+    /// The REST id, used in the output so it matches `clean-all`.
+    database_id: u64,
+    /// Deployment state `INACTIVE`: deletable without deactivating first.
+    inactive: bool,
+    /// Latest status `FAILURE` or `ERROR`: always deleted.
+    failed: bool,
+}
+
+/// Where a GraphQL connection's pagination stands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Page {
+    First,
+    After(String),
+    Done,
+}
+
+impl Page {
+    fn wanted(&self) -> bool {
+        *self != Page::Done
+    }
+
+    fn cursor(&self) -> Option<&str> {
+        match self {
+            Page::After(c) => Some(c),
+            _ => None,
+        }
+    }
+}
+
+/// One page of the inventory query, as printed by `INVENTORY_JQ`.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct InventoryPage {
+    deployments: Vec<GqlDeployment>,
+    releases: Vec<u64>,
+    /// Next page for each connection that was queried; None when it was not.
+    deployments_next: Option<Page>,
+    releases_next: Option<Page>,
+}
+
+/// Flattens the query result into one record per line, so the output is
+/// parsed without a JSON dependency. A connection that was not queried is
+/// absent and prints nothing.
+const INVENTORY_JQ: &str = r#".data.repository
+  | (.deployments // empty
+      | (.nodes[] | "D \(.id) \(.databaseId) \(.state) \(.latestStatus.state // "-")"),
+        "DP \(.pageInfo.hasNextPage) \(.pageInfo.endCursor // "-")"),
+    (.releases // empty
+      | (.nodes[] | "R \(.databaseId)"),
+        "RP \(.pageInfo.hasNextPage) \(.pageInfo.endCursor // "-")")"#;
+
+/// The inventory query for the connections that still have pages to fetch.
+/// Only the cursor variables actually used are declared, since GraphQL
+/// rejects an unused variable.
+fn inventory_query(deployments: &Page, releases: &Page) -> String {
+    let mut vars = vec!["$owner:String!", "$name:String!"];
+    let mut body = String::new();
+    if deployments.wanted() {
+        vars.push("$dafter:String");
+        body.push_str(&format!(
+            "deployments(first:{GRAPHQL_PAGE_SIZE},after:$dafter,orderBy:{{field:CREATED_AT,direction:DESC}})\
+             {{pageInfo{{hasNextPage endCursor}} nodes{{id databaseId state latestStatus{{state}}}}}} "
+        ));
+    }
+    if releases.wanted() {
+        vars.push("$rafter:String");
+        body.push_str(&format!(
+            "releases(first:{GRAPHQL_PAGE_SIZE},after:$rafter,orderBy:{{field:CREATED_AT,direction:DESC}})\
+             {{pageInfo{{hasNextPage endCursor}} nodes{{databaseId}}}}"
+        ));
+    }
+    format!(
+        "query({}){{repository(owner:$owner,name:$name){{{}}}}}",
+        vars.join(","),
+        body.trim_end()
+    )
+}
+
+fn parse_page_info(line: &str, rest: &str) -> Result<Page> {
+    let (has_next, cursor) = rest
+        .split_once(' ')
+        .with_context(|| format!("bad page info {line:?}"))?;
+    match (has_next, cursor) {
+        ("true", c) if c != "-" => Ok(Page::After(c.to_string())),
+        ("true", _) => anyhow::bail!("next page without a cursor: {line:?}"),
+        ("false", _) => Ok(Page::Done),
+        _ => anyhow::bail!("bad page info {line:?}"),
+    }
+}
+
+fn parse_inventory_page(out: &str) -> Result<InventoryPage> {
+    let mut page = InventoryPage::default();
+    for line in out.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        let (kind, rest) = line.split_once(' ').unwrap_or((line, ""));
+        match kind {
+            "D" => {
+                let fields: Vec<&str> = rest.split(' ').collect();
+                let [node_id, database_id, state, latest] = fields[..] else {
+                    anyhow::bail!("bad deployment line {line:?}");
+                };
+                page.deployments.push(GqlDeployment {
+                    node_id: node_id.to_string(),
+                    database_id: database_id
+                        .parse()
+                        .with_context(|| format!("bad deployment id in {line:?}"))?,
+                    inactive: state == "INACTIVE",
+                    failed: latest == "FAILURE" || latest == "ERROR",
+                });
+            }
+            "R" => page.releases.push(
+                rest.parse()
+                    .with_context(|| format!("bad release id in {line:?}"))?,
+            ),
+            "DP" => page.deployments_next = Some(parse_page_info(line, rest)?),
+            "RP" => page.releases_next = Some(parse_page_info(line, rest)?),
+            _ => anyhow::bail!("unexpected inventory line {line:?}"),
+        }
+    }
+    Ok(page)
+}
+
+/// All deployments and releases of the repo, newest first, paging each
+/// connection until it is exhausted.
+fn fetch_inventory(project: &Utf8Path) -> Result<(Vec<GqlDeployment>, Vec<u64>)> {
+    let mut deployments = Vec::new();
+    let mut releases = Vec::new();
+    let mut dpage = Page::First;
+    let mut rpage = Page::First;
+    while dpage.wanted() || rpage.wanted() {
+        let query = inventory_query(&dpage, &rpage);
+        let query_arg = format!("query={query}");
+        let mut args = vec![
+            "api".to_string(),
+            "graphql".to_string(),
+            "-F".to_string(),
+            "owner={owner}".to_string(),
+            "-F".to_string(),
+            "name={repo}".to_string(),
+            "-f".to_string(),
+            query_arg,
+        ];
+        if let Some(c) = dpage.cursor() {
+            args.push("-f".to_string());
+            args.push(format!("dafter={c}"));
+        }
+        if let Some(c) = rpage.cursor() {
+            args.push("-f".to_string());
+            args.push(format!("rafter={c}"));
+        }
+        args.push("--jq".to_string());
+        args.push(INVENTORY_JQ.to_string());
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        let page = parse_inventory_page(&capture_output(project, "gh", &args)?)?;
+        // A connection that was asked for must report where it stands;
+        // silence means the repository did not resolve.
+        if dpage.wanted() {
+            dpage = page
+                .deployments_next
+                .context("GraphQL query returned no deployments connection")?;
+            deployments.extend(page.deployments);
+        }
+        if rpage.wanted() {
+            rpage = page
+                .releases_next
+                .context("GraphQL query returned no releases connection")?;
+            releases.extend(page.releases);
+        }
+    }
+    Ok((deployments, releases))
+}
+
+/// The workflow runs, newest first, as (id, failed) pairs: REST, since
+/// GraphQL cannot list a repo's runs, but 100 per page.
+fn fetch_workflow_runs(project: &Utf8Path) -> Result<Vec<(u64, bool)>> {
+    let lines = api_lines(
+        project,
+        "repos/{owner}/{repo}/actions/runs?per_page=100",
+        r#".workflow_runs[] | "\(.id) \(.conclusion // "")""#,
+    )?;
+    lines
+        .iter()
+        .map(|line| {
+            let (id, conclusion) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+            let id: u64 = id
+                .parse()
+                .with_context(|| format!("bad workflow run line {line:?}"))?;
+            Ok((id, is_failed_conclusion(conclusion)))
+        })
+        .collect()
+}
+
+/// A GraphQL node id is interpolated into the mutation text, so make sure
+/// it cannot break out of its string literal.
+fn is_safe_node_id(id: &str) -> bool {
+    !id.is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '=' | '+' | '/'))
+}
+
+/// One mutation request that deactivates (where needed) and deletes each of
+/// `batch`, in order.
+fn deployment_mutation(batch: &[&GqlDeployment]) -> Result<String> {
+    let mut m = String::from("mutation{");
+    for (i, d) in batch.iter().enumerate() {
+        if !is_safe_node_id(&d.node_id) {
+            anyhow::bail!("unexpected deployment node id {:?}", d.node_id);
+        }
+        // GitHub refuses to delete an active deployment.
+        if !d.inactive {
+            m.push_str(&format!(
+                "s{i}:createDeploymentStatus(input:{{deploymentId:\"{}\",state:INACTIVE}}){{clientMutationId}} ",
+                d.node_id
+            ));
+        }
+        m.push_str(&format!(
+            "d{i}:deleteDeployment(input:{{id:\"{}\"}}){{clientMutationId}} ",
+            d.node_id
+        ));
+    }
+    m.push('}');
+    Ok(m)
+}
+
+/// Delete the deployments batch by batch; returns the ids deleted before
+/// the first failing batch, and that failure if any.
+fn delete_deployments(
+    project: &Utf8Path,
+    to_delete: &[&GqlDeployment],
+) -> (Vec<u64>, Option<anyhow::Error>) {
+    let mut deleted = Vec::new();
+    for batch in to_delete.chunks(DEPLOYMENTS_PER_MUTATION) {
+        let result = deployment_mutation(batch).and_then(|m| {
+            capture_output(
+                project,
+                "gh",
+                &["api", "graphql", "-f", &format!("query={m}")],
+            )
+        });
+        if let Err(e) = result {
+            return (deleted, Some(e.context("deleting deployments")));
+        }
+        deleted.extend(batch.iter().map(|d| d.database_id));
+    }
+    (deleted, None)
+}
+
+/// Run `gh api -X DELETE <path>` for every path, `REST_DELETE_THREADS` at a
+/// time. Results come back in input order. Nothing is printed from the
+/// worker threads: output capture is per thread, so the caller prints.
+fn rest_delete_parallel(project: &Utf8Path, paths: &[String]) -> Vec<Result<()>> {
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let next = AtomicUsize::new(0);
+    let results: Mutex<Vec<Option<Result<()>>>> =
+        Mutex::new((0..paths.len()).map(|_| None).collect());
+    std::thread::scope(|scope| {
+        for _ in 0..REST_DELETE_THREADS.min(paths.len()) {
+            scope.spawn(|| {
+                loop {
+                    let i = next.fetch_add(1, Ordering::Relaxed);
+                    let Some(path) = paths.get(i) else {
+                        break;
+                    };
+                    let r =
+                        capture_output(project, "gh", &["api", path, "-X", "DELETE"]).map(|_| ());
+                    results.lock().expect("results lock poisoned")[i] = Some(r);
+                }
+            });
+        }
+    });
+    results
+        .into_inner()
+        .expect("results lock poisoned")
+        .into_iter()
+        .map(|r| r.expect("every path is attempted"))
+        .collect()
+}
+
+/// `clean_all` through GitHub's GraphQL API where it can do the job, with
+/// the remaining REST calls run in parallel. Same keep policy, same output.
+/// Unlike `clean_all`, a failed delete does not stop the others; every
+/// failure is reported at the end.
+pub fn clean_all_graphql(project: &Utf8Path, keep: usize) -> Result<()> {
+    // The two listings are independent: run them at the same time.
+    let (inventory, runs) = std::thread::scope(|scope| {
+        let runs = scope.spawn(|| fetch_workflow_runs(project));
+        let inventory = fetch_inventory(project);
+        (
+            inventory,
+            runs.join().expect("workflow run listing panicked"),
+        )
+    });
+    let (deployments, releases) = inventory?;
+    let runs = runs?;
+
+    let deployment_items: Vec<(u64, bool)> = deployments
+        .iter()
+        .map(|d| (d.database_id, d.failed))
+        .collect();
+    let deployment_ids = select_deletions(&deployment_items, keep);
+    let deployments_to_delete: Vec<&GqlDeployment> = deployments
+        .iter()
+        .filter(|d| deployment_ids.contains(&d.database_id))
+        .collect();
+    let releases_to_delete: Vec<u64> = releases.iter().skip(keep).copied().collect();
+    let runs_to_delete = select_deletions(&runs, keep);
+
+    // Releases and runs share one REST pool; the deployment mutations run
+    // alongside it.
+    let rest_paths: Vec<String> = releases_to_delete
+        .iter()
+        .map(|id| format!("repos/{{owner}}/{{repo}}/releases/{id}"))
+        .chain(
+            runs_to_delete
+                .iter()
+                .map(|id| format!("repos/{{owner}}/{{repo}}/actions/runs/{id}")),
+        )
+        .collect();
+    let ((deleted_deployments, deployment_error), rest_results) = std::thread::scope(|scope| {
+        let d = scope.spawn(|| delete_deployments(project, &deployments_to_delete));
+        let rest = rest_delete_parallel(project, &rest_paths);
+        (d.join().expect("deployment deletion panicked"), rest)
+    });
+
+    let mut errors: Vec<anyhow::Error> = Vec::new();
+
+    out_line(&format!(
+        "deployments: {} found, deleting {}",
+        deployments.len(),
+        deployments_to_delete.len()
+    ));
+    for id in deleted_deployments {
+        out_line(&format!("  deleted deployment {id}"));
+    }
+    errors.extend(deployment_error);
+
+    let (release_results, run_results) = rest_results.split_at(releases_to_delete.len());
+    for (label, found, ids, results) in [
+        (
+            "releases",
+            releases.len(),
+            &releases_to_delete,
+            release_results,
+        ),
+        ("workflow runs", runs.len(), &runs_to_delete, run_results),
+    ] {
+        out_line(&format!("{label}: {found} found, deleting {}", ids.len()));
+        let singular = label.trim_end_matches('s');
+        for (id, result) in ids.iter().zip(results) {
+            match result {
+                Ok(()) => out_line(&format!("  deleted {singular} {id}")),
+                Err(e) => errors.push(anyhow::anyhow!("deleting {singular} {id}: {e:#}")),
+            }
+        }
+    }
+
+    match errors.len() {
+        0 => Ok(()),
+        1 => Err(errors.remove(0)),
+        n => {
+            let msgs: Vec<String> = errors.iter().map(|e| format!("{e:#}")).collect();
+            anyhow::bail!("{n} deletions failed:\n{}", msgs.join("\n"))
+        }
+    }
+}
+
 // ── artifacts ──────────────────────────────────────────────────────────
 
 /// The assets of the latest release as an aligned NAME/SIZE/DOWNLOADS table,
@@ -835,6 +1232,120 @@ mod tests {
         for c in ["success", "skipped", "neutral", ""] {
             assert!(!is_failed_conclusion(c), "{c} should not count as failed");
         }
+    }
+
+    // ── clean-all-graphql ──
+
+    #[test]
+    fn inventory_query_first_page_asks_for_both() {
+        let q = inventory_query(&Page::First, &Page::First);
+        assert!(q.starts_with("query($owner:String!,$name:String!,$dafter:String,$rafter:String)"));
+        assert!(q.contains("deployments(first:100,after:$dafter"));
+        assert!(q.contains("releases(first:100,after:$rafter"));
+        assert!(q.contains("latestStatus{state}"));
+    }
+
+    #[test]
+    fn inventory_query_leaves_out_finished_connections() {
+        // An unused variable is a GraphQL error, so a finished connection
+        // takes its variable with it.
+        let q = inventory_query(&Page::Done, &Page::After("c".into()));
+        assert!(!q.contains("deployments"), "{q}");
+        assert!(!q.contains("$dafter"), "{q}");
+        assert!(q.contains("releases("), "{q}");
+        let q = inventory_query(&Page::After("c".into()), &Page::Done);
+        assert!(!q.contains("releases"), "{q}");
+        assert!(!q.contains("$rafter"), "{q}");
+    }
+
+    #[test]
+    fn parse_inventory_page_full() {
+        let out = "D DE_a 11 ACTIVE SUCCESS\n\
+                   D DE_b 12 INACTIVE FAILURE\n\
+                   D DE_c 13 INACTIVE -\n\
+                   DP true Y3Vy==\n\
+                   R 21\n\
+                   R 22\n\
+                   RP false -";
+        let page = parse_inventory_page(out).unwrap();
+        assert_eq!(
+            page.deployments,
+            vec![
+                GqlDeployment {
+                    node_id: "DE_a".into(),
+                    database_id: 11,
+                    inactive: false,
+                    failed: false,
+                },
+                GqlDeployment {
+                    node_id: "DE_b".into(),
+                    database_id: 12,
+                    inactive: true,
+                    failed: true,
+                },
+                GqlDeployment {
+                    node_id: "DE_c".into(),
+                    database_id: 13,
+                    inactive: true,
+                    failed: false,
+                },
+            ]
+        );
+        assert_eq!(page.releases, vec![21, 22]);
+        assert_eq!(page.deployments_next, Some(Page::After("Y3Vy==".into())));
+        assert_eq!(page.releases_next, Some(Page::Done));
+    }
+
+    #[test]
+    fn parse_inventory_page_error_state_counts_as_failed() {
+        let page = parse_inventory_page("D DE_a 1 ERROR ERROR\nDP false -").unwrap();
+        assert!(page.deployments[0].failed);
+        assert_eq!(page.releases_next, None);
+    }
+
+    #[test]
+    fn parse_inventory_page_rejects_garbage() {
+        assert!(parse_inventory_page("D DE_a notanumber ACTIVE SUCCESS").is_err());
+        assert!(parse_inventory_page("D DE_a 1").is_err());
+        assert!(parse_inventory_page("DP maybe x").is_err());
+        assert!(parse_inventory_page("DP true -").is_err());
+        assert!(parse_inventory_page("X 1").is_err());
+    }
+
+    #[test]
+    fn deployment_mutation_deactivates_only_active_ones_first() {
+        let active = GqlDeployment {
+            node_id: "DE_a".into(),
+            database_id: 1,
+            inactive: false,
+            failed: false,
+        };
+        let inactive = GqlDeployment {
+            node_id: "DE_b".into(),
+            database_id: 2,
+            inactive: true,
+            failed: false,
+        };
+        let m = deployment_mutation(&[&active, &inactive]).unwrap();
+        assert_eq!(
+            m,
+            "mutation{\
+             s0:createDeploymentStatus(input:{deploymentId:\"DE_a\",state:INACTIVE}){clientMutationId} \
+             d0:deleteDeployment(input:{id:\"DE_a\"}){clientMutationId} \
+             d1:deleteDeployment(input:{id:\"DE_b\"}){clientMutationId} \
+             }"
+        );
+    }
+
+    #[test]
+    fn deployment_mutation_rejects_unsafe_node_ids() {
+        let bad = GqlDeployment {
+            node_id: "x\"){evil}".into(),
+            database_id: 1,
+            inactive: true,
+            failed: false,
+        };
+        assert!(deployment_mutation(&[&bad]).is_err());
     }
 
     // ── artifacts / last-workflow-state ──

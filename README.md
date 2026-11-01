@@ -193,6 +193,7 @@ The rest each run the git command of the same name in every repo:
 | `npm install\|ci\|update\|outdated\|test\|publish` | Run the matching npm command on repos with `package.json` |
 | `npm audit [--fix]` | Run `npm audit` (or `npm audit fix`) on repos with `package.json` |
 | `gh clean-all [--keep N]` | Delete old deployments, releases and workflow runs on GitHub repos |
+| `gh clean-all-graphql [--keep N]` | Same as `gh clean-all`, much faster: GraphQL listing and batched deployment deletes, parallel REST deletes |
 | `gh artifacts` | List the assets of the latest release (name, size, downloads) on GitHub repos |
 | `gh last-workflow-state` | Print the conclusion of the most recent workflow run on GitHub repos |
 | `gh open-site` | Open the GitHub Pages site of each repo in the browser |

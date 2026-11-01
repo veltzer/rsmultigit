@@ -177,7 +177,7 @@ pub enum Commands {
         #[arg(value_enum)]
         what: GhWhat,
         /// How many recent non-failed deployments/releases/workflow runs to keep
-        /// (`clean-all` only; default 4)
+        /// (`clean-all` and `clean-all-graphql` only; default 4)
         #[arg(long, value_name = "N")]
         keep: Option<usize>,
         /// Print what differs but change nothing on GitHub (`sync-metadata` only)
@@ -565,6 +565,10 @@ pub enum GhWhat {
     /// only the --keep most recent non-failed of each (failed ones are
     /// always deleted)
     CleanAll,
+    /// Same as clean-all, but through GitHub's GraphQL API where it can
+    /// (listing deployments with their status, batched deployment deletes)
+    /// and with the remaining REST deletes run in parallel: much faster
+    CleanAllGraphql,
     /// List the assets of the latest GitHub release (name, size, downloads)
     Artifacts,
     /// Print the conclusion of the most recent workflow run
@@ -585,9 +589,10 @@ impl GhWhat {
         matches!(self, GhWhat::SyncMetadata)
     }
 
-    /// Whether `--keep` makes sense for this operation (only `clean-all`).
+    /// Whether `--keep` makes sense for this operation (only `clean-all`
+    /// and `clean-all-graphql`).
     pub fn takes_keep(self) -> bool {
-        matches!(self, GhWhat::CleanAll)
+        matches!(self, GhWhat::CleanAll | GhWhat::CleanAllGraphql)
     }
 }
 
@@ -1087,6 +1092,7 @@ mod tests {
         );
         for name in [
             "clean-all",
+            "clean-all-graphql",
             "artifacts",
             "last-workflow-state",
             "open-site",
@@ -1355,6 +1361,7 @@ mod tests {
         // gh requires a what argument
         let gh_whats = [
             "clean-all",
+            "clean-all-graphql",
             "artifacts",
             "last-workflow-state",
             "open-site",
@@ -1752,11 +1759,11 @@ mod tests {
     }
 
     #[test]
-    fn gh_keep_applies_to_clean_all_only() {
+    fn gh_keep_applies_to_the_clean_all_variants_only() {
         for what in GhWhat::value_variants() {
             assert_eq!(
                 what.takes_keep(),
-                matches!(what, GhWhat::CleanAll),
+                matches!(what, GhWhat::CleanAll | GhWhat::CleanAllGraphql),
                 "{what:?}"
             );
         }
@@ -1766,6 +1773,7 @@ mod tests {
     fn gh_dry_run_applies_to_sync_metadata_only() {
         for what in [
             GhWhat::CleanAll,
+            GhWhat::CleanAllGraphql,
             GhWhat::Artifacts,
             GhWhat::LastWorkflowState,
             GhWhat::OpenSite,

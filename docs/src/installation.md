@@ -64,7 +64,7 @@ no system packages are required beyond a C compiler, CMake and Perl.
 
 At run time, some commands shell out to external tools that must be on
 `PATH`: `git` for network and formatting commands, `gh` for `git branch github`
-and `gh clean-all`, `uv` for the `uv` commands, `cargo` and
+and the `gh` commands, `uv` for the `uv` commands, `cargo` and
 [cargo-release](https://crates.io/crates/cargo-release) for the Rust
 commands, and whichever build tool a `build` method names.
 
