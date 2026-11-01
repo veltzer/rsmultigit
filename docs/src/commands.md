@@ -770,6 +770,38 @@ rsmultigit gh clean-all-graphql              # Keep the 4 most recent of each
 rsmultigit -j 4 gh clean-all-graphql --keep 10
 ```
 
+### `rsmultigit gh clean-all-batch [--keep <N>]`
+
+Does the same work as `clean-all-graphql`, with the same `--keep` policy and
+the same per-repo output, but for all repositories at once instead of one
+at a time:
+
+- The GraphQL inventory covers 20 repositories per query: each repository
+  is a separate alias (`r0: repository(...) r1: ...`) in a single request,
+  and up to 4 such queries run at once. A whole fleet of a few hundred
+  repositories is listed in about a dozen requests.
+- Deployment deletes are batched across repositories, 50 per request.
+- Listing workflow runs and deleting releases and runs remain REST calls,
+  one per repo or item, because GraphQL cannot do them. They share
+  fleet-wide pools of 8 threads, which run alongside the GraphQL requests.
+- The GitHub repository of each checkout is read from its git remotes, as
+  `gh` resolves it (the `gh repo set-default` choice, else `upstream`,
+  `github`, `origin`), so no `gh` process is spent on that.
+
+All the work happens first, and then each repository's output is printed
+in config order. Because the deletes have already happened by then, every
+repository is shown even without `--no-stop`. Failures are reported under
+their repository, and the exit status is non-zero if any repository
+failed. A repository GitHub cannot resolve fails on its own; the rest of
+its batch is retried without it. A repository whose listing failed has
+nothing deleted. `-j` affects only the printing, since the network
+concurrency is fixed.
+
+```bash
+rsmultigit gh clean-all-batch              # Keep the 4 most recent of each
+rsmultigit gh clean-all-batch --keep 10
+```
+
 ### `rsmultigit gh artifacts`
 
 List the assets attached to each repository's latest GitHub release as a
@@ -850,7 +882,7 @@ features
 ```
 
 `--dry-run` is accepted by `sync-metadata` only, and `--keep` by
-`clean-all` and `clean-all-graphql` only; on any other `gh` operation either is an error rather
+the three `clean-all` variants only; on any other `gh` operation either is an error rather
 than a silently ignored flag.
 
 ## Utility Commands

@@ -54,7 +54,7 @@ fn repo_name_with_owner(project: &Utf8Path) -> Result<String> {
 
 /// Run `gh api <endpoint> --paginate --jq <jq>` and return the non-empty
 /// output lines.
-fn api_lines(project: &Utf8Path, endpoint: &str, jq: &str) -> Result<Vec<String>> {
+pub(crate) fn api_lines(project: &Utf8Path, endpoint: &str, jq: &str) -> Result<Vec<String>> {
     let out = capture_output(project, "gh", &["api", endpoint, "--paginate", "--jq", jq])?;
     Ok(out
         .lines()
@@ -66,7 +66,7 @@ fn api_lines(project: &Utf8Path, endpoint: &str, jq: &str) -> Result<Vec<String>
 
 /// Given (id, failed) pairs ordered newest first, return the ids to delete:
 /// every failed entry, plus every non-failed entry beyond the first `keep`.
-fn select_deletions(items: &[(u64, bool)], keep: usize) -> Vec<u64> {
+pub(crate) fn select_deletions(items: &[(u64, bool)], keep: usize) -> Vec<u64> {
     let mut kept = 0;
     let mut to_delete = Vec::new();
     for &(id, failed) in items {
@@ -233,39 +233,39 @@ fn is_failed_conclusion(conclusion: &str) -> bool {
 // there is no separate `gh repo view` call either.
 
 /// Items per page of a GraphQL connection (GitHub's maximum).
-const GRAPHQL_PAGE_SIZE: usize = 100;
+pub(crate) const GRAPHQL_PAGE_SIZE: usize = 100;
 /// Deployments per mutation request; each one takes two mutations.
-const DEPLOYMENTS_PER_MUTATION: usize = 50;
+pub(crate) const DEPLOYMENTS_PER_MUTATION: usize = 50;
 /// How many REST deletes run at once. Small, so the batch stays clear of
 /// GitHub's secondary rate limit, which also counts concurrent requests.
-const REST_DELETE_THREADS: usize = 8;
+pub(crate) const REST_DELETE_THREADS: usize = 8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct GqlDeployment {
+pub(crate) struct GqlDeployment {
     /// The GraphQL node id that the mutations take.
-    node_id: String,
+    pub(crate) node_id: String,
     /// The REST id, used in the output so it matches `clean-all`.
-    database_id: u64,
+    pub(crate) database_id: u64,
     /// Deployment state `INACTIVE`: deletable without deactivating first.
-    inactive: bool,
+    pub(crate) inactive: bool,
     /// Latest status `FAILURE` or `ERROR`: always deleted.
-    failed: bool,
+    pub(crate) failed: bool,
 }
 
 /// Where a GraphQL connection's pagination stands.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum Page {
+pub(crate) enum Page {
     First,
     After(String),
     Done,
 }
 
 impl Page {
-    fn wanted(&self) -> bool {
+    pub(crate) fn wanted(&self) -> bool {
         *self != Page::Done
     }
 
-    fn cursor(&self) -> Option<&str> {
+    pub(crate) fn cursor(&self) -> Option<&str> {
         match self {
             Page::After(c) => Some(c),
             _ => None,
@@ -275,12 +275,12 @@ impl Page {
 
 /// One page of the inventory query, as printed by `INVENTORY_JQ`.
 #[derive(Debug, Default, PartialEq, Eq)]
-struct InventoryPage {
-    deployments: Vec<GqlDeployment>,
-    releases: Vec<u64>,
+pub(crate) struct InventoryPage {
+    pub(crate) deployments: Vec<GqlDeployment>,
+    pub(crate) releases: Vec<u64>,
     /// Next page for each connection that was queried; None when it was not.
-    deployments_next: Option<Page>,
-    releases_next: Option<Page>,
+    pub(crate) deployments_next: Option<Page>,
+    pub(crate) releases_next: Option<Page>,
 }
 
 /// Flattens the query result into one record per line, so the output is
@@ -333,7 +333,7 @@ fn parse_page_info(line: &str, rest: &str) -> Result<Page> {
     }
 }
 
-fn parse_inventory_page(out: &str) -> Result<InventoryPage> {
+pub(crate) fn parse_inventory_page(out: &str) -> Result<InventoryPage> {
     let mut page = InventoryPage::default();
     for line in out.lines().map(str::trim).filter(|l| !l.is_empty()) {
         let (kind, rest) = line.split_once(' ').unwrap_or((line, ""));
@@ -417,9 +417,15 @@ fn fetch_inventory(project: &Utf8Path) -> Result<(Vec<GqlDeployment>, Vec<u64>)>
 /// The workflow runs, newest first, as (id, failed) pairs: REST, since
 /// GraphQL cannot list a repo's runs, but 100 per page.
 fn fetch_workflow_runs(project: &Utf8Path) -> Result<Vec<(u64, bool)>> {
+    fetch_workflow_runs_of(project, "{owner}/{repo}")
+}
+
+/// [`fetch_workflow_runs`] for an explicit `owner/name` (or gh's
+/// `{owner}/{repo}` placeholders, resolved from `project`).
+pub(crate) fn fetch_workflow_runs_of(project: &Utf8Path, repo: &str) -> Result<Vec<(u64, bool)>> {
     let lines = api_lines(
         project,
-        "repos/{owner}/{repo}/actions/runs?per_page=100",
+        &format!("repos/{repo}/actions/runs?per_page=100"),
         r#".workflow_runs[] | "\(.id) \(.conclusion // "")""#,
     )?;
     lines
@@ -436,7 +442,7 @@ fn fetch_workflow_runs(project: &Utf8Path) -> Result<Vec<(u64, bool)>> {
 
 /// A GraphQL node id is interpolated into the mutation text, so make sure
 /// it cannot break out of its string literal.
-fn is_safe_node_id(id: &str) -> bool {
+pub(crate) fn is_safe_node_id(id: &str) -> bool {
     !id.is_empty()
         && id
             .chars()
@@ -445,7 +451,7 @@ fn is_safe_node_id(id: &str) -> bool {
 
 /// One mutation request that deactivates (where needed) and deletes each of
 /// `batch`, in order.
-fn deployment_mutation(batch: &[&GqlDeployment]) -> Result<String> {
+pub(crate) fn deployment_mutation(batch: &[&GqlDeployment]) -> Result<String> {
     let mut m = String::from("mutation{");
     for (i, d) in batch.iter().enumerate() {
         if !is_safe_node_id(&d.node_id) {
@@ -467,49 +473,140 @@ fn deployment_mutation(batch: &[&GqlDeployment]) -> Result<String> {
     Ok(m)
 }
 
-/// Delete the deployments batch by batch; returns the ids deleted before
-/// the first failing batch, and that failure if any.
-fn delete_deployments(
-    project: &Utf8Path,
-    to_delete: &[&GqlDeployment],
-) -> (Vec<u64>, Option<anyhow::Error>) {
-    let mut deleted = Vec::new();
-    for batch in to_delete.chunks(DEPLOYMENTS_PER_MUTATION) {
-        let result = deployment_mutation(batch).and_then(|m| {
-            capture_output(
-                project,
-                "gh",
-                &["api", "graphql", "-f", &format!("query={m}")],
-            )
-        });
-        if let Err(e) = result {
-            return (deleted, Some(e.context("deleting deployments")));
+/// The `errors` of a GraphQL response, as (alias, message) pairs; the
+/// alias is the first element of the error's `path`, when it has one. None
+/// when `json` carries no `errors` array, which means the request failed
+/// before GraphQL ran (network, authentication) and nothing in it took
+/// effect.
+///
+/// `gh api graphql` exits non-zero on any error and then prints the raw
+/// response instead of applying `--jq`, so this is how the aliases that
+/// did succeed are told apart from those that did not. A small scanner
+/// rather than a JSON dependency: it only splits the array into its
+/// top-level objects, minding strings, and reads two fields from each.
+pub(crate) fn graphql_errors(json: &str) -> Option<Vec<(Option<String>, String)>> {
+    let start = json.find("\"errors\":[")? + "\"errors\":[".len();
+    let path_re = regex_lite::Regex::new(r#""path":\["([^"\\]*)""#).expect("valid regex");
+    let msg_re = regex_lite::Regex::new(r#""message":"((?:[^"\\]|\\.)*)""#).expect("valid regex");
+    let mut errors = Vec::new();
+    let (mut depth, mut in_str, mut escaped) = (0usize, false, false);
+    let mut obj_start = None;
+    for (i, c) in json[start..].char_indices() {
+        if in_str {
+            match c {
+                _ if escaped => escaped = false,
+                '\\' => escaped = true,
+                '"' => in_str = false,
+                _ => {}
+            }
+            continue;
         }
-        deleted.extend(batch.iter().map(|d| d.database_id));
+        match c {
+            '"' => in_str = true,
+            '{' | '[' => {
+                if depth == 0 {
+                    obj_start = Some(start + i);
+                }
+                depth += 1;
+            }
+            '}' | ']' if depth == 0 => break,
+            '}' | ']' => {
+                depth -= 1;
+                if depth == 0
+                    && let Some(s) = obj_start.take()
+                {
+                    let obj = &json[s..=start + i];
+                    let alias = path_re.captures(obj).map(|c| c[1].to_string());
+                    let message = msg_re
+                        .captures(obj)
+                        .map(|c| c[1].replace("\\\"", "\"").replace("\\\\", "\\"))
+                        .unwrap_or_else(|| obj.to_string());
+                    errors.push((alias, message));
+                }
+            }
+            _ => {}
+        }
     }
-    (deleted, None)
+    Some(errors)
 }
 
-/// Run `gh api -X DELETE <path>` for every path, `REST_DELETE_THREADS` at a
-/// time. Results come back in input order. Nothing is printed from the
-/// worker threads: output capture is per thread, so the caller prints.
-fn rest_delete_parallel(project: &Utf8Path, paths: &[String]) -> Vec<Result<()>> {
+/// Run one deployment mutation request and say, per deployment, whether
+/// it is gone. A failing request can still have deleted some of them: only
+/// those whose `d<i>` alias errored, or every one when the request never
+/// reached GraphQL, failed.
+pub(crate) fn run_deployment_batch(cwd: &Utf8Path, batch: &[&GqlDeployment]) -> Vec<Result<()>> {
+    let all_failed = |msg: String| {
+        batch
+            .iter()
+            .map(|_| Err(anyhow::anyhow!("{msg}")))
+            .collect()
+    };
+    let mutation = match deployment_mutation(batch) {
+        Ok(m) => m,
+        Err(e) => return all_failed(format!("{e:#}")),
+    };
+    let (code, stdout, stderr) = match capture_output_allow_failure(
+        cwd,
+        "gh",
+        &["api", "graphql", "-f", &format!("query={mutation}")],
+    ) {
+        Ok(r) => r,
+        Err(e) => return all_failed(format!("{e:#}")),
+    };
+    if code == 0 {
+        return batch.iter().map(|_| Ok(())).collect();
+    }
+    let Some(errors) = graphql_errors(&stdout) else {
+        return all_failed(format!("gh api graphql failed: {}", stderr.trim()));
+    };
+    batch
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            let alias = format!("d{i}");
+            match errors
+                .iter()
+                .find(|(a, _)| a.as_deref() == Some(alias.as_str()))
+            {
+                Some((_, msg)) => Err(anyhow::anyhow!("{msg}")),
+                None => Ok(()),
+            }
+        })
+        .collect()
+}
+
+/// Delete the deployments, `DEPLOYMENTS_PER_MUTATION` per request; one
+/// result per deployment, in order.
+fn delete_deployments(project: &Utf8Path, to_delete: &[&GqlDeployment]) -> Vec<Result<()>> {
+    to_delete
+        .chunks(DEPLOYMENTS_PER_MUTATION)
+        .flat_map(|batch| run_deployment_batch(project, batch))
+        .collect()
+}
+
+/// Apply `f` to every item on up to `threads` threads; results come back in
+/// input order. `f` must not print: output capture is per thread, so the
+/// caller prints.
+pub(crate) fn parallel_map<T, R, F>(items: &[T], threads: usize, f: F) -> Vec<R>
+where
+    T: Sync,
+    R: Send,
+    F: Fn(&T) -> R + Sync,
+{
     use std::sync::Mutex;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     let next = AtomicUsize::new(0);
-    let results: Mutex<Vec<Option<Result<()>>>> =
-        Mutex::new((0..paths.len()).map(|_| None).collect());
+    let results: Mutex<Vec<Option<R>>> = Mutex::new((0..items.len()).map(|_| None).collect());
     std::thread::scope(|scope| {
-        for _ in 0..REST_DELETE_THREADS.min(paths.len()) {
+        for _ in 0..threads.min(items.len()) {
             scope.spawn(|| {
                 loop {
                     let i = next.fetch_add(1, Ordering::Relaxed);
-                    let Some(path) = paths.get(i) else {
+                    let Some(item) = items.get(i) else {
                         break;
                     };
-                    let r =
-                        capture_output(project, "gh", &["api", path, "-X", "DELETE"]).map(|_| ());
+                    let r = f(item);
                     results.lock().expect("results lock poisoned")[i] = Some(r);
                 }
             });
@@ -519,8 +616,16 @@ fn rest_delete_parallel(project: &Utf8Path, paths: &[String]) -> Vec<Result<()>>
         .into_inner()
         .expect("results lock poisoned")
         .into_iter()
-        .map(|r| r.expect("every path is attempted"))
+        .map(|r| r.expect("every item is processed"))
         .collect()
+}
+
+/// Run `gh api -X DELETE <path>` for every path, `REST_DELETE_THREADS` at a
+/// time, from `cwd`. Results come back in input order.
+pub(crate) fn rest_delete_parallel(cwd: &Utf8Path, paths: &[String]) -> Vec<Result<()>> {
+    parallel_map(paths, REST_DELETE_THREADS, |path| {
+        capture_output(cwd, "gh", &["api", path, "-X", "DELETE"]).map(|_| ())
+    })
 }
 
 /// `clean_all` through GitHub's GraphQL API where it can do the job, with
@@ -563,26 +668,26 @@ pub fn clean_all_graphql(project: &Utf8Path, keep: usize) -> Result<()> {
                 .map(|id| format!("repos/{{owner}}/{{repo}}/actions/runs/{id}")),
         )
         .collect();
-    let ((deleted_deployments, deployment_error), rest_results) = std::thread::scope(|scope| {
+    let (deployment_results, rest_results) = std::thread::scope(|scope| {
         let d = scope.spawn(|| delete_deployments(project, &deployments_to_delete));
         let rest = rest_delete_parallel(project, &rest_paths);
         (d.join().expect("deployment deletion panicked"), rest)
     });
 
-    let mut errors: Vec<anyhow::Error> = Vec::new();
-
-    out_line(&format!(
-        "deployments: {} found, deleting {}",
-        deployments.len(),
-        deployments_to_delete.len()
-    ));
-    for id in deleted_deployments {
-        out_line(&format!("  deleted deployment {id}"));
-    }
-    errors.extend(deployment_error);
-
+    let deployment_ids: Vec<u64> = deployments_to_delete
+        .iter()
+        .map(|d| d.database_id)
+        .collect();
     let (release_results, run_results) = rest_results.split_at(releases_to_delete.len());
+    let mut lines = Vec::new();
+    let mut errors = Vec::new();
     for (label, found, ids, results) in [
+        (
+            "deployments",
+            deployments.len(),
+            &deployment_ids,
+            &deployment_results[..],
+        ),
         (
             "releases",
             releases.len(),
@@ -591,23 +696,40 @@ pub fn clean_all_graphql(project: &Utf8Path, keep: usize) -> Result<()> {
         ),
         ("workflow runs", runs.len(), &runs_to_delete, run_results),
     ] {
-        out_line(&format!("{label}: {found} found, deleting {}", ids.len()));
-        let singular = label.trim_end_matches('s');
-        for (id, result) in ids.iter().zip(results) {
-            match result {
-                Ok(()) => out_line(&format!("  deleted {singular} {id}")),
-                Err(e) => errors.push(anyhow::anyhow!("deleting {singular} {id}: {e:#}")),
-            }
+        report_section(label, found, ids, results, &mut lines, &mut errors);
+    }
+    for line in &lines {
+        out_line(line);
+    }
+    combine_errors(errors)
+}
+
+/// The output for one kind of item, as `clean-all` prints it: a summary
+/// line, then one line per deleted item. Failures go to `errors`.
+pub(crate) fn report_section(
+    label: &str,
+    found: usize,
+    ids: &[u64],
+    results: &[Result<()>],
+    lines: &mut Vec<String>,
+    errors: &mut Vec<String>,
+) {
+    lines.push(format!("{label}: {found} found, deleting {}", ids.len()));
+    let singular = label.trim_end_matches('s');
+    for (id, result) in ids.iter().zip(results) {
+        match result {
+            Ok(()) => lines.push(format!("  deleted {singular} {id}")),
+            Err(e) => errors.push(format!("deleting {singular} {id}: {e:#}")),
         }
     }
+}
 
+/// One error for all the failures of a repo, or Ok when there were none.
+pub(crate) fn combine_errors(errors: Vec<String>) -> Result<()> {
     match errors.len() {
         0 => Ok(()),
-        1 => Err(errors.remove(0)),
-        n => {
-            let msgs: Vec<String> = errors.iter().map(|e| format!("{e:#}")).collect();
-            anyhow::bail!("{n} deletions failed:\n{}", msgs.join("\n"))
-        }
+        1 => Err(anyhow::anyhow!("{}", errors[0])),
+        n => anyhow::bail!("{n} deletions failed:\n{}", errors.join("\n")),
     }
 }
 
@@ -1335,6 +1457,29 @@ mod tests {
              d1:deleteDeployment(input:{id:\"DE_b\"}){clientMutationId} \
              }"
         );
+    }
+
+    #[test]
+    fn graphql_errors_reads_alias_and_message() {
+        // As gh prints a failing response: the data, then the errors.
+        let json = r#"{"data":{"r0":{"x":1},"r1":null},"errors":[{"type":"NOT_FOUND","path":["r1"],"locations":[{"line":1,"column":89}],"message":"Could not resolve to a Repository with the name 'o/\"q\"'."},{"message":"no path here"}]}"#;
+        let errors = graphql_errors(json).unwrap();
+        assert_eq!(
+            errors,
+            vec![
+                (
+                    Some("r1".to_string()),
+                    "Could not resolve to a Repository with the name 'o/\"q\"'.".to_string()
+                ),
+                (None, "no path here".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn graphql_errors_none_without_an_errors_array() {
+        assert_eq!(graphql_errors(""), None);
+        assert_eq!(graphql_errors(r#"{"data":{}}"#), None);
     }
 
     #[test]

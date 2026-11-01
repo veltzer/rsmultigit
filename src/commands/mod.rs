@@ -16,6 +16,7 @@ pub mod diff;
 pub mod fetch;
 pub mod gc;
 pub mod gh;
+pub mod gh_batch;
 pub mod grep;
 pub mod interactive;
 pub mod last_tag;

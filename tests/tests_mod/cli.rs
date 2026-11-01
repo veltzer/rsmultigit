@@ -58,6 +58,7 @@ fn bare_gh_lists_its_operations_with_descriptions() {
     for name in [
         "clean-all",
         "clean-all-graphql",
+        "clean-all-batch",
         "artifacts",
         "last-workflow-state",
         "open-site",

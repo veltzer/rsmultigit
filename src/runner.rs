@@ -19,7 +19,7 @@ fn resolve_jobs(config: &AppConfig) -> usize {
     n.max(1)
 }
 
-fn absolute(project: &Utf8Path, base: &Utf8Path) -> Utf8PathBuf {
+pub(crate) fn absolute(project: &Utf8Path, base: &Utf8Path) -> Utf8PathBuf {
     if project.is_absolute() {
         project.to_path_buf()
     } else {
@@ -61,7 +61,7 @@ fn no_stop_outcome(failed: usize, total: usize) -> Result<()> {
 }
 
 /// The current directory as a UTF-8 path, for resolving relative repo paths.
-fn current_dir() -> Result<Utf8PathBuf> {
+pub(crate) fn current_dir() -> Result<Utf8PathBuf> {
     let cwd = std::env::current_dir().context("failed to get current directory")?;
     Utf8PathBuf::from_path_buf(cwd)
         .map_err(|p| anyhow::anyhow!("current directory is not valid UTF-8: {}", p.display()))

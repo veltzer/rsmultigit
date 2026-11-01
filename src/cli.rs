@@ -177,7 +177,7 @@ pub enum Commands {
         #[arg(value_enum)]
         what: GhWhat,
         /// How many recent non-failed deployments/releases/workflow runs to keep
-        /// (`clean-all` and `clean-all-graphql` only; default 4)
+        /// (the `clean-all` variants only; default 4)
         #[arg(long, value_name = "N")]
         keep: Option<usize>,
         /// Print what differs but change nothing on GitHub (`sync-metadata` only)
@@ -569,6 +569,10 @@ pub enum GhWhat {
     /// (listing deployments with their status, batched deployment deletes)
     /// and with the remaining REST deletes run in parallel: much faster
     CleanAllGraphql,
+    /// Same as clean-all-graphql, but for all repos at once: one GraphQL
+    /// query lists 20 repos, deployment deletes are batched across repos,
+    /// and the REST calls share fleet-wide thread pools: fastest
+    CleanAllBatch,
     /// List the assets of the latest GitHub release (name, size, downloads)
     Artifacts,
     /// Print the conclusion of the most recent workflow run
@@ -589,10 +593,13 @@ impl GhWhat {
         matches!(self, GhWhat::SyncMetadata)
     }
 
-    /// Whether `--keep` makes sense for this operation (only `clean-all`
-    /// and `clean-all-graphql`).
+    /// Whether `--keep` makes sense for this operation (only the
+    /// `clean-all` variants).
     pub fn takes_keep(self) -> bool {
-        matches!(self, GhWhat::CleanAll | GhWhat::CleanAllGraphql)
+        matches!(
+            self,
+            GhWhat::CleanAll | GhWhat::CleanAllGraphql | GhWhat::CleanAllBatch
+        )
     }
 }
 
@@ -1093,6 +1100,7 @@ mod tests {
         for name in [
             "clean-all",
             "clean-all-graphql",
+            "clean-all-batch",
             "artifacts",
             "last-workflow-state",
             "open-site",
@@ -1362,6 +1370,7 @@ mod tests {
         let gh_whats = [
             "clean-all",
             "clean-all-graphql",
+            "clean-all-batch",
             "artifacts",
             "last-workflow-state",
             "open-site",
@@ -1763,7 +1772,10 @@ mod tests {
         for what in GhWhat::value_variants() {
             assert_eq!(
                 what.takes_keep(),
-                matches!(what, GhWhat::CleanAll | GhWhat::CleanAllGraphql),
+                matches!(
+                    what,
+                    GhWhat::CleanAll | GhWhat::CleanAllGraphql | GhWhat::CleanAllBatch
+                ),
                 "{what:?}"
             );
         }
@@ -1774,6 +1786,7 @@ mod tests {
         for what in [
             GhWhat::CleanAll,
             GhWhat::CleanAllGraphql,
+            GhWhat::CleanAllBatch,
             GhWhat::Artifacts,
             GhWhat::LastWorkflowState,
             GhWhat::OpenSite,

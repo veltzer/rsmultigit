@@ -144,7 +144,7 @@ fn main() -> Result<()> {
                 anyhow::bail!("--dry-run only applies to `gh sync-metadata`");
             }
             if keep.is_some() && !what.takes_keep() {
-                anyhow::bail!("--keep only applies to `gh clean-all` and `gh clean-all-graphql`");
+                anyhow::bail!("--keep only applies to the `gh clean-all` variants");
             }
             match what {
                 GhWhat::CleanAll => {
@@ -168,6 +168,11 @@ fn main() -> Result<()> {
                             commands::gh::clean_all_graphql(project, keep)
                         },
                     )?;
+                }
+                GhWhat::CleanAllBatch => {
+                    // Fleet-level: it batches across repos, so it cannot be
+                    // a per-repo action; it prints through the runner itself.
+                    commands::gh_batch::clean_all_batch(&config, &projects, keep.unwrap_or(4))?;
                 }
                 GhWhat::Artifacts => {
                     runner::print_if_data(&config, &projects, commands::gh::artifacts)?;
