@@ -1,4 +1,4 @@
-//! `gh clean-all-batch`: the work of `gh clean-all-graphql`, done for the
+//! `gh prune-ci-gql-batch`: the work of `gh prune-ci-gql-obo`, done for the
 //! whole fleet at once instead of repo by repo.
 //!
 //! - The GraphQL inventory (deployments with their latest status, releases)
@@ -357,12 +357,12 @@ struct Outcome {
     error: Option<String>,
 }
 
-/// `gh clean-all-graphql` for every repo in `projects` at once; see the
+/// `gh prune-ci-gql-obo` for every repo in `projects` at once; see the
 /// module documentation. Every repo's work is done before anything is
 /// printed, so every failure is reported, under its repo, whether or not
 /// `--no-stop` was given, and the exit status is non-zero if any repo
 /// failed.
-pub fn clean_all_batch(config: &AppConfig, projects: &[Utf8PathBuf], keep: usize) -> Result<()> {
+pub fn prune_ci_gql_batch(config: &AppConfig, projects: &[Utf8PathBuf], keep: usize) -> Result<()> {
     let base = runner::current_dir()?;
     let paths: Vec<Utf8PathBuf> = projects
         .iter()

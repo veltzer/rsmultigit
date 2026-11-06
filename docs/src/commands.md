@@ -35,7 +35,7 @@ the repo was skipped by a precondition such as a missing `Cargo.toml`).
 `--verbose` prints the header for those repos too, `--no-header` drops the
 header everywhere, and `--terse` reduces the output to bare repo paths.
 
-Commands that take an operation word (`git count dirty`, `gh clean-all`,
+Commands that take an operation word (`git count dirty`, `gh prune-ci-rest-obo`,
 `cargo clippy`, ...) print their help, with every operation and its
 description, when the word is left out - `rsmultigit gh` is the quickest way
 to see what `gh` can do.
@@ -730,7 +730,19 @@ These commands talk to GitHub through the [gh CLI](https://cli.github.com/)
 that have a remote whose URL contains `github.com`. Other repositories are
 skipped.
 
-### `rsmultigit gh clean-all [--keep <N>]`
+The three `prune-ci-*` operations do the same job: they delete old
+deployments, releases and workflow runs (the CI/CD output that piles up on
+GitHub) under one `--keep` policy, and print the same output. The suffix says
+how they reach GitHub: `rest`/`gql` is the API (REST or GraphQL), and
+`obo`/`batch` is whether repos are handled one by one or batched together.
+
+| Operation | Scope | API | On a failed delete | Speed |
+|-----------|-------|-----|--------------------|-------|
+| `prune-ci-rest-obo` | one repo at a time | REST only | stops | slowest |
+| `prune-ci-gql-obo` | one repo at a time | GraphQL + parallel REST | carries on | much faster |
+| `prune-ci-gql-batch` | all repos in one pass | GraphQL batched across repos + REST | carries on | fastest |
+
+### `rsmultigit gh prune-ci-rest-obo [--keep <N>]`
 
 Clean up GitHub deployments, releases, and workflow runs for each repository.
 Keeps only the `--keep` (default 4) most recent non-failed of each and
@@ -742,18 +754,18 @@ Note that this deletes data on GitHub permanently: releases, deployment
 history, and workflow run logs are gone once removed.
 
 ```bash
-rsmultigit gh clean-all              # Keep the 4 most recent of each
-rsmultigit gh clean-all --keep 10    # Keep the 10 most recent of each
+rsmultigit gh prune-ci-rest-obo              # Keep the 4 most recent of each
+rsmultigit gh prune-ci-rest-obo --keep 10    # Keep the 10 most recent of each
 ```
 
-### `rsmultigit gh clean-all-graphql [--keep <N>]`
+### `rsmultigit gh prune-ci-gql-obo [--keep <N>]`
 
-Does the same cleanup as `clean-all`, with the same `--keep` policy and the
+Does the same cleanup as `prune-ci-rest-obo`, with the same `--keep` policy and the
 same output, but makes far fewer round trips to GitHub:
 
 - One [GraphQL](https://docs.github.com/en/graphql) query (100 per page)
   lists the deployments together with their latest status, and the
-  releases. `clean-all` spends one REST call per deployment just reading
+  releases. `prune-ci-rest-obo` spends one REST call per deployment just reading
   its status.
 - Deployments are deactivated and deleted with aliased mutations, up to 50
   deployments per request.
@@ -762,17 +774,17 @@ same output, but makes far fewer round trips to GitHub:
   release and run deletes run 8 at a time, alongside the deployment
   mutations.
 
-`clean-all` stops at the first delete that fails. `clean-all-graphql`
+`prune-ci-rest-obo` stops at the first delete that fails. `prune-ci-gql-obo`
 carries on with the rest and reports every failure at the end.
 
 ```bash
-rsmultigit gh clean-all-graphql              # Keep the 4 most recent of each
-rsmultigit -j 4 gh clean-all-graphql --keep 10
+rsmultigit gh prune-ci-gql-obo              # Keep the 4 most recent of each
+rsmultigit -j 4 gh prune-ci-gql-obo --keep 10
 ```
 
-### `rsmultigit gh clean-all-batch [--keep <N>]`
+### `rsmultigit gh prune-ci-gql-batch [--keep <N>]`
 
-Does the same work as `clean-all-graphql`, with the same `--keep` policy and
+Does the same work as `prune-ci-gql-obo`, with the same `--keep` policy and
 the same per-repo output, but for all repositories at once instead of one
 at a time:
 
@@ -798,8 +810,8 @@ nothing deleted. `-j` affects only the printing, since the network
 concurrency is fixed.
 
 ```bash
-rsmultigit gh clean-all-batch              # Keep the 4 most recent of each
-rsmultigit gh clean-all-batch --keep 10
+rsmultigit gh prune-ci-gql-batch              # Keep the 4 most recent of each
+rsmultigit gh prune-ci-gql-batch --keep 10
 ```
 
 ### `rsmultigit gh artifacts`
@@ -882,7 +894,7 @@ features
 ```
 
 `--dry-run` is accepted by `sync-metadata` only, and `--keep` by
-the three `clean-all` variants only; on any other `gh` operation either is an error rather
+the three `prune-ci-*` variants only; on any other `gh` operation either is an error rather
 than a silently ignored flag.
 
 ## Utility Commands

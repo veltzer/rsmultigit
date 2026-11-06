@@ -192,9 +192,9 @@ The rest each run the git command of the same name in every repo:
 | `uv sync\|build\|publish` | Run `uv sync`, `uv build` or `uv publish` on repos with `pyproject.toml` |
 | `npm install\|ci\|update\|outdated\|test\|publish` | Run the matching npm command on repos with `package.json` |
 | `npm audit [--fix]` | Run `npm audit` (or `npm audit fix`) on repos with `package.json` |
-| `gh clean-all [--keep N]` | Delete old deployments, releases and workflow runs on GitHub repos |
-| `gh clean-all-graphql [--keep N]` | Same as `gh clean-all`, much faster: GraphQL listing and batched deployment deletes, parallel REST deletes |
-| `gh clean-all-batch [--keep N]` | Same as `gh clean-all-graphql`, for all repos at once: 20 repos per GraphQL query, deployment deletes batched across repos |
+| `gh prune-ci-rest-obo [--keep N]` | Delete old deployments, releases and workflow runs on GitHub repos |
+| `gh prune-ci-gql-obo [--keep N]` | Same as `gh prune-ci-rest-obo`, much faster: GraphQL listing and batched deployment deletes, parallel REST deletes |
+| `gh prune-ci-gql-batch [--keep N]` | Same as `gh prune-ci-gql-obo`, for all repos at once: 20 repos per GraphQL query, deployment deletes batched across repos |
 | `gh artifacts` | List the assets of the latest release (name, size, downloads) on GitHub repos |
 | `gh last-workflow-state` | Print the conclusion of the most recent workflow run on GitHub repos |
 | `gh open-site` | Open the GitHub Pages site of each repo in the browser |

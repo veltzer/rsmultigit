@@ -56,9 +56,9 @@ fn bare_gh_lists_its_operations_with_descriptions() {
     );
     assert!(stderr.contains("Usage: rsmultigit gh"), "{stderr}");
     for name in [
-        "clean-all",
-        "clean-all-graphql",
-        "clean-all-batch",
+        "prune-ci-rest-obo",
+        "prune-ci-gql-obo",
+        "prune-ci-gql-batch",
         "artifacts",
         "last-workflow-state",
         "open-site",

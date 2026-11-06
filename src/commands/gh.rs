@@ -28,7 +28,7 @@ pub fn check_github(project: &Utf8Path) -> Result<bool> {
 
 /// Clean up GitHub deployments, releases, and workflow runs for a repository,
 /// keeping only the `keep` most recent non-failed of each and deleting the rest.
-pub fn clean_all(project: &Utf8Path, keep: usize) -> Result<()> {
+pub fn prune_ci_rest_obo(project: &Utf8Path, keep: usize) -> Result<()> {
     let repo = repo_name_with_owner(project)?;
     clean_deployments(project, &repo, keep)?;
     clean_releases(project, &repo, keep)?;
@@ -214,9 +214,9 @@ fn is_failed_conclusion(conclusion: &str) -> bool {
     )
 }
 
-// ── clean-all-graphql ──────────────────────────────────────────────────
+// ── prune-ci-gql-obo ──────────────────────────────────────────────────
 //
-// Same policy as `clean_all`, but with fewer and overlapping round trips:
+// Same policy as `prune_ci_rest_obo`, but with fewer and overlapping round trips:
 //
 // - One GraphQL query (100 per page) lists the deployments together with
 //   their latest status, and the releases. The REST version makes one call
@@ -244,7 +244,7 @@ pub(crate) const REST_DELETE_THREADS: usize = 8;
 pub(crate) struct GqlDeployment {
     /// The GraphQL node id that the mutations take.
     pub(crate) node_id: String,
-    /// The REST id, used in the output so it matches `clean-all`.
+    /// The REST id, used in the output so it matches `prune-ci-rest-obo`.
     pub(crate) database_id: u64,
     /// Deployment state `INACTIVE`: deletable without deactivating first.
     pub(crate) inactive: bool,
@@ -628,11 +628,11 @@ pub(crate) fn rest_delete_parallel(cwd: &Utf8Path, paths: &[String]) -> Vec<Resu
     })
 }
 
-/// `clean_all` through GitHub's GraphQL API where it can do the job, with
+/// `prune_ci_rest_obo` through GitHub's GraphQL API where it can do the job, with
 /// the remaining REST calls run in parallel. Same keep policy, same output.
-/// Unlike `clean_all`, a failed delete does not stop the others; every
+/// Unlike `prune_ci_rest_obo`, a failed delete does not stop the others; every
 /// failure is reported at the end.
-pub fn clean_all_graphql(project: &Utf8Path, keep: usize) -> Result<()> {
+pub fn prune_ci_gql_obo(project: &Utf8Path, keep: usize) -> Result<()> {
     // The two listings are independent: run them at the same time.
     let (inventory, runs) = std::thread::scope(|scope| {
         let runs = scope.spawn(|| fetch_workflow_runs(project));
@@ -704,7 +704,7 @@ pub fn clean_all_graphql(project: &Utf8Path, keep: usize) -> Result<()> {
     combine_errors(errors)
 }
 
-/// The output for one kind of item, as `clean-all` prints it: a summary
+/// The output for one kind of item, as `prune-ci-rest-obo` prints it: a summary
 /// line, then one line per deleted item. Failures go to `errors`.
 pub(crate) fn report_section(
     label: &str,
@@ -1356,7 +1356,7 @@ mod tests {
         }
     }
 
-    // ── clean-all-graphql ──
+    // ── prune-ci-gql-obo ──
 
     #[test]
     fn inventory_query_first_page_asks_for_both() {

@@ -144,35 +144,35 @@ fn main() -> Result<()> {
                 anyhow::bail!("--dry-run only applies to `gh sync-metadata`");
             }
             if keep.is_some() && !what.takes_keep() {
-                anyhow::bail!("--keep only applies to the `gh clean-all` variants");
+                anyhow::bail!("--keep only applies to the `gh prune-ci-*` variants");
             }
             match what {
-                GhWhat::CleanAll => {
+                GhWhat::PruneCiRestObo => {
                     let keep = keep.unwrap_or(4);
                     runner::do_for_all_projects_with_check(
                         &config,
                         &projects,
                         commands::gh::check_github,
                         move |project: &Utf8Path| -> anyhow::Result<()> {
-                            commands::gh::clean_all(project, keep)
+                            commands::gh::prune_ci_rest_obo(project, keep)
                         },
                     )?;
                 }
-                GhWhat::CleanAllGraphql => {
+                GhWhat::PruneCiGqlObo => {
                     let keep = keep.unwrap_or(4);
                     runner::do_for_all_projects_with_check(
                         &config,
                         &projects,
                         commands::gh::check_github,
                         move |project: &Utf8Path| -> anyhow::Result<()> {
-                            commands::gh::clean_all_graphql(project, keep)
+                            commands::gh::prune_ci_gql_obo(project, keep)
                         },
                     )?;
                 }
-                GhWhat::CleanAllBatch => {
+                GhWhat::PruneCiGqlBatch => {
                     // Fleet-level: it batches across repos, so it cannot be
                     // a per-repo action; it prints through the runner itself.
-                    commands::gh_batch::clean_all_batch(&config, &projects, keep.unwrap_or(4))?;
+                    commands::gh_batch::prune_ci_gql_batch(&config, &projects, keep.unwrap_or(4))?;
                 }
                 GhWhat::Artifacts => {
                     runner::print_if_data(&config, &projects, commands::gh::artifacts)?;

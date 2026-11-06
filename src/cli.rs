@@ -177,7 +177,7 @@ pub enum Commands {
         #[arg(value_enum)]
         what: GhWhat,
         /// How many recent non-failed deployments/releases/workflow runs to keep
-        /// (the `clean-all` variants only; default 4)
+        /// (the `prune-ci-*` variants only; default 4)
         #[arg(long, value_name = "N")]
         keep: Option<usize>,
         /// Print what differs but change nothing on GitHub (`sync-metadata` only)
@@ -561,18 +561,18 @@ pub enum RuleKind {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 pub enum GhWhat {
-    /// Delete old GitHub deployments, releases, and workflow runs, keeping
-    /// only the --keep most recent non-failed of each (failed ones are
-    /// always deleted)
-    CleanAll,
-    /// Same as clean-all, but through GitHub's GraphQL API where it can
-    /// (listing deployments with their status, batched deployment deletes)
-    /// and with the remaining REST deletes run in parallel: much faster
-    CleanAllGraphql,
-    /// Same as clean-all-graphql, but for all repos at once: one GraphQL
-    /// query lists 20 repos, deployment deletes are batched across repos,
-    /// and the REST calls share fleet-wide thread pools: fastest
-    CleanAllBatch,
+    /// Prune old deployments, releases and workflow runs (keep the --keep
+    /// newest non-failed of each, delete all failed ones). One by one (obo),
+    /// plain REST, stops at the first failed delete: slowest
+    PruneCiRestObo,
+    /// Same pruning as prune-ci-rest-obo, one repo at a time, but listing and
+    /// deployment deletes go through GraphQL and the rest run in parallel;
+    /// carries on past failed deletes: much faster
+    PruneCiGqlObo,
+    /// Same pruning as prune-ci-gql-obo, for the whole fleet in one pass:
+    /// GraphQL queries and deployment deletes batched across repos, output
+    /// printed per repo at the end: fastest
+    PruneCiGqlBatch,
     /// List the assets of the latest GitHub release (name, size, downloads)
     Artifacts,
     /// Print the conclusion of the most recent workflow run
@@ -594,11 +594,11 @@ impl GhWhat {
     }
 
     /// Whether `--keep` makes sense for this operation (only the
-    /// `clean-all` variants).
+    /// `prune-ci-*` variants).
     pub fn takes_keep(self) -> bool {
         matches!(
             self,
-            GhWhat::CleanAll | GhWhat::CleanAllGraphql | GhWhat::CleanAllBatch
+            GhWhat::PruneCiRestObo | GhWhat::PruneCiGqlObo | GhWhat::PruneCiGqlBatch
         )
     }
 }
@@ -1098,9 +1098,9 @@ mod tests {
             "usage line should carry the full command path: {help}"
         );
         for name in [
-            "clean-all",
-            "clean-all-graphql",
-            "clean-all-batch",
+            "prune-ci-rest-obo",
+            "prune-ci-gql-obo",
+            "prune-ci-gql-batch",
             "artifacts",
             "last-workflow-state",
             "open-site",
@@ -1122,7 +1122,7 @@ mod tests {
         for sub in ["gh", "cargo"] {
             let help = long_help_for(["rsmultigit", sub]).to_string();
             // Rendered option lines; a description may well mention a flag
-            // (`clean-all` talks about --keep), and that is fine.
+            // (`prune-ci-rest-obo` talks about --keep), and that is fine.
             for flag in [
                 "Options:",
                 "--keep <KEEP>",
@@ -1368,9 +1368,9 @@ mod tests {
 
         // gh requires a what argument
         let gh_whats = [
-            "clean-all",
-            "clean-all-graphql",
-            "clean-all-batch",
+            "prune-ci-rest-obo",
+            "prune-ci-gql-obo",
+            "prune-ci-gql-batch",
             "artifacts",
             "last-workflow-state",
             "open-site",
@@ -1724,15 +1724,15 @@ mod tests {
     }
 
     #[test]
-    fn parse_gh_clean_all_keep_defaults_to_unset() {
-        let cli = parse(&["rsmultigit", "gh", "clean-all"]);
+    fn parse_gh_prune_ci_rest_obo_keep_defaults_to_unset() {
+        let cli = parse(&["rsmultigit", "gh", "prune-ci-rest-obo"]);
         match &cli.command {
             Commands::Gh {
                 what,
                 keep,
                 dry_run,
             } => {
-                assert!(matches!(what, GhWhat::CleanAll));
+                assert!(matches!(what, GhWhat::PruneCiRestObo));
                 assert_eq!(*keep, None);
                 assert!(!*dry_run);
             }
@@ -1741,8 +1741,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_gh_clean_all_with_keep() {
-        let cli = parse(&["rsmultigit", "gh", "clean-all", "--keep", "10"]);
+    fn parse_gh_prune_ci_rest_obo_with_keep() {
+        let cli = parse(&["rsmultigit", "gh", "prune-ci-rest-obo", "--keep", "10"]);
         match &cli.command {
             Commands::Gh { keep, .. } => assert_eq!(*keep, Some(10)),
             _ => panic!("expected Gh"),
@@ -1751,7 +1751,8 @@ mod tests {
 
     #[test]
     fn parse_gh_bad_keep_fails() {
-        let result = Cli::try_parse_from(["rsmultigit", "gh", "clean-all", "--keep", "many"]);
+        let result =
+            Cli::try_parse_from(["rsmultigit", "gh", "prune-ci-rest-obo", "--keep", "many"]);
         assert!(result.is_err());
     }
 
@@ -1768,13 +1769,13 @@ mod tests {
     }
 
     #[test]
-    fn gh_keep_applies_to_the_clean_all_variants_only() {
+    fn gh_keep_applies_to_the_prune_ci_rest_obo_variants_only() {
         for what in GhWhat::value_variants() {
             assert_eq!(
                 what.takes_keep(),
                 matches!(
                     what,
-                    GhWhat::CleanAll | GhWhat::CleanAllGraphql | GhWhat::CleanAllBatch
+                    GhWhat::PruneCiRestObo | GhWhat::PruneCiGqlObo | GhWhat::PruneCiGqlBatch
                 ),
                 "{what:?}"
             );
@@ -1784,9 +1785,9 @@ mod tests {
     #[test]
     fn gh_dry_run_applies_to_sync_metadata_only() {
         for what in [
-            GhWhat::CleanAll,
-            GhWhat::CleanAllGraphql,
-            GhWhat::CleanAllBatch,
+            GhWhat::PruneCiRestObo,
+            GhWhat::PruneCiGqlObo,
+            GhWhat::PruneCiGqlBatch,
             GhWhat::Artifacts,
             GhWhat::LastWorkflowState,
             GhWhat::OpenSite,
