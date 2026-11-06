@@ -13,7 +13,9 @@ use std::io::{BufRead, Write};
 use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
 
-use crate::commands::check::{self, CheckConfig, ExistsRule, Rule, RuleResult, SubmoduleRule};
+use crate::commands::check::{
+    self, CheckConfig, ExistsRule, Rule, RuleResult, Selection, SubmoduleRule,
+};
 use crate::commands::interactive::{Choice, confirm, group_label, pick_group};
 use crate::config::AppConfig;
 
@@ -36,22 +38,22 @@ pub trait NamedRule {
 fn selection_properties(
     path_key: &'static str,
     path: &str,
-    select: &str,
-    exclude: Option<&String>,
-    marker: Option<&String>,
-    marker_absent: Option<&String>,
+    selection: &Selection<'_>,
     enabled: bool,
 ) -> Vec<(&'static str, String)> {
-    let mut props = vec![(path_key, path.to_string()), ("select", select.to_string())];
+    let mut props = vec![
+        (path_key, path.to_string()),
+        ("select", selection.select.to_string()),
+    ];
     let optional = [
-        ("exclude", exclude),
-        ("marker", marker),
-        ("marker_absent", marker_absent),
+        ("exclude", selection.exclude),
+        ("marker", selection.marker),
+        ("marker_absent", selection.marker_absent),
     ];
     props.extend(
         optional
             .into_iter()
-            .filter_map(|(k, v)| Some((k, v?.clone()))),
+            .filter_map(|(k, v)| Some((k, v?.to_string()))),
     );
     if !enabled {
         props.push(("enabled", "false".to_string()));
@@ -70,15 +72,7 @@ impl NamedRule for Rule {
         self.enabled
     }
     fn properties(&self) -> Vec<(&'static str, String)> {
-        let mut props = selection_properties(
-            "path",
-            &self.path,
-            &self.select,
-            self.exclude.as_ref(),
-            self.marker.as_ref(),
-            self.marker_absent.as_ref(),
-            self.enabled,
-        );
+        let mut props = selection_properties("path", &self.path, &self.selection(), self.enabled);
         if self.must_have {
             props.push(("must_have", "true".to_string()));
         }
@@ -97,15 +91,7 @@ impl NamedRule for ExistsRule {
         self.enabled
     }
     fn properties(&self) -> Vec<(&'static str, String)> {
-        selection_properties(
-            "path",
-            &self.path,
-            &self.select,
-            self.exclude.as_ref(),
-            self.marker.as_ref(),
-            self.marker_absent.as_ref(),
-            self.enabled,
-        )
+        selection_properties("path", &self.path, &self.selection(), self.enabled)
     }
 }
 
@@ -120,15 +106,7 @@ impl NamedRule for SubmoduleRule {
         self.enabled
     }
     fn properties(&self) -> Vec<(&'static str, String)> {
-        selection_properties(
-            "url",
-            &self.url,
-            &self.select,
-            self.exclude.as_ref(),
-            self.marker.as_ref(),
-            self.marker_absent.as_ref(),
-            self.enabled,
-        )
+        selection_properties("url", &self.url, &self.selection(), self.enabled)
     }
 }
 

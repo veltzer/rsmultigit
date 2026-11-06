@@ -2,7 +2,7 @@ use camino::Utf8Path;
 
 use anyhow::{Result, bail};
 
-use crate::subprocess_utils::check_call_maybe_ve;
+use crate::subprocess_utils::Cmd;
 
 /// Execute an arbitrary command in a project directory.
 ///
@@ -34,12 +34,18 @@ pub fn do_run(project: &Utf8Path, command: &[String], venv: bool) -> Result<()> 
         #[cfg(not(windows))]
         let shell_arg = "-c";
 
-        check_call_maybe_ve(project, venv, shell, &[shell_arg, cmd_str])?;
+        Cmd::new(project, shell)
+            .args(&[shell_arg, cmd_str])
+            .venv(venv)?
+            .run()?;
         return Ok(());
     }
 
     let args: Vec<&str> = command.iter().map(|s| s.as_str()).collect();
-    check_call_maybe_ve(project, venv, args[0], &args[1..])?;
+    Cmd::new(project, args[0])
+        .args(&args[1..])
+        .venv(venv)?
+        .run()?;
     Ok(())
 }
 

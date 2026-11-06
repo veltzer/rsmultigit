@@ -257,8 +257,8 @@ rsmultigit git grep -l "TODO"
 
 ### `rsmultigit git branch local|remote|github`
 
-`git branch`, `git branch -r`, or the GitHub default branch via
-`gh repo view` (requires the `gh` CLI).
+`git branch`, `git branch -r`, or the GitHub default branch, read from the
+GitHub API (authenticated as described under [GitHub Commands](#github-commands)).
 
 ### `rsmultigit git tag local|remote|has-local|has-remote`
 
@@ -725,10 +725,16 @@ rsmultigit npm audit --fix               # Apply the automatic vulnerability fix
 
 ## GitHub Commands
 
-These commands talk to GitHub through the [gh CLI](https://cli.github.com/)
-(which must be installed and authenticated) and operate only on repositories
-that have a remote whose URL contains `github.com`. Other repositories are
-skipped.
+These commands call the GitHub API directly and operate only on
+repositories with a github.com remote. Other repositories are skipped. Which
+GitHub repository a checkout is comes from its git remotes, resolved the way
+the [gh CLI](https://cli.github.com/) does it: the `gh repo set-default`
+choice, else the `upstream`, `github` or `origin` remote, else any other.
+
+The API token is taken from `GH_TOKEN` or `GITHUB_TOKEN` when set, and
+otherwise from `gh auth token`, so logging in once with `gh auth login` is
+all the setup needed. The token is fetched once per run and never written
+anywhere.
 
 The three `prune-ci-*` operations do the same job: they delete old
 deployments, releases and workflow runs (the CI/CD output that piles up on
@@ -739,7 +745,7 @@ how they reach GitHub: `rest`/`gql` is the API (REST or GraphQL), and
 | Operation | Scope | API | On a failed delete | Speed |
 |-----------|-------|-----|--------------------|-------|
 | `prune-ci-rest-obo` | one repo at a time | REST only | stops | slowest |
-| `prune-ci-gql-obo` | one repo at a time | GraphQL + parallel REST | carries on | much faster |
+| `prune-ci-gql-obo` | one repo at a time | GraphQL + concurrent REST | carries on | much faster |
 | `prune-ci-gql-batch` | all repos in one pass | GraphQL batched across repos + REST | carries on | fastest |
 
 ### `rsmultigit gh prune-ci-rest-obo [--keep <N>]`
@@ -794,18 +800,17 @@ at a time:
   repositories is listed in about a dozen requests.
 - Deployment deletes are batched across repositories, 50 per request.
 - Listing workflow runs and deleting releases and runs remain REST calls,
-  one per repo or item, because GraphQL cannot do them. They share
-  fleet-wide pools of 8 threads, which run alongside the GraphQL requests.
-- The GitHub repository of each checkout is read from its git remotes, as
-  `gh` resolves it (the `gh repo set-default` choice, else `upstream`,
-  `github`, `origin`), so no `gh` process is spent on that.
+  one per repo or item, because GraphQL cannot do them. They share one
+  fleet-wide limit of 8 requests in flight, alongside the GraphQL requests.
+- The GitHub repository of each checkout is read from its git remotes, so
+  no request is spent on that.
 
 All the work happens first, and then each repository's output is printed
 in config order. Because the deletes have already happened by then, every
 repository is shown even without `--no-stop`. Failures are reported under
 their repository, and the exit status is non-zero if any repository
-failed. A repository GitHub cannot resolve fails on its own; the rest of
-its batch is retried without it. A repository whose listing failed has
+failed. A repository GitHub cannot resolve fails on its own; GitHub answers
+for the rest of its batch in the same response. A repository whose listing failed has
 nothing deleted. `-j` affects only the printing, since the network
 concurrency is fixed.
 

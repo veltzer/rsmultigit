@@ -2,7 +2,7 @@ use camino::Utf8Path;
 
 use anyhow::Result;
 
-use crate::subprocess_utils::capture_output_allow_failure;
+use crate::subprocess_utils::{Cmd, CmdOutput};
 
 /// Grep across the repository. Returns the matching lines, each prefixed
 /// with the repo name, or `None` when nothing matched, so the runner prints
@@ -16,7 +16,11 @@ pub fn do_grep(project: &Utf8Path, regexp: &str, files_only: bool) -> Result<Opt
     // `-e` keeps a pattern that starts with `-` from being read as an option.
     args.extend(["-e", regexp]);
 
-    let (code, stdout, stderr) = capture_output_allow_failure(project, "git", &args)?;
+    let CmdOutput {
+        code,
+        stdout,
+        stderr,
+    } = Cmd::new(project, "git").args(&args).output()?;
 
     match code {
         0 => {

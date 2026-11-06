@@ -12,6 +12,8 @@ use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::{Shell, generate};
 use serde::Deserialize;
 
+use crate::config::AppConfig;
+
 /// Colours for every help and error message clap renders (cargo's palette).
 /// clap drops them by itself when the stream is not a terminal or `NO_COLOR`
 /// is set; text we print ourselves goes through `anstream` for the same.
@@ -55,60 +57,9 @@ Use `rsmultigit <command> --help` for more options."
 #[command(styles = STYLES)]
 #[command(help_template = top_help_template())]
 pub struct Cli {
-    // Output control
-    /// Terse output
-    #[arg(long, global = true, default_value_t = false)]
-    pub terse: bool,
-
-    /// Suppress the [project] header line printed before per-project output
-    #[arg(long, global = true, default_value_t = false)]
-    pub no_header: bool,
-
-    /// Suppress command output
-    #[arg(long, global = true, default_value_t = false)]
-    pub no_output: bool,
-
-    /// Verbose output (print all projects, even when no action is taken)
-    #[arg(short, long, global = true, default_value_t = false)]
-    pub verbose: bool,
-
-    /// Print repos that do NOT match (invert selection)
-    #[arg(long, global = true, default_value_t = false)]
-    pub print_not: bool,
-
-    /// Do not stop on errors: report each failing repo and carry on, then
-    /// exit non-zero if any repo failed
-    #[arg(long, global = true, default_value_t = false)]
-    pub no_stop: bool,
-
-    /// Stop at the first negative result instead of processing everything.
-    /// Off by default. Honoured by `check same` and `check exists`, which stop
-    /// at the first broken rule instead of evaluating the remaining ones.
-    #[arg(long, global = true, default_value_t = false)]
-    pub short_circuit: bool,
-
-    /// Number of parallel workers (default: 1; use 0 for num_cpus)
-    #[arg(short = 'j', long, global = true, default_value_t = 1)]
-    pub jobs: usize,
-
-    /// Activate each repo's local .venv (prepend .venv/bin to PATH, set
-    /// VIRTUAL_ENV) before running tool subprocesses. On by default; honoured
-    /// by `run`, `build`, `cargo` and `npm`. Repos without a
-    /// .venv run with the environment unchanged. Negate with --no-venv.
-    ///
-    /// Not honoured by `uv`, which selects its own target environment from
-    /// the repo directory and is always run with VIRTUAL_ENV unset.
-    #[arg(
-        long,
-        global = true,
-        default_value_t = true,
-        overrides_with = "no_venv"
-    )]
-    pub venv: bool,
-
-    /// Do not activate repos' local .venv before running tool subprocesses
-    #[arg(long, global = true, default_value_t = false)]
-    pub no_venv: bool,
+    /// The global flags, accepted before or after the subcommand.
+    #[command(flatten)]
+    pub global: AppConfig,
 
     #[command(subcommand)]
     pub command: Commands,
@@ -1566,36 +1517,34 @@ mod tests {
             "count",
             "dirty",
         ]);
-        assert!(cli.terse);
-        assert!(cli.no_output);
-        assert!(cli.verbose);
-        assert!(cli.print_not);
-        assert!(cli.no_stop);
-        assert!(cli.short_circuit);
+        assert!(cli.global.terse);
+        assert!(cli.global.no_output);
+        assert!(cli.global.verbose);
+        assert!(cli.global.print_not);
+        assert!(cli.global.no_stop);
+        assert!(cli.global.short_circuit);
     }
 
     #[test]
     fn venv_defaults_to_on() {
         let cli = parse(&["rsmultigit", "build", "rsconstruct"]);
-        assert!(cli.venv);
-        assert!(!cli.no_venv);
+        assert!(cli.global.use_venv());
     }
 
     #[test]
     fn parse_no_venv() {
         let cli = parse(&["rsmultigit", "--no-venv", "build", "rsconstruct"]);
-        assert!(cli.no_venv);
+        assert!(!cli.global.use_venv());
         // Global flag also parses after the subcommand.
         let cli = parse(&["rsmultigit", "uv", "sync", "--no-venv"]);
-        assert!(cli.no_venv);
+        assert!(!cli.global.use_venv());
     }
 
     #[test]
     fn parse_venv_overrides_no_venv() {
         // Last one wins: --no-venv --venv ends up with venv activation on.
         let cli = parse(&["rsmultigit", "--no-venv", "--venv", "run", "true"]);
-        assert!(cli.venv);
-        assert!(!cli.no_venv);
+        assert!(cli.global.use_venv());
     }
 
     #[test]
@@ -1650,21 +1599,21 @@ mod tests {
     #[test]
     fn short_circuit_defaults_to_off() {
         let cli = parse(&["rsmultigit", "check", "same"]);
-        assert!(!cli.short_circuit);
+        assert!(!cli.global.short_circuit);
     }
 
     #[test]
     fn parse_jobs_flag() {
         let cli = parse(&["rsmultigit", "-j", "4", "list", "repos"]);
-        assert_eq!(cli.jobs, 4);
+        assert_eq!(cli.global.jobs, 4);
         let cli = parse(&["rsmultigit", "--jobs", "8", "list", "repos"]);
-        assert_eq!(cli.jobs, 8);
+        assert_eq!(cli.global.jobs, 8);
     }
 
     #[test]
     fn default_jobs_is_one() {
         let cli = parse(&["rsmultigit", "list", "repos"]);
-        assert_eq!(cli.jobs, 1);
+        assert_eq!(cli.global.jobs, 1);
     }
 
     #[test]

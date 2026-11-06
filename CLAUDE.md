@@ -33,9 +33,11 @@ Tests use `cargo-nextest` (not `cargo test`). Config in `.config/nextest.toml` (
 src/
 ├── main.rs              # Entry point, command dispatch
 ├── cli.rs               # Clap derive CLI definitions (commands + global flags)
-├── config.rs            # AppConfig: transforms CLI args to runtime config
+├── config.rs            # AppConfig: the global flags (a clap Args struct flattened into Cli)
 ├── runner.rs            # Three runner patterns for executing across repos
-├── subprocess_utils.rs  # Shell command helpers (capture_output, check_call)
+├── subprocess_utils.rs  # The Cmd builder, check_call/capture_output, per-thread output capture
+├── git_url.rs           # Git remote URL parsing: identity, GitHub owner/name
+├── github.rs            # GitHub API client (octocrab + tokio), token from GH_TOKEN / `gh auth token`
 └── commands/            # Command modules (one per operation); `check.rs` owns config-file
                          # parsing and rule evaluation, `check_run.rs` the check-* drivers
 tests/
@@ -58,6 +60,7 @@ All commands use one of three patterns in `runner.rs`:
 
 - **Edition 2024** Rust
 - **Error handling**: `anyhow::Result<T>` everywhere, with `.context()` for error messages
+- **GitHub**: through the API client in `github.rs` (octocrab), never by spawning the `gh` CLI; the only `gh` call left is `gh auth token`, once per run, when no `GH_TOKEN`/`GITHUB_TOKEN` is set. Responses are deserialized into typed structs; GraphQL values (owner, name, cursors, node ids) travel as variables, never inside the query text. The rest of the program is synchronous: call `github()?.block_on(...)` from the per-repo function.
 - **Git inspection**: Prefer the `git2` crate for everything libgit2 can do — subprocess startup times 260 repos dominates runtime (see "Git inspection" in `docs/src/architecture.md` for the recorded benchmark). Use the `git` CLI subprocess only for network ops (`pull`/`push`/`fetch`) and commands whose value is git's own output formatting (`log`, `blame`, `grep`).
 - **Command module pattern**: Each command is a simple `pub fn` returning `Result<()>` (action), `Result<bool>` (predicate or count test) or `Result<Option<String>>` (data). A module that prints its own lines uses `subprocess_utils::out_line`, never `println!`, so the parallel runner and `--no-output` see them
 - **No rustfmt.toml or clippy.toml** — uses Rust defaults
@@ -100,6 +103,8 @@ Runtime deps — keep it minimal:
 - `similar` — unified diffs for `check same --diff`
 - `camino` — UTF-8 paths throughout
 - `indicatif` — progress bar in the parallel runner
+- `octocrab` (default features off: no JWT/aws-lc-rs) + `tokio` + `futures-util` — the GitHub API client, its runtime, and request concurrency
+- `serde_json` — GitHub request and response bodies
 - `anstream` — prints our own styled help (the bare-command listing) with clap's colour detection (tty, `NO_COLOR`, `CLICOLOR_FORCE`)
 
 Licenses and advisories are gated by the fleet-shared `deny.toml`.

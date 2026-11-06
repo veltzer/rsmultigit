@@ -6,7 +6,7 @@ use std::sync::mpsc;
 use anyhow::{Context, Result};
 
 use crate::config::AppConfig;
-use crate::subprocess_utils::Captured;
+use crate::subprocess_utils::{Captured, capture};
 
 fn resolve_jobs(config: &AppConfig) -> usize {
     let n = if config.jobs == 0 {
@@ -39,24 +39,43 @@ fn headers_suppressed(config: &AppConfig) -> bool {
     config.no_header || config.terse
 }
 
-/// Report a per-repo error under `--no-stop` and count it, so the run can
-/// carry on past it and still fail at the end (see [`no_stop_outcome`]).
-/// Every runner wraps the error in a context naming the repo already
-/// (`error in project <repo>`, `error checking project <repo>`, ...), so the
-/// line is the error itself; prefixing the repo again would name it twice.
-fn report_no_stop(_project: &Utf8Path, e: &anyhow::Error, failed: &mut usize) {
-    eprintln!("{e:#}");
-    *failed += 1;
+/// The `--no-stop` policy for per-repo errors, in one place for every runner.
+struct Failures {
+    no_stop: bool,
+    count: usize,
 }
 
-/// The final result of a `--no-stop` run: errors were reported as they
-/// happened, but a run in which any repo failed must not exit 0, or scripts
-/// cannot tell it from a clean one.
-fn no_stop_outcome(failed: usize, total: usize) -> Result<()> {
-    if failed == 0 {
+impl Failures {
+    fn new(config: &AppConfig) -> Self {
+        Self {
+            no_stop: config.no_stop,
+            count: 0,
+        }
+    }
+
+    /// Without `--no-stop`, hand the error back so it ends the run. With it,
+    /// report and count the error and return Ok, so the run carries on and
+    /// still fails at the end (see [`Failures::finish`]). Every runner wraps
+    /// the error in a context naming the repo already (`error in project
+    /// <repo>`, ...), so the line is the error itself; prefixing the repo
+    /// again would name it twice.
+    fn absorb(&mut self, e: anyhow::Error) -> Result<()> {
+        if !self.no_stop {
+            return Err(e);
+        }
+        eprintln!("{e:#}");
+        self.count += 1;
         Ok(())
-    } else {
-        anyhow::bail!("{failed} of {total} repos failed")
+    }
+
+    /// The final result of the run: errors were reported as they happened,
+    /// but a run in which any repo failed must not exit 0, or scripts cannot
+    /// tell it from a clean one.
+    fn finish(self, total: usize) -> Result<()> {
+        match self.count {
+            0 => Ok(()),
+            n => anyhow::bail!("{n} of {total} repos failed"),
+        }
     }
 }
 
@@ -187,7 +206,7 @@ where
     let total = projects.len() as u32;
     // on_result runs only on the calling thread, so a plain counter suffices.
     let mut count = 0u32;
-    let mut failed = 0usize;
+    let mut failures = Failures::new(config);
     let jobs = resolve_jobs(config);
 
     for_each_project_ordered(
@@ -197,13 +216,7 @@ where
         |project, result| {
             let matches = match result {
                 Ok(m) => m,
-                Err(e) => {
-                    if config.no_stop {
-                        report_no_stop(project, &e, &mut failed);
-                        return Ok(());
-                    }
-                    return Err(e);
-                }
+                Err(e) => return failures.absorb(e),
             };
             let should_print = if config.print_not { !matches } else { matches };
             if should_print {
@@ -217,7 +230,7 @@ where
     )?;
 
     println!("{count}/{total}");
-    no_stop_outcome(failed, projects.len())
+    failures.finish(projects.len())
 }
 
 /// Runner for the `list` filters: prints the path of every repo where
@@ -227,29 +240,22 @@ pub fn print_matching<F>(config: &AppConfig, projects: &[Utf8PathBuf], test_fn: 
 where
     F: Fn(&Utf8Path) -> Result<bool> + Sync,
 {
-    let mut failed = 0usize;
+    let mut failures = Failures::new(config);
     for_each_project_ordered(
         resolve_jobs(config),
         projects,
         |project| test_fn(project).with_context(|| format!("error testing project {}", project)),
-        |project, result| {
-            match result {
-                Ok(matches) => {
-                    if matches != config.print_not {
-                        println!("{}", project);
-                    }
+        |project, result| match result {
+            Ok(matches) => {
+                if matches != config.print_not {
+                    println!("{}", project);
                 }
-                Err(e) => {
-                    if !config.no_stop {
-                        return Err(e);
-                    }
-                    report_no_stop(project, &e, &mut failed);
-                }
+                Ok(())
             }
-            Ok(())
+            Err(e) => failures.absorb(e),
         },
     )?;
-    no_stop_outcome(failed, projects.len())
+    failures.finish(projects.len())
 }
 
 /// Runner for "do for all projects" commands.
@@ -280,7 +286,7 @@ where
 {
     let base = current_dir()?;
     let jobs = resolve_jobs(config);
-    let mut failed = 0usize;
+    let mut failures = Failures::new(config);
 
     // Serial fast path: action writes live to inherited stdout/stderr. With
     // --no-output the action runs under capture and the buffer is dropped,
@@ -298,11 +304,8 @@ where
                 match check(&abs).with_context(|| format!("error checking project {}", project)) {
                     Ok(p) => p,
                     Err(e) => {
-                        if config.no_stop {
-                            report_no_stop(project, &e, &mut failed);
-                            continue;
-                        }
-                        return Err(e);
+                        failures.absorb(e)?;
+                        continue;
                     }
                 };
             if !passed {
@@ -314,35 +317,29 @@ where
             }
 
             let outcome = if config.no_output {
-                crate::subprocess_utils::enter_capture();
+                let guard = capture();
                 let r = action(&abs);
-                let captured = crate::subprocess_utils::leave_capture();
+                let captured = guard.finish();
                 r.map_err(|e| attach_captured(e, &captured))
             } else {
                 action(&abs)
             };
             if let Err(e) = outcome.with_context(|| format!("error in project {}", project)) {
-                if config.no_stop {
-                    report_no_stop(project, &e, &mut failed);
-                } else {
-                    return Err(e);
-                }
+                failures.absorb(e)?;
             }
         }
-        return no_stop_outcome(failed, projects.len());
+        return failures.finish(projects.len());
     }
 
     // Parallel path: subprocess output is captured per-thread by subprocess_utils
     // and replayed in project order here on the main thread.
-    let projects_vec: Vec<Utf8PathBuf> = projects.to_vec();
-
     for_each_project_ordered(
         jobs,
-        &projects_vec,
+        projects,
         |project| -> Result<(Step, Captured)> {
             let abs = absolute(project, &base);
             // Capture output on this worker thread for the duration of check+action.
-            crate::subprocess_utils::enter_capture();
+            let guard = capture();
             let step = match check(&abs) {
                 Err(e) => Step::CheckFailed(e),
                 Ok(false) => Step::Skipped,
@@ -351,7 +348,7 @@ where
                     Err(e) => Step::ActionFailed(e),
                 },
             };
-            Ok((step, crate::subprocess_utils::leave_capture()))
+            Ok((step, guard.finish()))
         },
         |project, result| -> Result<()> {
             // Replayed exactly as the serial path shows it live: header, then
@@ -378,15 +375,10 @@ where
                     e.context(format!("error in project {}", project))
                 }
             };
-            if config.no_stop {
-                report_no_stop(project, &e, &mut failed);
-                Ok(())
-            } else {
-                Err(e)
-            }
+            failures.absorb(e)
         },
     )?;
-    no_stop_outcome(failed, projects.len())
+    failures.finish(projects.len())
 }
 
 /// What happened to one repo on the parallel path of
@@ -416,12 +408,11 @@ where
 {
     let base = current_dir()?;
     let jobs = resolve_jobs(config);
-    let mut failed = 0usize;
-    let projects_vec: Vec<Utf8PathBuf> = projects.to_vec();
+    let mut failures = Failures::new(config);
 
     for_each_project_ordered(
         jobs,
-        &projects_vec,
+        projects,
         |project| -> Result<Option<String>> {
             let abs = absolute(project, &base);
             data_fn(&abs).with_context(|| format!("error in project {}", project))
@@ -455,18 +446,11 @@ where
                     }
                     Ok(())
                 }
-                Err(e) => {
-                    if config.no_stop {
-                        report_no_stop(project, &e, &mut failed);
-                        Ok(())
-                    } else {
-                        Err(e)
-                    }
-                }
+                Err(e) => failures.absorb(e),
             }
         },
     )?;
-    no_stop_outcome(failed, projects.len())
+    failures.finish(projects.len())
 }
 
 #[cfg(test)]

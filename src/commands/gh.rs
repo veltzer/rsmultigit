@@ -1,16 +1,31 @@
-use camino::{Utf8Path, Utf8PathBuf};
+//! The `gh` and `gh-single` commands, talking to GitHub through the API
+//! client in [`crate::github`]. Which GitHub repository a checkout is comes
+//! from its git remotes (see [`github_repo_id`]), the way the gh CLI
+//! resolves it, so no request is spent on that.
+
+use std::collections::HashSet;
 
 use anyhow::{Context, Result};
+use camino::{Utf8Path, Utf8PathBuf};
+use serde::Deserialize;
+use serde_json::{Value, json};
 
-use crate::subprocess_utils::{capture_output, capture_output_allow_failure, check_call, out_line};
+use crate::commands::project_lua::{LocalMeta, parse_project_lua};
+use crate::git_url::{GitUrl, RepoId};
+use crate::github::{Github, PAGE_SIZE, github};
+use crate::subprocess_utils::{check_call, out_line};
 
-/// Repos the gh commands can operate on: those with a remote on github.com.
-pub fn check_github(project: &Utf8Path) -> Result<bool> {
+// ── which repository ───────────────────────────────────────────────────
+
+/// The github.com repositories the checkout's remotes point at, each with
+/// the name of its remote.
+fn github_remotes(project: &Utf8Path) -> Result<(git2::Repository, Vec<(String, RepoId)>)> {
     let repo = crate::commands::count::open_repo(project)?;
-    let remotes = repo
+    let names = repo
         .remotes()
-        .with_context(|| format!("failed to list remotes for {}", project))?;
-    for name in remotes.iter() {
+        .with_context(|| format!("failed to list remotes for {project}"))?;
+    let mut found = Vec::new();
+    for name in names.iter() {
         // Err is a non-UTF-8 remote name, Ok(None) a null entry: neither can
         // be looked up, so skip both.
         let Ok(Some(name)) = name else {
@@ -18,51 +33,90 @@ pub fn check_github(project: &Utf8Path) -> Result<bool> {
         };
         if let Ok(remote) = repo.find_remote(name)
             && let Ok(url) = remote.url()
-            && url.contains("github.com")
+            && let Some(id) = GitUrl::parse(url).github_repo()
         {
-            return Ok(true);
+            found.push((name.to_string(), id));
         }
     }
-    Ok(false)
+    Ok((repo, found))
 }
 
-/// Clean up GitHub deployments, releases, and workflow runs for a repository,
-/// keeping only the `keep` most recent non-failed of each and deleting the rest.
-pub fn prune_ci_rest_obo(project: &Utf8Path, keep: usize) -> Result<()> {
-    let repo = repo_name_with_owner(project)?;
-    clean_deployments(project, &repo, keep)?;
-    clean_releases(project, &repo, keep)?;
-    clean_workflows(project, &repo, keep)?;
-    Ok(())
+/// Repos the gh commands can operate on: those with a remote on github.com.
+pub fn check_github(project: &Utf8Path) -> Result<bool> {
+    Ok(!github_remotes(project)?.1.is_empty())
 }
 
-/// The repo's `owner/name` as GitHub knows it (resolved by gh from the remote).
-fn repo_name_with_owner(project: &Utf8Path) -> Result<String> {
-    capture_output(
-        project,
-        "gh",
-        &[
-            "repo",
-            "view",
-            "--json",
-            "nameWithOwner",
-            "--jq",
-            ".nameWithOwner",
-        ],
-    )
+/// How strongly gh prefers a remote as the repo to act on, when no
+/// `gh repo set-default` says otherwise.
+fn remote_rank(name: &str) -> u8 {
+    match name {
+        "upstream" => 3,
+        "github" => 2,
+        "origin" => 1,
+        _ => 0,
+    }
 }
 
-/// Run `gh api <endpoint> --paginate --jq <jq>` and return the non-empty
-/// output lines.
-pub(crate) fn api_lines(project: &Utf8Path, endpoint: &str, jq: &str) -> Result<Vec<String>> {
-    let out = capture_output(project, "gh", &["api", endpoint, "--paginate", "--jq", jq])?;
-    Ok(out
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .map(String::from)
-        .collect())
+/// The GitHub repository gh would act on in this checkout: the one set by
+/// `gh repo set-default` (`remote.<name>.gh-resolved`), else the github.com
+/// remote gh prefers by name (upstream, github, origin, then the rest).
+pub fn github_repo_id(project: &Utf8Path) -> Result<Option<RepoId>> {
+    let (repo, remotes) = github_remotes(project)?;
+    let config = repo
+        .config()
+        .with_context(|| format!("failed to read the git config of {project}"))?;
+    let mut best: Option<(u8, RepoId)> = None;
+    for (name, id) in remotes {
+        let rank = match config.get_string(&format!("remote.{name}.gh-resolved")) {
+            // `base` marks this remote; a slug names the repo outright.
+            Ok(v) if v == "base" => 4,
+            Ok(v) => match RepoId::from_slug(&v) {
+                Some(id) => return Ok(Some(id)),
+                None => remote_rank(&name),
+            },
+            Err(_) => remote_rank(&name),
+        };
+        if best.as_ref().is_none_or(|(r, _)| rank > *r) {
+            best = Some((rank, id));
+        }
+    }
+    Ok(best.map(|(_, id)| id))
 }
+
+/// [`github_repo_id`], for a repo already known to be on GitHub.
+pub fn require_repo_id(project: &Utf8Path) -> Result<RepoId> {
+    github_repo_id(project)?
+        .with_context(|| format!("cannot tell the GitHub repository of {project} from its remotes"))
+}
+
+/// The working tree of the git repo containing the current directory, for
+/// the `gh-single` operations.
+pub fn current_repo() -> Result<Utf8PathBuf> {
+    let cwd = crate::runner::current_dir()?;
+    let repo = git2::Repository::discover(&cwd)
+        .with_context(|| format!("{cwd} is not inside a git repository"))?;
+    let workdir = repo
+        .workdir()
+        .with_context(|| format!("the repository at {cwd} has no working tree"))?;
+    // libgit2 reports the workdir with a trailing slash; collecting the
+    // components drops it, so messages read `.../repo has ...`.
+    Utf8PathBuf::from_path_buf(workdir.components().collect())
+        .map_err(|p| anyhow::anyhow!("non-UTF-8 repository path: {}", p.display()))
+}
+
+/// The repository's default branch on GitHub, for `git branch github`.
+pub fn default_branch(project: &Utf8Path) -> Result<String> {
+    #[derive(Deserialize)]
+    struct Repository {
+        default_branch: String,
+    }
+    let repo = require_repo_id(project)?;
+    let gh = github()?;
+    let info: Repository = gh.block_on(gh.get(&format!("/repos/{}", repo.slug())))?;
+    Ok(info.default_branch)
+}
+
+// ── the prune policy ───────────────────────────────────────────────────
 
 /// Given (id, failed) pairs ordered newest first, return the ids to delete:
 /// every failed entry, plus every non-failed entry beyond the first `keep`.
@@ -79,30 +133,85 @@ pub(crate) fn select_deletions(items: &[(u64, bool)], keep: usize) -> Vec<u64> {
     to_delete
 }
 
-fn clean_deployments(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> {
-    let ids: Vec<u64> = api_lines(project, &format!("repos/{repo}/deployments"), ".[].id")?
-        .iter()
-        .map(|l| {
-            l.parse()
-                .with_context(|| format!("bad deployment id {l:?}"))
+fn is_failed_conclusion(conclusion: &str) -> bool {
+    matches!(
+        conclusion,
+        "failure" | "cancelled" | "timed_out" | "startup_failure" | "action_required"
+    )
+}
+
+#[derive(Deserialize)]
+struct Id {
+    id: u64,
+}
+
+#[derive(Deserialize)]
+struct WorkflowRuns {
+    workflow_runs: Vec<WorkflowRun>,
+}
+
+#[derive(Deserialize)]
+struct WorkflowRun {
+    id: u64,
+    status: Option<String>,
+    conclusion: Option<String>,
+}
+
+/// The workflow runs, newest first, as (id, failed) pairs. REST, since
+/// GraphQL cannot list a repo's runs.
+pub(crate) async fn fetch_workflow_runs(gh: &Github, repo: &RepoId) -> Result<Vec<(u64, bool)>> {
+    let runs = gh
+        .get_all(
+            &format!("/repos/{}/actions/runs", repo.slug()),
+            |page: WorkflowRuns| page.workflow_runs,
+        )
+        .await?;
+    Ok(runs
+        .into_iter()
+        .map(|r| {
+            (
+                r.id,
+                is_failed_conclusion(r.conclusion.as_deref().unwrap_or("")),
+            )
         })
-        .collect::<Result<_>>()?;
+        .collect())
+}
+
+// ── prune-ci-rest-obo ──────────────────────────────────────────────────
+//
+// One request per item, in order, stopping at the first failure: the
+// plain REST baseline the faster variants are measured against.
+
+/// Clean up GitHub deployments, releases, and workflow runs for a repository,
+/// keeping only the `keep` most recent non-failed of each and deleting the rest.
+pub fn prune_ci_rest_obo(project: &Utf8Path, keep: usize) -> Result<()> {
+    let repo = require_repo_id(project)?;
+    let gh = github()?;
+    gh.block_on(async {
+        clean_deployments(gh, &repo, keep).await?;
+        clean_releases(gh, &repo, keep).await?;
+        clean_workflows(gh, &repo, keep).await
+    })
+}
+
+#[derive(Deserialize)]
+struct DeploymentStatus {
+    state: String,
+}
+
+async fn clean_deployments(gh: &Github, repo: &RepoId, keep: usize) -> Result<()> {
+    let base = format!("/repos/{}/deployments", repo.slug());
+    let ids = gh.get_all(&base, |page: Vec<Id>| page).await?;
 
     // A deployment counts as failed when its most recent status is
     // failure/error; those are always deleted, regardless of recency.
     let mut items = Vec::with_capacity(ids.len());
-    for id in ids {
-        let state = capture_output(
-            project,
-            "gh",
-            &[
-                "api",
-                &format!("repos/{repo}/deployments/{id}/statuses"),
-                "--jq",
-                ".[0].state",
-            ],
-        )?;
-        let failed = state == "failure" || state == "error";
+    for Id { id } in ids {
+        let statuses: Vec<DeploymentStatus> =
+            gh.get(&format!("{base}/{id}/statuses?per_page=1")).await?;
+        let failed = statuses
+            .first()
+            .is_some_and(|s| s.state == "failure" || s.state == "error");
         items.push((id, failed));
     }
 
@@ -115,39 +224,25 @@ fn clean_deployments(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> 
     for id in to_delete {
         // GitHub refuses to delete an active deployment, so mark it
         // inactive first.
-        capture_output(
-            project,
-            "gh",
-            &[
-                "api",
-                &format!("repos/{repo}/deployments/{id}/statuses"),
-                "-X",
-                "POST",
-                "-f",
-                "state=inactive",
-            ],
-        )?;
-        capture_output(
-            project,
-            "gh",
-            &[
-                "api",
-                &format!("repos/{repo}/deployments/{id}"),
-                "-X",
-                "DELETE",
-            ],
-        )?;
+        gh.post(
+            &format!("{base}/{id}/statuses"),
+            &json!({ "state": "inactive" }),
+        )
+        .await?;
+        gh.delete(&format!("{base}/{id}")).await?;
         out_line(&format!("  deleted deployment {id}"));
     }
     Ok(())
 }
 
-fn clean_releases(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> {
-    let ids: Vec<u64> = api_lines(project, &format!("repos/{repo}/releases"), ".[].id")?
-        .iter()
-        .map(|l| l.parse().with_context(|| format!("bad release id {l:?}")))
-        .collect::<Result<_>>()?;
-
+async fn clean_releases(gh: &Github, repo: &RepoId, keep: usize) -> Result<()> {
+    let base = format!("/repos/{}/releases", repo.slug());
+    let ids: Vec<u64> = gh
+        .get_all(&base, |page: Vec<Id>| page)
+        .await?
+        .into_iter()
+        .map(|r| r.id)
+        .collect();
     let to_delete: Vec<u64> = ids.iter().skip(keep).copied().collect();
     out_line(&format!(
         "releases: {} found, deleting {}",
@@ -155,36 +250,14 @@ fn clean_releases(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> {
         to_delete.len()
     ));
     for id in to_delete {
-        capture_output(
-            project,
-            "gh",
-            &[
-                "api",
-                &format!("repos/{repo}/releases/{id}"),
-                "-X",
-                "DELETE",
-            ],
-        )?;
+        gh.delete(&format!("{base}/{id}")).await?;
         out_line(&format!("  deleted release {id}"));
     }
     Ok(())
 }
 
-fn clean_workflows(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> {
-    let lines = api_lines(
-        project,
-        &format!("repos/{repo}/actions/runs"),
-        r#".workflow_runs[] | "\(.id) \(.conclusion // "")""#,
-    )?;
-    let mut items = Vec::with_capacity(lines.len());
-    for line in &lines {
-        let (id, conclusion) = line.split_once(' ').unwrap_or((line.as_str(), ""));
-        let id: u64 = id
-            .parse()
-            .with_context(|| format!("bad workflow run line {line:?}"))?;
-        items.push((id, is_failed_conclusion(conclusion)));
-    }
-
+async fn clean_workflows(gh: &Github, repo: &RepoId, keep: usize) -> Result<()> {
+    let items = fetch_workflow_runs(gh, repo).await?;
     let to_delete = select_deletions(&items, keep);
     out_line(&format!(
         "workflow runs: {} found, deleting {}",
@@ -192,26 +265,11 @@ fn clean_workflows(project: &Utf8Path, repo: &str, keep: usize) -> Result<()> {
         to_delete.len()
     ));
     for id in to_delete {
-        capture_output(
-            project,
-            "gh",
-            &[
-                "api",
-                &format!("repos/{repo}/actions/runs/{id}"),
-                "-X",
-                "DELETE",
-            ],
-        )?;
+        gh.delete(&format!("/repos/{}/actions/runs/{id}", repo.slug()))
+            .await?;
         out_line(&format!("  deleted workflow run {id}"));
     }
     Ok(())
-}
-
-fn is_failed_conclusion(conclusion: &str) -> bool {
-    matches!(
-        conclusion,
-        "failure" | "cancelled" | "timed_out" | "startup_failure" | "action_required"
-    )
 }
 
 // ── prune-ci-gql-obo ──────────────────────────────────────────────────
@@ -226,19 +284,13 @@ fn is_failed_conclusion(conclusion: &str) -> bool {
 //   is deactivated before it is deleted.
 // - GraphQL has no mutation that deletes a release or a workflow run, and
 //   no listing of a repo's workflow runs. Those stay on REST: the runs are
-//   listed 100 per page instead of the default 30, and the deletes run on
-//   a few threads at once.
+//   listed 100 per page, and the deletes run several at once.
 //
-// The repository is named through gh's `{owner}`/`{repo}` placeholders, so
-// there is no separate `gh repo view` call either.
+// Everything that varies (owner, name, cursors, node ids) travels as
+// GraphQL variables, never inside the query text.
 
-/// Items per page of a GraphQL connection (GitHub's maximum).
-pub(crate) const GRAPHQL_PAGE_SIZE: usize = 100;
 /// Deployments per mutation request; each one takes two mutations.
 pub(crate) const DEPLOYMENTS_PER_MUTATION: usize = 50;
-/// How many REST deletes run at once. Small, so the batch stays clear of
-/// GitHub's secondary rate limit, which also counts concurrent requests.
-pub(crate) const REST_DELETE_THREADS: usize = 8;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct GqlDeployment {
@@ -265,310 +317,242 @@ impl Page {
         *self != Page::Done
     }
 
-    pub(crate) fn cursor(&self) -> Option<&str> {
+    /// The `after:` variable for this page: null on the first page.
+    pub(crate) fn cursor(&self) -> Value {
         match self {
-            Page::After(c) => Some(c),
-            _ => None,
+            Page::After(c) => Value::String(c.clone()),
+            _ => Value::Null,
         }
     }
 }
 
-/// One page of the inventory query, as printed by `INVENTORY_JQ`.
-#[derive(Debug, Default, PartialEq, Eq)]
-pub(crate) struct InventoryPage {
-    pub(crate) deployments: Vec<GqlDeployment>,
-    pub(crate) releases: Vec<u64>,
-    /// Next page for each connection that was queried; None when it was not.
-    pub(crate) deployments_next: Option<Page>,
-    pub(crate) releases_next: Option<Page>,
+/// One repository's part of an inventory response. A connection that was
+/// not asked for is absent.
+#[derive(Debug, Deserialize)]
+pub(crate) struct RepoInventory {
+    deployments: Option<Connection<DeploymentNode>>,
+    releases: Option<Connection<ReleaseNode>>,
 }
 
-/// Flattens the query result into one record per line, so the output is
-/// parsed without a JSON dependency. A connection that was not queried is
-/// absent and prints nothing.
-const INVENTORY_JQ: &str = r#".data.repository
-  | (.deployments // empty
-      | (.nodes[] | "D \(.id) \(.databaseId) \(.state) \(.latestStatus.state // "-")"),
-        "DP \(.pageInfo.hasNextPage) \(.pageInfo.endCursor // "-")"),
-    (.releases // empty
-      | (.nodes[] | "R \(.databaseId)"),
-        "RP \(.pageInfo.hasNextPage) \(.pageInfo.endCursor // "-")")"#;
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Connection<N> {
+    page_info: PageInfo,
+    nodes: Vec<N>,
+}
 
-/// The inventory query for the connections that still have pages to fetch.
-/// Only the cursor variables actually used are declared, since GraphQL
-/// rejects an unused variable.
-fn inventory_query(deployments: &Page, releases: &Page) -> String {
-    let mut vars = vec!["$owner:String!", "$name:String!"];
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PageInfo {
+    has_next_page: bool,
+    end_cursor: Option<String>,
+}
+
+impl PageInfo {
+    fn next(&self) -> Result<Page> {
+        match (self.has_next_page, &self.end_cursor) {
+            (false, _) => Ok(Page::Done),
+            (true, Some(c)) => Ok(Page::After(c.clone())),
+            (true, None) => anyhow::bail!("next page without a cursor"),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeploymentNode {
+    id: String,
+    database_id: u64,
+    state: String,
+    latest_status: Option<StatusNode>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StatusNode {
+    state: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReleaseNode {
+    database_id: u64,
+}
+
+impl From<DeploymentNode> for GqlDeployment {
+    fn from(node: DeploymentNode) -> Self {
+        let latest = node.latest_status.map(|s| s.state).unwrap_or_default();
+        Self {
+            node_id: node.id,
+            database_id: node.database_id,
+            inactive: node.state == "INACTIVE",
+            failed: latest == "FAILURE" || latest == "ERROR",
+        }
+    }
+}
+
+/// One repository's deployments and releases, collected page by page.
+pub(crate) struct Inventory {
+    pub(crate) dpage: Page,
+    pub(crate) rpage: Page,
+    pub(crate) deployments: Vec<GqlDeployment>,
+    pub(crate) releases: Vec<u64>,
+}
+
+impl Inventory {
+    pub(crate) fn new() -> Self {
+        Self {
+            dpage: Page::First,
+            rpage: Page::First,
+            deployments: Vec::new(),
+            releases: Vec::new(),
+        }
+    }
+
+    pub(crate) fn pending(&self) -> bool {
+        self.dpage.wanted() || self.rpage.wanted()
+    }
+
+    /// Take in one page. A connection that was asked for must be there;
+    /// its absence means the repository did not resolve.
+    pub(crate) fn absorb(&mut self, page: RepoInventory) -> Result<()> {
+        if self.dpage.wanted() {
+            let conn = page
+                .deployments
+                .context("GraphQL query returned no deployments connection")?;
+            self.dpage = conn.page_info.next()?;
+            self.deployments
+                .extend(conn.nodes.into_iter().map(GqlDeployment::from));
+        }
+        if self.rpage.wanted() {
+            let conn = page
+                .releases
+                .context("GraphQL query returned no releases connection")?;
+            self.rpage = conn.page_info.next()?;
+            self.releases
+                .extend(conn.nodes.into_iter().map(|r| r.database_id));
+        }
+        Ok(())
+    }
+}
+
+/// The fields of one repository that the inventory asks for, with the
+/// variables named by `suffix` (`$d0`, `$r0` for suffix `0`). Only the
+/// connections still wanted are included, since GraphQL rejects a declared
+/// variable that is not used.
+pub(crate) fn inventory_fields(
+    suffix: &str,
+    dpage: &Page,
+    rpage: &Page,
+    vars: &mut Vec<String>,
+) -> String {
     let mut body = String::new();
-    if deployments.wanted() {
-        vars.push("$dafter:String");
+    if dpage.wanted() {
+        vars.push(format!("$d{suffix}:String"));
         body.push_str(&format!(
-            "deployments(first:{GRAPHQL_PAGE_SIZE},after:$dafter,orderBy:{{field:CREATED_AT,direction:DESC}})\
+            "deployments(first:{PAGE_SIZE},after:$d{suffix},orderBy:{{field:CREATED_AT,direction:DESC}})\
              {{pageInfo{{hasNextPage endCursor}} nodes{{id databaseId state latestStatus{{state}}}}}} "
         ));
     }
-    if releases.wanted() {
-        vars.push("$rafter:String");
+    if rpage.wanted() {
+        vars.push(format!("$r{suffix}:String"));
         body.push_str(&format!(
-            "releases(first:{GRAPHQL_PAGE_SIZE},after:$rafter,orderBy:{{field:CREATED_AT,direction:DESC}})\
-             {{pageInfo{{hasNextPage endCursor}} nodes{{databaseId}}}}"
+            "releases(first:{PAGE_SIZE},after:$r{suffix},orderBy:{{field:CREATED_AT,direction:DESC}})\
+             {{pageInfo{{hasNextPage endCursor}} nodes{{databaseId}}}} "
         ));
     }
+    body.trim_end().to_string()
+}
+
+/// The inventory query for one repository.
+fn inventory_query(dpage: &Page, rpage: &Page) -> String {
+    let mut vars = vec!["$owner:String!".to_string(), "$name:String!".to_string()];
+    let fields = inventory_fields("", dpage, rpage, &mut vars);
     format!(
-        "query({}){{repository(owner:$owner,name:$name){{{}}}}}",
-        vars.join(","),
-        body.trim_end()
+        "query({}){{repository(owner:$owner,name:$name){{{fields}}}}}",
+        vars.join(",")
     )
 }
 
-fn parse_page_info(line: &str, rest: &str) -> Result<Page> {
-    let (has_next, cursor) = rest
-        .split_once(' ')
-        .with_context(|| format!("bad page info {line:?}"))?;
-    match (has_next, cursor) {
-        ("true", c) if c != "-" => Ok(Page::After(c.to_string())),
-        ("true", _) => anyhow::bail!("next page without a cursor: {line:?}"),
-        ("false", _) => Ok(Page::Done),
-        _ => anyhow::bail!("bad page info {line:?}"),
-    }
-}
-
-pub(crate) fn parse_inventory_page(out: &str) -> Result<InventoryPage> {
-    let mut page = InventoryPage::default();
-    for line in out.lines().map(str::trim).filter(|l| !l.is_empty()) {
-        let (kind, rest) = line.split_once(' ').unwrap_or((line, ""));
-        match kind {
-            "D" => {
-                let fields: Vec<&str> = rest.split(' ').collect();
-                let [node_id, database_id, state, latest] = fields[..] else {
-                    anyhow::bail!("bad deployment line {line:?}");
-                };
-                page.deployments.push(GqlDeployment {
-                    node_id: node_id.to_string(),
-                    database_id: database_id
-                        .parse()
-                        .with_context(|| format!("bad deployment id in {line:?}"))?,
-                    inactive: state == "INACTIVE",
-                    failed: latest == "FAILURE" || latest == "ERROR",
-                });
-            }
-            "R" => page.releases.push(
-                rest.parse()
-                    .with_context(|| format!("bad release id in {line:?}"))?,
-            ),
-            "DP" => page.deployments_next = Some(parse_page_info(line, rest)?),
-            "RP" => page.releases_next = Some(parse_page_info(line, rest)?),
-            _ => anyhow::bail!("unexpected inventory line {line:?}"),
-        }
-    }
-    Ok(page)
+#[derive(Deserialize)]
+struct OneRepository {
+    repository: Option<RepoInventory>,
 }
 
 /// All deployments and releases of the repo, newest first, paging each
 /// connection until it is exhausted.
-fn fetch_inventory(project: &Utf8Path) -> Result<(Vec<GqlDeployment>, Vec<u64>)> {
-    let mut deployments = Vec::new();
-    let mut releases = Vec::new();
-    let mut dpage = Page::First;
-    let mut rpage = Page::First;
-    while dpage.wanted() || rpage.wanted() {
-        let query = inventory_query(&dpage, &rpage);
-        let query_arg = format!("query={query}");
-        let mut args = vec![
-            "api".to_string(),
-            "graphql".to_string(),
-            "-F".to_string(),
-            "owner={owner}".to_string(),
-            "-F".to_string(),
-            "name={repo}".to_string(),
-            "-f".to_string(),
-            query_arg,
-        ];
-        if let Some(c) = dpage.cursor() {
-            args.push("-f".to_string());
-            args.push(format!("dafter={c}"));
+async fn fetch_inventory(gh: &Github, repo: &RepoId) -> Result<Inventory> {
+    let mut inv = Inventory::new();
+    while inv.pending() {
+        let query = inventory_query(&inv.dpage, &inv.rpage);
+        let mut variables = json!({ "owner": repo.owner, "name": repo.name });
+        if inv.dpage.wanted() {
+            variables["d"] = inv.dpage.cursor();
         }
-        if let Some(c) = rpage.cursor() {
-            args.push("-f".to_string());
-            args.push(format!("rafter={c}"));
+        if inv.rpage.wanted() {
+            variables["r"] = inv.rpage.cursor();
         }
-        args.push("--jq".to_string());
-        args.push(INVENTORY_JQ.to_string());
-        let args: Vec<&str> = args.iter().map(String::as_str).collect();
-        let page = parse_inventory_page(&capture_output(project, "gh", &args)?)?;
-        // A connection that was asked for must report where it stands;
-        // silence means the repository did not resolve.
-        if dpage.wanted() {
-            dpage = page
-                .deployments_next
-                .context("GraphQL query returned no deployments connection")?;
-            deployments.extend(page.deployments);
+        let response = gh.graphql::<OneRepository>(&query, variables).await?;
+        if let Some(e) = response.errors.first() {
+            anyhow::bail!("{}", e.message);
         }
-        if rpage.wanted() {
-            rpage = page
-                .releases_next
-                .context("GraphQL query returned no releases connection")?;
-            releases.extend(page.releases);
-        }
+        let page = response
+            .data
+            .and_then(|d| d.repository)
+            .context("GraphQL query returned no repository")?;
+        inv.absorb(page)?;
     }
-    Ok((deployments, releases))
-}
-
-/// The workflow runs, newest first, as (id, failed) pairs: REST, since
-/// GraphQL cannot list a repo's runs, but 100 per page.
-fn fetch_workflow_runs(project: &Utf8Path) -> Result<Vec<(u64, bool)>> {
-    fetch_workflow_runs_of(project, "{owner}/{repo}")
-}
-
-/// [`fetch_workflow_runs`] for an explicit `owner/name` (or gh's
-/// `{owner}/{repo}` placeholders, resolved from `project`).
-pub(crate) fn fetch_workflow_runs_of(project: &Utf8Path, repo: &str) -> Result<Vec<(u64, bool)>> {
-    let lines = api_lines(
-        project,
-        &format!("repos/{repo}/actions/runs?per_page=100"),
-        r#".workflow_runs[] | "\(.id) \(.conclusion // "")""#,
-    )?;
-    lines
-        .iter()
-        .map(|line| {
-            let (id, conclusion) = line.split_once(' ').unwrap_or((line.as_str(), ""));
-            let id: u64 = id
-                .parse()
-                .with_context(|| format!("bad workflow run line {line:?}"))?;
-            Ok((id, is_failed_conclusion(conclusion)))
-        })
-        .collect()
-}
-
-/// A GraphQL node id is interpolated into the mutation text, so make sure
-/// it cannot break out of its string literal.
-pub(crate) fn is_safe_node_id(id: &str) -> bool {
-    !id.is_empty()
-        && id
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '=' | '+' | '/'))
+    Ok(inv)
 }
 
 /// One mutation request that deactivates (where needed) and deletes each of
-/// `batch`, in order.
-pub(crate) fn deployment_mutation(batch: &[&GqlDeployment]) -> Result<String> {
-    let mut m = String::from("mutation{");
+/// `batch`, in order, with the node ids as variables `$id0`, `$id1`, ...
+pub(crate) fn deployment_mutation(batch: &[&GqlDeployment]) -> (String, Value) {
+    let mut vars = Vec::new();
+    let mut body = String::new();
+    let mut variables = serde_json::Map::new();
     for (i, d) in batch.iter().enumerate() {
-        if !is_safe_node_id(&d.node_id) {
-            anyhow::bail!("unexpected deployment node id {:?}", d.node_id);
-        }
+        vars.push(format!("$id{i}:ID!"));
+        variables.insert(format!("id{i}"), Value::String(d.node_id.clone()));
         // GitHub refuses to delete an active deployment.
         if !d.inactive {
-            m.push_str(&format!(
-                "s{i}:createDeploymentStatus(input:{{deploymentId:\"{}\",state:INACTIVE}}){{clientMutationId}} ",
-                d.node_id
+            body.push_str(&format!(
+                "s{i}:createDeploymentStatus(input:{{deploymentId:$id{i},state:INACTIVE}}){{clientMutationId}} "
             ));
         }
-        m.push_str(&format!(
-            "d{i}:deleteDeployment(input:{{id:\"{}\"}}){{clientMutationId}} ",
-            d.node_id
+        body.push_str(&format!(
+            "d{i}:deleteDeployment(input:{{id:$id{i}}}){{clientMutationId}} "
         ));
     }
-    m.push('}');
-    Ok(m)
-}
-
-/// The `errors` of a GraphQL response, as (alias, message) pairs; the
-/// alias is the first element of the error's `path`, when it has one. None
-/// when `json` carries no `errors` array, which means the request failed
-/// before GraphQL ran (network, authentication) and nothing in it took
-/// effect.
-///
-/// `gh api graphql` exits non-zero on any error and then prints the raw
-/// response instead of applying `--jq`, so this is how the aliases that
-/// did succeed are told apart from those that did not. A small scanner
-/// rather than a JSON dependency: it only splits the array into its
-/// top-level objects, minding strings, and reads two fields from each.
-pub(crate) fn graphql_errors(json: &str) -> Option<Vec<(Option<String>, String)>> {
-    let start = json.find("\"errors\":[")? + "\"errors\":[".len();
-    let path_re = regex_lite::Regex::new(r#""path":\["([^"\\]*)""#).expect("valid regex");
-    let msg_re = regex_lite::Regex::new(r#""message":"((?:[^"\\]|\\.)*)""#).expect("valid regex");
-    let mut errors = Vec::new();
-    let (mut depth, mut in_str, mut escaped) = (0usize, false, false);
-    let mut obj_start = None;
-    for (i, c) in json[start..].char_indices() {
-        if in_str {
-            match c {
-                _ if escaped => escaped = false,
-                '\\' => escaped = true,
-                '"' => in_str = false,
-                _ => {}
-            }
-            continue;
-        }
-        match c {
-            '"' => in_str = true,
-            '{' | '[' => {
-                if depth == 0 {
-                    obj_start = Some(start + i);
-                }
-                depth += 1;
-            }
-            '}' | ']' if depth == 0 => break,
-            '}' | ']' => {
-                depth -= 1;
-                if depth == 0
-                    && let Some(s) = obj_start.take()
-                {
-                    let obj = &json[s..=start + i];
-                    let alias = path_re.captures(obj).map(|c| c[1].to_string());
-                    let message = msg_re
-                        .captures(obj)
-                        .map(|c| c[1].replace("\\\"", "\"").replace("\\\\", "\\"))
-                        .unwrap_or_else(|| obj.to_string());
-                    errors.push((alias, message));
-                }
-            }
-            _ => {}
-        }
-    }
-    Some(errors)
+    (
+        format!("mutation({}){{{}}}", vars.join(","), body.trim_end()),
+        Value::Object(variables),
+    )
 }
 
 /// Run one deployment mutation request and say, per deployment, whether
-/// it is gone. A failing request can still have deleted some of them: only
-/// those whose `d<i>` alias errored, or every one when the request never
-/// reached GraphQL, failed.
-pub(crate) fn run_deployment_batch(cwd: &Utf8Path, batch: &[&GqlDeployment]) -> Vec<Result<()>> {
-    let all_failed = |msg: String| {
-        batch
-            .iter()
-            .map(|_| Err(anyhow::anyhow!("{msg}")))
-            .collect()
-    };
-    let mutation = match deployment_mutation(batch) {
-        Ok(m) => m,
-        Err(e) => return all_failed(format!("{e:#}")),
-    };
-    let (code, stdout, stderr) = match capture_output_allow_failure(
-        cwd,
-        "gh",
-        &["api", "graphql", "-f", &format!("query={mutation}")],
-    ) {
+/// it is gone. Only those whose `d<i>` alias errored failed, or every one
+/// when the request never reached GraphQL.
+async fn run_deployment_batch(gh: &Github, batch: &[&GqlDeployment]) -> Vec<Result<()>> {
+    let (mutation, variables) = deployment_mutation(batch);
+    let response = match gh.graphql::<Value>(&mutation, variables).await {
         Ok(r) => r,
-        Err(e) => return all_failed(format!("{e:#}")),
-    };
-    if code == 0 {
-        return batch.iter().map(|_| Ok(())).collect();
-    }
-    let Some(errors) = graphql_errors(&stdout) else {
-        return all_failed(format!("gh api graphql failed: {}", stderr.trim()));
-    };
-    batch
-        .iter()
-        .enumerate()
-        .map(|(i, _)| {
-            let alias = format!("d{i}");
-            match errors
+        Err(e) => {
+            let msg = format!("{e:#}");
+            return batch
                 .iter()
-                .find(|(a, _)| a.as_deref() == Some(alias.as_str()))
+                .map(|_| Err(anyhow::anyhow!("{msg}")))
+                .collect();
+        }
+    };
+    (0..batch.len())
+        .map(|i| {
+            let alias = format!("d{i}");
+            match response
+                .errors
+                .iter()
+                .find(|e| e.alias() == Some(alias.as_str()))
             {
-                Some((_, msg)) => Err(anyhow::anyhow!("{msg}")),
+                Some(e) => Err(anyhow::anyhow!("{}", e.message)),
                 None => Ok(()),
             }
         })
@@ -577,150 +561,99 @@ pub(crate) fn run_deployment_batch(cwd: &Utf8Path, batch: &[&GqlDeployment]) -> 
 
 /// Delete the deployments, `DEPLOYMENTS_PER_MUTATION` per request; one
 /// result per deployment, in order.
-fn delete_deployments(project: &Utf8Path, to_delete: &[&GqlDeployment]) -> Vec<Result<()>> {
-    to_delete
-        .chunks(DEPLOYMENTS_PER_MUTATION)
-        .flat_map(|batch| run_deployment_batch(project, batch))
-        .collect()
-}
-
-/// Apply `f` to every item on up to `threads` threads; results come back in
-/// input order. `f` must not print: output capture is per thread, so the
-/// caller prints.
-pub(crate) fn parallel_map<T, R, F>(items: &[T], threads: usize, f: F) -> Vec<R>
-where
-    T: Sync,
-    R: Send,
-    F: Fn(&T) -> R + Sync,
-{
-    use std::sync::Mutex;
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    let next = AtomicUsize::new(0);
-    let results: Mutex<Vec<Option<R>>> = Mutex::new((0..items.len()).map(|_| None).collect());
-    std::thread::scope(|scope| {
-        for _ in 0..threads.min(items.len()) {
-            scope.spawn(|| {
-                loop {
-                    let i = next.fetch_add(1, Ordering::Relaxed);
-                    let Some(item) = items.get(i) else {
-                        break;
-                    };
-                    let r = f(item);
-                    results.lock().expect("results lock poisoned")[i] = Some(r);
-                }
-            });
-        }
-    });
+pub(crate) async fn delete_deployments(
+    gh: &Github,
+    to_delete: &[&GqlDeployment],
+) -> Vec<Result<()>> {
+    let mut results = Vec::with_capacity(to_delete.len());
+    for batch in to_delete.chunks(DEPLOYMENTS_PER_MUTATION) {
+        results.extend(run_deployment_batch(gh, batch).await);
+    }
     results
-        .into_inner()
-        .expect("results lock poisoned")
-        .into_iter()
-        .map(|r| r.expect("every item is processed"))
-        .collect()
 }
 
-/// Run `gh api -X DELETE <path>` for every path, `REST_DELETE_THREADS` at a
-/// time, from `cwd`. Results come back in input order.
-pub(crate) fn rest_delete_parallel(cwd: &Utf8Path, paths: &[String]) -> Vec<Result<()>> {
-    parallel_map(paths, REST_DELETE_THREADS, |path| {
-        capture_output(cwd, "gh", &["api", path, "-X", "DELETE"]).map(|_| ())
-    })
+/// What one repository deletes: indices into its deployments, release ids
+/// and workflow run ids.
+pub(crate) struct Plan {
+    pub(crate) deployments: Vec<usize>,
+    pub(crate) releases: Vec<u64>,
+    pub(crate) runs: Vec<u64>,
 }
 
-/// `prune_ci_rest_obo` through GitHub's GraphQL API where it can do the job, with
-/// the remaining REST calls run in parallel. Same keep policy, same output.
-/// Unlike `prune_ci_rest_obo`, a failed delete does not stop the others; every
-/// failure is reported at the end.
-pub fn prune_ci_gql_obo(project: &Utf8Path, keep: usize) -> Result<()> {
-    // The two listings are independent: run them at the same time.
-    let (inventory, runs) = std::thread::scope(|scope| {
-        let runs = scope.spawn(|| fetch_workflow_runs(project));
-        let inventory = fetch_inventory(project);
-        (
-            inventory,
-            runs.join().expect("workflow run listing panicked"),
-        )
-    });
-    let (deployments, releases) = inventory?;
-    let runs = runs?;
-
-    let deployment_items: Vec<(u64, bool)> = deployments
-        .iter()
-        .map(|d| (d.database_id, d.failed))
-        .collect();
-    let deployment_ids = select_deletions(&deployment_items, keep);
-    let deployments_to_delete: Vec<&GqlDeployment> = deployments
-        .iter()
-        .filter(|d| deployment_ids.contains(&d.database_id))
-        .collect();
-    let releases_to_delete: Vec<u64> = releases.iter().skip(keep).copied().collect();
-    let runs_to_delete = select_deletions(&runs, keep);
-
-    // Releases and runs share one REST pool; the deployment mutations run
-    // alongside it.
-    let rest_paths: Vec<String> = releases_to_delete
-        .iter()
-        .map(|id| format!("repos/{{owner}}/{{repo}}/releases/{id}"))
-        .chain(
-            runs_to_delete
-                .iter()
-                .map(|id| format!("repos/{{owner}}/{{repo}}/actions/runs/{id}")),
-        )
-        .collect();
-    let (deployment_results, rest_results) = std::thread::scope(|scope| {
-        let d = scope.spawn(|| delete_deployments(project, &deployments_to_delete));
-        let rest = rest_delete_parallel(project, &rest_paths);
-        (d.join().expect("deployment deletion panicked"), rest)
-    });
-
-    let deployment_ids: Vec<u64> = deployments_to_delete
-        .iter()
-        .map(|d| d.database_id)
-        .collect();
-    let (release_results, run_results) = rest_results.split_at(releases_to_delete.len());
-    let mut lines = Vec::new();
-    let mut errors = Vec::new();
-    for (label, found, ids, results) in [
-        (
-            "deployments",
-            deployments.len(),
-            &deployment_ids,
-            &deployment_results[..],
-        ),
-        (
-            "releases",
-            releases.len(),
-            &releases_to_delete,
-            release_results,
-        ),
-        ("workflow runs", runs.len(), &runs_to_delete, run_results),
-    ] {
-        report_section(label, found, ids, results, &mut lines, &mut errors);
-    }
-    for line in &lines {
-        out_line(line);
-    }
-    combine_errors(errors)
-}
-
-/// The output for one kind of item, as `prune-ci-rest-obo` prints it: a summary
-/// line, then one line per deleted item. Failures go to `errors`.
-pub(crate) fn report_section(
-    label: &str,
-    found: usize,
-    ids: &[u64],
-    results: &[Result<()>],
-    lines: &mut Vec<String>,
-    errors: &mut Vec<String>,
-) {
-    lines.push(format!("{label}: {found} found, deleting {}", ids.len()));
-    let singular = label.trim_end_matches('s');
-    for (id, result) in ids.iter().zip(results) {
-        match result {
-            Ok(()) => lines.push(format!("  deleted {singular} {id}")),
-            Err(e) => errors.push(format!("deleting {singular} {id}: {e:#}")),
+impl Plan {
+    pub(crate) fn new(inv: &Inventory, runs: &[(u64, bool)], keep: usize) -> Self {
+        let items: Vec<(u64, bool)> = inv
+            .deployments
+            .iter()
+            .map(|d| (d.database_id, d.failed))
+            .collect();
+        let ids: HashSet<u64> = select_deletions(&items, keep).into_iter().collect();
+        Self {
+            deployments: (0..inv.deployments.len())
+                .filter(|&i| ids.contains(&inv.deployments[i].database_id))
+                .collect(),
+            releases: inv.releases.iter().skip(keep).copied().collect(),
+            runs: select_deletions(runs, keep),
         }
+    }
+
+    /// The REST routes that delete the plan's releases, then its runs.
+    pub(crate) fn rest_routes(&self, repo: &RepoId) -> Vec<String> {
+        let slug = repo.slug();
+        self.releases
+            .iter()
+            .map(|id| format!("/repos/{slug}/releases/{id}"))
+            .chain(
+                self.runs
+                    .iter()
+                    .map(|id| format!("/repos/{slug}/actions/runs/{id}")),
+            )
+            .collect()
+    }
+
+    /// The output lines and the failures, once the deletes have run.
+    /// `rest_results` holds the release results followed by the run
+    /// results, as [`Plan::rest_routes`] laid them out.
+    pub(crate) fn report(
+        &self,
+        inv: &Inventory,
+        runs_found: usize,
+        deployment_results: &[Result<()>],
+        rest_results: &[Result<()>],
+    ) -> (Vec<String>, Vec<String>) {
+        let deployment_ids: Vec<u64> = self
+            .deployments
+            .iter()
+            .map(|&i| inv.deployments[i].database_id)
+            .collect();
+        let (release_results, run_results) = rest_results.split_at(self.releases.len());
+        let mut lines = Vec::new();
+        let mut errors = Vec::new();
+        for (label, found, ids, results) in [
+            (
+                "deployments",
+                inv.deployments.len(),
+                &deployment_ids,
+                deployment_results,
+            ),
+            (
+                "releases",
+                inv.releases.len(),
+                &self.releases,
+                release_results,
+            ),
+            ("workflow runs", runs_found, &self.runs, run_results),
+        ] {
+            lines.push(format!("{label}: {found} found, deleting {}", ids.len()));
+            let singular = label.trim_end_matches('s');
+            for (id, result) in ids.iter().zip(results) {
+                match result {
+                    Ok(()) => lines.push(format!("  deleted {singular} {id}")),
+                    Err(e) => errors.push(format!("deleting {singular} {id}: {e:#}")),
+                }
+            }
+        }
+        (lines, errors)
     }
 }
 
@@ -733,62 +666,84 @@ pub(crate) fn combine_errors(errors: Vec<String>) -> Result<()> {
     }
 }
 
+/// `prune_ci_rest_obo` through GitHub's GraphQL API where it can do the job, with
+/// the remaining REST calls run concurrently. Same keep policy, same output.
+/// Unlike `prune_ci_rest_obo`, a failed delete does not stop the others; every
+/// failure is reported at the end.
+pub fn prune_ci_gql_obo(project: &Utf8Path, keep: usize) -> Result<()> {
+    let repo = require_repo_id(project)?;
+    let gh = github()?;
+    let (lines, errors) = gh.block_on(async {
+        // The two listings are independent: run them at the same time.
+        let (inv, runs) =
+            futures_util::join!(fetch_inventory(gh, &repo), fetch_workflow_runs(gh, &repo));
+        let (inv, runs) = (inv?, runs?);
+        let plan = Plan::new(&inv, &runs, keep);
+        let to_delete: Vec<&GqlDeployment> = plan
+            .deployments
+            .iter()
+            .map(|&i| &inv.deployments[i])
+            .collect();
+        let routes = plan.rest_routes(&repo);
+        let (deployment_results, rest_results) =
+            futures_util::join!(delete_deployments(gh, &to_delete), gh.delete_all(&routes));
+        anyhow::Ok(plan.report(&inv, runs.len(), &deployment_results, &rest_results))
+    })?;
+    for line in &lines {
+        out_line(line);
+    }
+    combine_errors(errors)
+}
+
 // ── artifacts ──────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct Release {
+    assets: Vec<Asset>,
+}
+
+#[derive(Deserialize)]
+struct Asset {
+    name: String,
+    size: u64,
+    download_count: u64,
+}
 
 /// The assets of the latest release as an aligned NAME/SIZE/DOWNLOADS table,
 /// or None when the repo has no release (or no github.com remote).
 pub fn artifacts(project: &Utf8Path) -> Result<Option<String>> {
-    if !check_github(project)? {
+    let Some(repo) = github_repo_id(project)? else {
+        return Ok(None);
+    };
+    let gh = github()?;
+    // A repo that has never had a release is the common case, not an error.
+    let Some(release) = gh
+        .block_on(gh.get_optional::<Release>(&format!("/repos/{}/releases/latest", repo.slug())))?
+    else {
+        return Ok(None);
+    };
+    if release.assets.is_empty() {
         return Ok(None);
     }
-    let (code, stdout, stderr) = capture_output_allow_failure(
-        project,
-        "gh",
-        &[
-            "release",
-            "view",
-            "--json",
-            "assets",
-            "--jq",
-            r#".assets[] | "\(.name)\t\(.size)\t\(.downloadCount)""#,
-        ],
-    )?;
-    if code != 0 {
-        // A repo that has never had a release is the common case, not an
-        // error; anything else (not authenticated, network) is.
-        if stderr.contains("release not found") {
-            return Ok(None);
-        }
-        anyhow::bail!("gh release view failed: {}", stderr.trim());
-    }
-    let rows: Vec<[&str; 3]> = stdout
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .map(|l| {
-            let mut it = l.split('\t');
-            let name = it.next().unwrap_or("");
-            let size = it.next().unwrap_or("");
-            let downloads = it.next().unwrap_or("");
-            [name, size, downloads]
-        })
+    let rows: Vec<[String; 3]> = release
+        .assets
+        .into_iter()
+        .map(|a| [a.name, a.size.to_string(), a.download_count.to_string()])
         .collect();
-    if rows.is_empty() {
-        // A release with no assets: nothing to list.
-        return Ok(None);
-    }
-    Ok(Some(format_table(&["NAME", "SIZE", "DOWNLOADS"], &rows)))
+    Ok(Some(format_table(["NAME", "SIZE", "DOWNLOADS"], &rows)))
 }
 
 /// Render rows under a header with every column padded to its widest cell,
 /// what `column -t -N ...` does for the shell script.
-fn format_table(header: &[&str; 3], rows: &[[&str; 3]]) -> String {
-    let mut widths = header.map(str::len);
+fn format_table(header: [&str; 3], rows: &[[String; 3]]) -> String {
+    let header = header.map(String::from);
+    let mut widths = header.each_ref().map(String::len);
     for row in rows {
         for (w, cell) in widths.iter_mut().zip(row) {
             *w = (*w).max(cell.len());
         }
     }
-    let render = |row: &[&str; 3]| -> String {
+    let render = |row: &[String; 3]| -> String {
         let cells: Vec<String> = row
             .iter()
             .zip(widths)
@@ -796,7 +751,7 @@ fn format_table(header: &[&str; 3], rows: &[[&str; 3]]) -> String {
             .collect();
         cells.join("  ").trim_end().to_string()
     };
-    let mut lines = vec![render(header)];
+    let mut lines = vec![render(&header)];
     lines.extend(rows.iter().map(render));
     lines.join("\n")
 }
@@ -807,82 +762,49 @@ fn format_table(header: &[&str; 3], rows: &[[&str; 3]]) -> String {
 /// ...), or its status (`in_progress`, `queued`) while it has none yet.
 /// None when the repo has no runs or no github.com remote.
 pub fn last_workflow_state(project: &Utf8Path) -> Result<Option<String>> {
-    if !check_github(project)? {
+    let Some(repo) = github_repo_id(project)? else {
         return Ok(None);
-    }
-    let out = capture_output(
-        project,
-        "gh",
-        &[
-            "run",
-            "list",
-            "--limit",
-            "1",
-            "--json",
-            "status,conclusion",
-            "--jq",
-            r#".[0] | select(. != null) | "\(.status)\t\(.conclusion)""#,
-        ],
-    )?;
-    Ok(workflow_state_from_line(&out))
+    };
+    let gh = github()?;
+    let runs: WorkflowRuns =
+        gh.block_on(gh.get(&format!("/repos/{}/actions/runs?per_page=1", repo.slug())))?;
+    Ok(runs.workflow_runs.first().and_then(workflow_state))
 }
 
-/// `status<TAB>conclusion` as printed by the jq above; the conclusion wins
-/// when the run has one, the status stands in until then.
-fn workflow_state_from_line(line: &str) -> Option<String> {
-    let line = line.trim();
-    if line.is_empty() {
-        return None;
-    }
-    let (status, conclusion) = line.split_once('\t').unwrap_or((line, ""));
-    let conclusion = conclusion.trim();
-    let state = if conclusion.is_empty() || conclusion == "null" {
-        status.trim()
-    } else {
-        conclusion
-    };
-    (!state.is_empty()).then(|| state.to_string())
+/// The conclusion when the run has one; the status stands in until then.
+fn workflow_state(run: &WorkflowRun) -> Option<String> {
+    run.conclusion
+        .as_deref()
+        .filter(|c| !c.is_empty())
+        .or(run.status.as_deref())
+        .filter(|s| !s.is_empty())
+        .map(String::from)
 }
 
 // ── open-site ──────────────────────────────────────────────────────────
 
-/// The working tree of the git repo containing the current directory, for
-/// the `gh-single` operations.
-pub fn current_repo() -> Result<Utf8PathBuf> {
-    let cwd = crate::runner::current_dir()?;
-    let repo = git2::Repository::discover(&cwd)
-        .with_context(|| format!("{cwd} is not inside a git repository"))?;
-    let workdir = repo
-        .workdir()
-        .with_context(|| format!("the repository at {cwd} has no working tree"))?;
-    // libgit2 reports the workdir with a trailing slash; collecting the
-    // components drops it, so messages read `.../repo has ...`.
-    Utf8PathBuf::from_path_buf(workdir.components().collect())
-        .map_err(|p| anyhow::anyhow!("non-UTF-8 repository path: {}", p.display()))
+#[derive(Deserialize)]
+struct PagesSite {
+    html_url: Option<String>,
 }
 
 /// Open the repo's GitHub Pages site in the browser via `xdg-open`. A repo
 /// without a Pages site says so and is otherwise left alone.
 pub fn open_site(project: &Utf8Path) -> Result<()> {
-    let (code, stdout, stderr) = capture_output_allow_failure(
-        project,
-        "gh",
-        &["api", "repos/{owner}/{repo}/pages", "--jq", ".html_url"],
-    )?;
-    if code != 0 {
-        if stderr.contains("HTTP 404") {
-            out_line("no GitHub Pages site");
-            return Ok(());
+    let repo = require_repo_id(project)?;
+    let gh = github()?;
+    let site =
+        gh.block_on(gh.get_optional::<PagesSite>(&format!("/repos/{}/pages", repo.slug())))?;
+    match site.and_then(|s| s.html_url).filter(|u| !u.is_empty()) {
+        Some(url) => {
+            out_line(&url);
+            check_call(project, "xdg-open", &[&url])
         }
-        anyhow::bail!("gh api pages failed: {}", stderr.trim());
+        None => {
+            out_line("no GitHub Pages site");
+            Ok(())
+        }
     }
-    let url = stdout.trim();
-    if url.is_empty() {
-        out_line("no GitHub Pages site");
-        return Ok(());
-    }
-    out_line(url);
-    check_call(project, "xdg-open", &[url])
 }
 
 // ── sync-metadata ──────────────────────────────────────────────────────
@@ -892,33 +814,47 @@ const POLICY_WIKI: bool = false;
 const POLICY_ISSUES: bool = true;
 const POLICY_PROJECTS: bool = false;
 
-/// What config/project.lua says about the repo. Description and keywords
-/// are optional: "unset locally" means "leave GitHub alone", not "clear it".
-#[derive(Debug, PartialEq, Eq)]
-pub struct LocalMeta {
-    pub name: String,
-    pub description: Option<String>,
-    pub keywords: Option<Vec<String>>,
-}
-
 /// What GitHub currently has.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Deserialize)]
 pub struct GithubMeta {
-    pub name_with_owner: String,
+    /// `owner/name`, as GitHub spells it now (a renamed repo answers under
+    /// its old name too, but edits go to the current one).
+    pub full_name: String,
+    pub name: String,
+    #[serde(default, deserialize_with = "null_as_empty")]
     pub description: String,
-    /// Sorted.
+    /// Sorted once fetched.
+    #[serde(default)]
     pub topics: Vec<String>,
+    #[serde(rename = "has_wiki")]
     pub wiki: bool,
+    #[serde(rename = "has_issues")]
     pub issues: bool,
+    #[serde(rename = "has_projects")]
     pub projects: bool,
 }
 
-/// The differences between local and GitHub, as a report and as the
-/// `gh repo edit` arguments that would resolve them.
+fn null_as_empty<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    Ok(Option::<String>::deserialize(d)?.unwrap_or_default())
+}
+
+/// The differences between local and GitHub, as a report and as the edits
+/// that would resolve them.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct SyncPlan {
     pub report: Vec<String>,
-    pub edit_args: Vec<String>,
+    /// New description, when it differs.
+    pub description: Option<String>,
+    /// The full new topic list, when the topics differ.
+    pub topics: Option<Vec<String>>,
+    /// The feature flags to change, as (`has_wiki`-style field, value).
+    pub features: Vec<(&'static str, bool)>,
+}
+
+impl SyncPlan {
+    fn has_edits(&self) -> bool {
+        self.description.is_some() || self.topics.is_some() || !self.features.is_empty()
+    }
 }
 
 /// Sync the repo's GitHub description, topics and feature policy from
@@ -926,9 +862,9 @@ pub struct SyncPlan {
 /// `dry_run`, was changed), or None when GitHub already matches. A repo
 /// without a project.lua, or without a github.com remote, is skipped.
 pub fn sync_metadata(project: &Utf8Path, dry_run: bool) -> Result<Option<String>> {
-    if !check_github(project)? {
+    let Some(repo) = github_repo_id(project)? else {
         return Ok(None);
-    }
+    };
     let lua_path = project.join("config/project.lua");
     if !lua_path.is_file() {
         return Ok(None);
@@ -936,75 +872,43 @@ pub fn sync_metadata(project: &Utf8Path, dry_run: bool) -> Result<Option<String>
     let text =
         std::fs::read_to_string(&lua_path).with_context(|| format!("failed to read {lua_path}"))?;
     let local = parse_project_lua(&text).with_context(|| format!("failed to parse {lua_path}"))?;
-    let remote = github_meta(project)?;
-    let plan = plan_sync(&local, &remote);
-    if plan.report.is_empty() {
-        return Ok(None);
-    }
-    if !dry_run && !plan.edit_args.is_empty() {
-        let mut args = vec!["repo", "edit", remote.name_with_owner.as_str()];
-        args.extend(plan.edit_args.iter().map(String::as_str));
-        capture_output(project, "gh", &args)?;
-    }
-    Ok(Some(plan.report.join("\n")))
-}
-
-/// One `gh repo view` for everything the sync compares, laid out line by
-/// line so no JSON parsing is needed: name, features, topics, description.
-fn github_meta(project: &Utf8Path) -> Result<GithubMeta> {
-    let out = capture_output(
-        project,
-        "gh",
-        &[
-            "repo",
-            "view",
-            "--json",
-            "nameWithOwner,description,repositoryTopics,hasWikiEnabled,hasIssuesEnabled,hasProjectsEnabled",
-            "--jq",
-            r#""\(.nameWithOwner)\n\(.hasWikiEnabled) \(.hasIssuesEnabled) \(.hasProjectsEnabled)\n\([.repositoryTopics[].name] | sort | join(" "))\n\(.description // "")""#,
-        ],
-    )?;
-    parse_github_meta(&out)
-}
-
-fn parse_github_meta(out: &str) -> Result<GithubMeta> {
-    let mut lines = out.lines();
-    let name_with_owner = lines
-        .next()
-        .filter(|l| !l.is_empty())
-        .context("gh repo view printed no nameWithOwner")?
-        .to_string();
-    let features = lines
-        .next()
-        .context("gh repo view printed no feature flags")?;
-    let mut flags = features.split_whitespace().map(|f| match f {
-        "true" => Ok(true),
-        "false" => Ok(false),
-        other => Err(anyhow::anyhow!(
-            "bad feature flag {other:?} in {features:?}"
-        )),
-    });
-    let mut next_flag = || flags.next().context("missing feature flag")?;
-    let wiki = next_flag()?;
-    let issues = next_flag()?;
-    let projects = next_flag()?;
-    let topics: Vec<String> = lines
-        .next()
-        .unwrap_or("")
-        .split_whitespace()
-        .map(String::from)
-        .collect();
-    // The description is whatever is left; capture_output already trimmed
-    // the trailing newline.
-    let description = lines.collect::<Vec<_>>().join("\n").trim().to_string();
-    Ok(GithubMeta {
-        name_with_owner,
-        description,
-        topics,
-        wiki,
-        issues,
-        projects,
+    let gh = github()?;
+    gh.block_on(async {
+        let mut remote: GithubMeta = gh.get(&format!("/repos/{}", repo.slug())).await?;
+        remote.topics.sort();
+        let plan = plan_sync(&local, &remote);
+        if plan.report.is_empty() {
+            return Ok(None);
+        }
+        if !dry_run && plan.has_edits() {
+            apply_sync(gh, &remote.full_name, &plan).await?;
+        }
+        Ok(Some(plan.report.join("\n")))
     })
+}
+
+/// Apply a plan: one PATCH for the description and features, one PUT for
+/// the topics (which replaces the whole list).
+async fn apply_sync(gh: &Github, full_name: &str, plan: &SyncPlan) -> Result<()> {
+    let mut patch = serde_json::Map::new();
+    if let Some(description) = &plan.description {
+        patch.insert("description".into(), json!(description));
+    }
+    for (field, value) in &plan.features {
+        patch.insert((*field).into(), json!(value));
+    }
+    if !patch.is_empty() {
+        gh.patch(&format!("/repos/{full_name}"), &Value::Object(patch))
+            .await?;
+    }
+    if let Some(topics) = &plan.topics {
+        gh.put(
+            &format!("/repos/{full_name}/topics"),
+            &json!({ "names": topics }),
+        )
+        .await?;
+    }
+    Ok(())
 }
 
 /// Compare local against GitHub. Only fields the local file declares are
@@ -1014,15 +918,10 @@ pub fn plan_sync(local: &LocalMeta, remote: &GithubMeta) -> SyncPlan {
 
     // The repo is addressed by its remote, so a NAME that disagrees with it
     // is reported, never acted on.
-    let github_name = remote
-        .name_with_owner
-        .rsplit('/')
-        .next()
-        .unwrap_or(&remote.name_with_owner);
-    if local.name != github_name {
+    if local.name != remote.name {
         plan.report.push("name".to_string());
         plan.report.push(format!("  local:  {}", local.name));
-        plan.report.push(format!("  github: {github_name}"));
+        plan.report.push(format!("  github: {}", remote.name));
     }
 
     if let Some(want) = &local.description
@@ -1033,8 +932,7 @@ pub fn plan_sync(local: &LocalMeta, remote: &GithubMeta) -> SyncPlan {
         plan.report.push(format!("  local:  {want}"));
         plan.report
             .push(format!("  github: {}", remote.description));
-        plan.edit_args.push("--description".to_string());
-        plan.edit_args.push(want.clone());
+        plan.description = Some(want.clone());
     }
 
     if let Some(keywords) = &local.keywords
@@ -1048,28 +946,14 @@ pub fn plan_sync(local: &LocalMeta, remote: &GithubMeta) -> SyncPlan {
             plan.report.push(format!("  local:  {}", want.join(" ")));
             plan.report
                 .push(format!("  github: {}", remote.topics.join(" ")));
-            // Only the topics on one side move. A topic on both sides must
-            // not be named at all: gh applies --remove-topic and --add-topic
-            // in one call and the remove wins, which would drop it.
-            for t in &remote.topics {
-                if !want.contains(t) {
-                    plan.edit_args.push("--remove-topic".to_string());
-                    plan.edit_args.push(t.clone());
-                }
-            }
-            for t in &want {
-                if !remote.topics.contains(t) {
-                    plan.edit_args.push("--add-topic".to_string());
-                    plan.edit_args.push(t.clone());
-                }
-            }
+            plan.topics = Some(want);
         }
     }
 
     let features = [
-        ("wiki", remote.wiki, POLICY_WIKI),
-        ("issues", remote.issues, POLICY_ISSUES),
-        ("projects", remote.projects, POLICY_PROJECTS),
+        ("has_wiki", remote.wiki, POLICY_WIKI),
+        ("has_issues", remote.issues, POLICY_ISSUES),
+        ("has_projects", remote.projects, POLICY_PROJECTS),
     ];
     if features.iter().any(|(_, have, want)| have != want) {
         plan.report.push("features".to_string());
@@ -1080,249 +964,14 @@ pub fn plan_sync(local: &LocalMeta, remote: &GithubMeta) -> SyncPlan {
             "  github: wiki={} issues={} projects={}",
             remote.wiki, remote.issues, remote.projects
         ));
-        for (name, have, want) in features {
+        for (field, have, want) in features {
             if have != want {
-                plan.edit_args.push(format!("--enable-{name}={want}"));
+                plan.features.push((field, want));
             }
         }
     }
 
     plan
-}
-
-// ── project.lua ────────────────────────────────────────────────────────
-//
-// The fleet's config/project.lua files are plain data: `NAME = "..."`
-// assignments (quoted or `[[long]]` strings), booleans (`PYPI = true`), a
-// `KEYWORDS = { "...", ... }` list, `--` comments and the odd `X = Y`
-// alias. That subset is parsed here rather than by shelling out to a lua
-// interpreter, so the binary stays self-contained. Anything outside it is
-// an error naming the line, never a guess.
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Token {
-    Ident(String),
-    Str(String),
-    Eq,
-    LBrace,
-    RBrace,
-    Comma,
-}
-
-fn tokenize_lua(text: &str) -> Result<Vec<(usize, Token)>> {
-    let mut tokens = Vec::new();
-    let chars: Vec<char> = text.chars().collect();
-    let mut i = 0;
-    let mut line = 1;
-    while i < chars.len() {
-        let c = chars[i];
-        match c {
-            '\n' => {
-                line += 1;
-                i += 1;
-            }
-            c if c.is_whitespace() => i += 1,
-            '-' if chars.get(i + 1) == Some(&'-') => {
-                // Comment to end of line; the newline itself is counted
-                // by the next iteration.
-                while i < chars.len() && chars[i] != '\n' {
-                    i += 1;
-                }
-            }
-            '=' => {
-                tokens.push((line, Token::Eq));
-                i += 1;
-            }
-            '{' => {
-                tokens.push((line, Token::LBrace));
-                i += 1;
-            }
-            '}' => {
-                tokens.push((line, Token::RBrace));
-                i += 1;
-            }
-            ',' => {
-                tokens.push((line, Token::Comma));
-                i += 1;
-            }
-            '[' if chars.get(i + 1) == Some(&'[') => {
-                // Long string: `[[` ... `]]`, verbatim, no escapes. Lua
-                // drops a newline that immediately follows the opening.
-                let start_line = line;
-                i += 2;
-                if chars.get(i) == Some(&'\n') {
-                    i += 1;
-                    line += 1;
-                }
-                let mut s = String::new();
-                loop {
-                    let Some(&ch) = chars.get(i) else {
-                        anyhow::bail!("line {start_line}: unterminated long string");
-                    };
-                    if ch == ']' && chars.get(i + 1) == Some(&']') {
-                        i += 2;
-                        break;
-                    }
-                    if ch == '\n' {
-                        line += 1;
-                    }
-                    s.push(ch);
-                    i += 1;
-                }
-                tokens.push((start_line, Token::Str(s)));
-            }
-            '"' | '\'' => {
-                let quote = c;
-                let start_line = line;
-                let mut s = String::new();
-                i += 1;
-                loop {
-                    let Some(&ch) = chars.get(i) else {
-                        anyhow::bail!("line {start_line}: unterminated string");
-                    };
-                    i += 1;
-                    match ch {
-                        ch if ch == quote => break,
-                        '\\' => {
-                            let Some(&esc) = chars.get(i) else {
-                                anyhow::bail!("line {start_line}: unterminated string");
-                            };
-                            i += 1;
-                            s.push(match esc {
-                                'n' => '\n',
-                                't' => '\t',
-                                '\\' => '\\',
-                                '"' => '"',
-                                '\'' => '\'',
-                                other => anyhow::bail!(
-                                    "line {line}: unsupported escape \\{other} in string"
-                                ),
-                            });
-                        }
-                        '\n' => anyhow::bail!("line {start_line}: newline in string"),
-                        ch => s.push(ch),
-                    }
-                }
-                tokens.push((start_line, Token::Str(s)));
-            }
-            c if c.is_ascii_alphabetic() || c == '_' => {
-                let start = i;
-                while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '_') {
-                    i += 1;
-                }
-                let ident: String = chars[start..i].iter().collect();
-                tokens.push((line, Token::Ident(ident)));
-            }
-            other => anyhow::bail!("line {line}: unsupported character {other:?}"),
-        }
-    }
-    Ok(tokens)
-}
-
-/// A value on the right-hand side of a project.lua assignment.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum LuaValue {
-    Str(String),
-    List(Vec<String>),
-    /// `true`, `false` or `nil`: carried so an alias to it resolves, never
-    /// used by the sync itself.
-    Keyword(String),
-}
-
-/// Parse the assignment subset of lua used by config/project.lua into the
-/// fields sync-metadata cares about.
-pub fn parse_project_lua(text: &str) -> Result<LocalMeta> {
-    let tokens = tokenize_lua(text)?;
-    let mut vars: Vec<(String, LuaValue)> = Vec::new();
-    let lookup = |vars: &[(String, LuaValue)], name: &str| -> Option<LuaValue> {
-        vars.iter()
-            .rev()
-            .find(|(n, _)| n == name)
-            .map(|(_, v)| v.clone())
-    };
-    let mut i = 0;
-    while i < tokens.len() {
-        let (line, ref tok) = tokens[i];
-        let Token::Ident(name) = tok else {
-            anyhow::bail!("line {line}: expected an assignment, found {tok:?}");
-        };
-        let Some((_, Token::Eq)) = tokens.get(i + 1) else {
-            anyhow::bail!("line {line}: expected `=` after {name}");
-        };
-        i += 2;
-        let value = match tokens.get(i) {
-            Some((_, Token::Str(s))) => {
-                i += 1;
-                LuaValue::Str(s.clone())
-            }
-            Some((_, Token::Ident(kw))) if matches!(kw.as_str(), "true" | "false" | "nil") => {
-                i += 1;
-                LuaValue::Keyword(kw.clone())
-            }
-            Some((l, Token::Ident(other))) => {
-                i += 1;
-                lookup(&vars, other)
-                    .with_context(|| format!("line {l}: {name} refers to undefined {other}"))?
-            }
-            Some((_, Token::LBrace)) => {
-                i += 1;
-                let mut items = Vec::new();
-                loop {
-                    match tokens.get(i) {
-                        Some((_, Token::RBrace)) => {
-                            i += 1;
-                            break;
-                        }
-                        Some((_, Token::Str(s))) => {
-                            items.push(s.clone());
-                            i += 1;
-                            match tokens.get(i) {
-                                Some((_, Token::Comma)) => i += 1,
-                                Some((_, Token::RBrace)) => {}
-                                Some((l, t)) => {
-                                    anyhow::bail!(
-                                        "line {l}: expected `,` or `}}` in list, found {t:?}"
-                                    )
-                                }
-                                None => anyhow::bail!("line {line}: unterminated list for {name}"),
-                            }
-                        }
-                        Some((l, t)) => {
-                            anyhow::bail!("line {l}: expected a string in list, found {t:?}")
-                        }
-                        None => anyhow::bail!("line {line}: unterminated list for {name}"),
-                    }
-                }
-                LuaValue::List(items)
-            }
-            Some((l, t)) => anyhow::bail!("line {l}: unsupported value for {name}: {t:?}"),
-            None => anyhow::bail!("line {line}: missing value for {name}"),
-        };
-        vars.push((name.clone(), value));
-    }
-
-    let name = match lookup(&vars, "NAME") {
-        Some(LuaValue::Str(s)) if !s.is_empty() => s,
-        Some(LuaValue::Str(_)) | None => anyhow::bail!("no NAME"),
-        Some(other) => anyhow::bail!("NAME is {other:?}, expected a string"),
-    };
-    let description = match lookup(&vars, "DESCRIPTION_SHORT") {
-        Some(LuaValue::Str(s)) => Some(s),
-        Some(LuaValue::Keyword(k)) if k == "nil" => None,
-        Some(other) => anyhow::bail!("DESCRIPTION_SHORT is {other:?}, expected a string"),
-        None => None,
-    };
-    let keywords = match lookup(&vars, "KEYWORDS") {
-        Some(LuaValue::List(l)) => Some(l),
-        Some(LuaValue::Keyword(k)) if k == "nil" => None,
-        Some(other) => anyhow::bail!("KEYWORDS is {other:?}, expected a list"),
-        None => None,
-    };
-    Ok(LocalMeta {
-        name,
-        description,
-        keywords,
-    })
 }
 
 #[cfg(test)]
@@ -1371,14 +1020,21 @@ mod tests {
         }
     }
 
+    #[test]
+    fn remote_rank_follows_gh() {
+        assert!(remote_rank("upstream") > remote_rank("github"));
+        assert!(remote_rank("github") > remote_rank("origin"));
+        assert!(remote_rank("origin") > remote_rank("mirror"));
+    }
+
     // ── prune-ci-gql-obo ──
 
     #[test]
     fn inventory_query_first_page_asks_for_both() {
         let q = inventory_query(&Page::First, &Page::First);
-        assert!(q.starts_with("query($owner:String!,$name:String!,$dafter:String,$rafter:String)"));
-        assert!(q.contains("deployments(first:100,after:$dafter"));
-        assert!(q.contains("releases(first:100,after:$rafter"));
+        assert!(q.starts_with("query($owner:String!,$name:String!,$d:String,$r:String)"));
+        assert!(q.contains("deployments(first:100,after:$d,"));
+        assert!(q.contains("releases(first:100,after:$r,"));
         assert!(q.contains("latestStatus{state}"));
     }
 
@@ -1388,25 +1044,31 @@ mod tests {
         // takes its variable with it.
         let q = inventory_query(&Page::Done, &Page::After("c".into()));
         assert!(!q.contains("deployments"), "{q}");
-        assert!(!q.contains("$dafter"), "{q}");
+        assert!(!q.contains("$d"), "{q}");
         assert!(q.contains("releases("), "{q}");
         let q = inventory_query(&Page::After("c".into()), &Page::Done);
         assert!(!q.contains("releases"), "{q}");
-        assert!(!q.contains("$rafter"), "{q}");
+        assert!(!q.contains("$r"), "{q}");
+    }
+
+    fn page(json: &str) -> RepoInventory {
+        serde_json::from_str(json).unwrap()
     }
 
     #[test]
-    fn parse_inventory_page_full() {
-        let out = "D DE_a 11 ACTIVE SUCCESS\n\
-                   D DE_b 12 INACTIVE FAILURE\n\
-                   D DE_c 13 INACTIVE -\n\
-                   DP true Y3Vy==\n\
-                   R 21\n\
-                   R 22\n\
-                   RP false -";
-        let page = parse_inventory_page(out).unwrap();
+    fn inventory_absorbs_pages_until_done() {
+        let mut inv = Inventory::new();
+        inv.absorb(page(
+            r#"{"deployments":{"pageInfo":{"hasNextPage":true,"endCursor":"Y3Vy=="},
+                "nodes":[{"id":"DE_a","databaseId":11,"state":"ACTIVE","latestStatus":{"state":"SUCCESS"}},
+                         {"id":"DE_b","databaseId":12,"state":"INACTIVE","latestStatus":{"state":"FAILURE"}},
+                         {"id":"DE_c","databaseId":13,"state":"INACTIVE","latestStatus":null}]},
+               "releases":{"pageInfo":{"hasNextPage":false,"endCursor":null},
+                "nodes":[{"databaseId":21},{"databaseId":22}]}}"#,
+        ))
+        .unwrap();
         assert_eq!(
-            page.deployments,
+            inv.deployments,
             vec![
                 GqlDeployment {
                     node_id: "DE_a".into(),
@@ -1428,25 +1090,29 @@ mod tests {
                 },
             ]
         );
-        assert_eq!(page.releases, vec![21, 22]);
-        assert_eq!(page.deployments_next, Some(Page::After("Y3Vy==".into())));
-        assert_eq!(page.releases_next, Some(Page::Done));
+        assert_eq!(inv.releases, vec![21, 22]);
+        assert_eq!(inv.dpage, Page::After("Y3Vy==".into()));
+        assert_eq!(inv.rpage, Page::Done);
+        assert!(inv.pending());
+        // The second page asks only for deployments.
+        inv.absorb(page(
+            r#"{"deployments":{"pageInfo":{"hasNextPage":false,"endCursor":"x"},
+                "nodes":[{"id":"DE_d","databaseId":14,"state":"ERROR","latestStatus":{"state":"ERROR"}}]}}"#,
+        ))
+        .unwrap();
+        assert!(inv.deployments[3].failed);
+        assert!(!inv.pending());
     }
 
     #[test]
-    fn parse_inventory_page_error_state_counts_as_failed() {
-        let page = parse_inventory_page("D DE_a 1 ERROR ERROR\nDP false -").unwrap();
-        assert!(page.deployments[0].failed);
-        assert_eq!(page.releases_next, None);
-    }
-
-    #[test]
-    fn parse_inventory_page_rejects_garbage() {
-        assert!(parse_inventory_page("D DE_a notanumber ACTIVE SUCCESS").is_err());
-        assert!(parse_inventory_page("D DE_a 1").is_err());
-        assert!(parse_inventory_page("DP maybe x").is_err());
-        assert!(parse_inventory_page("DP true -").is_err());
-        assert!(parse_inventory_page("X 1").is_err());
+    fn inventory_rejects_a_missing_connection_or_cursor() {
+        let mut inv = Inventory::new();
+        assert!(inv.absorb(page("{}")).is_err());
+        let mut inv = Inventory::new();
+        inv.rpage = Page::Done;
+        let no_cursor =
+            r#"{"deployments":{"pageInfo":{"hasNextPage":true,"endCursor":null},"nodes":[]}}"#;
+        assert!(inv.absorb(page(no_cursor)).is_err());
     }
 
     #[test]
@@ -1458,62 +1124,80 @@ mod tests {
             failed: false,
         };
         let inactive = GqlDeployment {
-            node_id: "DE_b".into(),
+            node_id: "DE_b\"){evil}".into(),
             database_id: 2,
             inactive: true,
             failed: false,
         };
-        let m = deployment_mutation(&[&active, &inactive]).unwrap();
+        let (m, vars) = deployment_mutation(&[&active, &inactive]);
         assert_eq!(
             m,
-            "mutation{\
-             s0:createDeploymentStatus(input:{deploymentId:\"DE_a\",state:INACTIVE}){clientMutationId} \
-             d0:deleteDeployment(input:{id:\"DE_a\"}){clientMutationId} \
-             d1:deleteDeployment(input:{id:\"DE_b\"}){clientMutationId} \
+            "mutation($id0:ID!,$id1:ID!){\
+             s0:createDeploymentStatus(input:{deploymentId:$id0,state:INACTIVE}){clientMutationId} \
+             d0:deleteDeployment(input:{id:$id0}){clientMutationId} \
+             d1:deleteDeployment(input:{id:$id1}){clientMutationId}\
              }"
         );
+        // Node ids travel as variables, so even a hostile one stays data.
+        assert_eq!(vars, json!({ "id0": "DE_a", "id1": "DE_b\"){evil}" }));
     }
 
     #[test]
-    fn graphql_errors_reads_alias_and_message() {
-        // As gh prints a failing response: the data, then the errors.
-        let json = r#"{"data":{"r0":{"x":1},"r1":null},"errors":[{"type":"NOT_FOUND","path":["r1"],"locations":[{"line":1,"column":89}],"message":"Could not resolve to a Repository with the name 'o/\"q\"'."},{"message":"no path here"}]}"#;
-        let errors = graphql_errors(json).unwrap();
+    fn plan_reports_like_rest_obo() {
+        let mut inv = Inventory::new();
+        inv.deployments = vec![
+            GqlDeployment {
+                node_id: "a".into(),
+                database_id: 1,
+                inactive: true,
+                failed: false,
+            },
+            GqlDeployment {
+                node_id: "b".into(),
+                database_id: 2,
+                inactive: true,
+                failed: false,
+            },
+        ];
+        inv.releases = vec![10, 11];
+        let runs = [(20, false), (21, true)];
+        let plan = Plan::new(&inv, &runs, 1);
+        assert_eq!(plan.deployments, vec![1]);
+        assert_eq!(plan.releases, vec![11]);
+        assert_eq!(plan.runs, vec![21]);
+        let repo = RepoId::from_slug("o/n").unwrap();
         assert_eq!(
-            errors,
+            plan.rest_routes(&repo),
+            vec!["/repos/o/n/releases/11", "/repos/o/n/actions/runs/21"]
+        );
+        let (lines, errors) = plan.report(
+            &inv,
+            runs.len(),
+            &[Ok(())],
+            &[Ok(()), Err(anyhow::anyhow!("boom"))],
+        );
+        assert_eq!(
+            lines,
             vec![
-                (
-                    Some("r1".to_string()),
-                    "Could not resolve to a Repository with the name 'o/\"q\"'.".to_string()
-                ),
-                (None, "no path here".to_string()),
+                "deployments: 2 found, deleting 1",
+                "  deleted deployment 2",
+                "releases: 2 found, deleting 1",
+                "  deleted release 11",
+                "workflow runs: 2 found, deleting 1",
             ]
         );
-    }
-
-    #[test]
-    fn graphql_errors_none_without_an_errors_array() {
-        assert_eq!(graphql_errors(""), None);
-        assert_eq!(graphql_errors(r#"{"data":{}}"#), None);
-    }
-
-    #[test]
-    fn deployment_mutation_rejects_unsafe_node_ids() {
-        let bad = GqlDeployment {
-            node_id: "x\"){evil}".into(),
-            database_id: 1,
-            inactive: true,
-            failed: false,
-        };
-        assert!(deployment_mutation(&[&bad]).is_err());
+        assert_eq!(errors, vec!["deleting workflow run 21: boom"]);
     }
 
     // ── artifacts / last-workflow-state ──
 
     #[test]
     fn format_table_pads_columns() {
-        let rows = [["a-long-name", "12", "3"], ["b", "123456", "0"]];
-        let out = format_table(&["NAME", "SIZE", "DOWNLOADS"], &rows);
+        let rows = [
+            ["a-long-name".to_string(), "12".to_string(), "3".to_string()],
+            ["b".to_string(), "123456".to_string(), "0".to_string()],
+        ];
+        let out = format_table(["NAME", "SIZE", "DOWNLOADS"], &rows);
         assert_eq!(
             out,
             "NAME         SIZE    DOWNLOADS\n\
@@ -1522,10 +1206,18 @@ mod tests {
         );
     }
 
+    fn run(status: Option<&str>, conclusion: Option<&str>) -> WorkflowRun {
+        WorkflowRun {
+            id: 1,
+            status: status.map(String::from),
+            conclusion: conclusion.map(String::from),
+        }
+    }
+
     #[test]
     fn workflow_state_prefers_conclusion() {
         assert_eq!(
-            workflow_state_from_line("completed\tsuccess"),
+            workflow_state(&run(Some("completed"), Some("success"))),
             Some("success".to_string())
         );
     }
@@ -1533,150 +1225,37 @@ mod tests {
     #[test]
     fn workflow_state_falls_back_to_status_while_running() {
         assert_eq!(
-            workflow_state_from_line("in_progress\t"),
+            workflow_state(&run(Some("in_progress"), None)),
             Some("in_progress".to_string())
         );
         assert_eq!(
-            workflow_state_from_line("queued\tnull"),
+            workflow_state(&run(Some("queued"), Some(""))),
             Some("queued".to_string())
         );
+        assert_eq!(workflow_state(&run(None, None)), None);
     }
 
-    #[test]
-    fn workflow_state_none_without_runs() {
-        assert_eq!(workflow_state_from_line(""), None);
-        assert_eq!(workflow_state_from_line("  \n"), None);
-    }
-
-    // ── project.lua ──
+    // ── sync-metadata ──
 
     #[test]
-    fn parse_project_lua_multiline_keywords() {
-        let text = r#"-- project definitions
-NAME = "demos-os-linux"
-DESCRIPTION_SHORT = "demos-os-linux is a project to demo the Linux API"
-DESCRIPTION_LONG = DESCRIPTION_SHORT
-KEYWORDS = {
-    "linux",
-    "api", -- trailing comment
-    "c-plus-plus",
-}
-"#;
-        let meta = parse_project_lua(text).unwrap();
-        assert_eq!(
-            meta,
-            LocalMeta {
-                name: "demos-os-linux".to_string(),
-                description: Some("demos-os-linux is a project to demo the Linux API".to_string()),
-                keywords: Some(vec![
-                    "linux".to_string(),
-                    "api".to_string(),
-                    "c-plus-plus".to_string()
-                ]),
-            }
-        );
-    }
-
-    #[test]
-    fn parse_project_lua_single_line_keywords_and_extra_fields() {
-        let text = r#"NAME = "x"
-NAME_FANCY = "X"
-LICENSE_TYPE = "MIT"
-PYPI = "x-py"
-KEYWORDS = {"a", "b", "c"}
-"#;
-        let meta = parse_project_lua(text).unwrap();
-        assert_eq!(meta.name, "x");
-        assert_eq!(meta.description, None);
-        assert_eq!(
-            meta.keywords,
-            Some(vec!["a".to_string(), "b".to_string(), "c".to_string()])
-        );
-    }
-
-    #[test]
-    fn parse_project_lua_string_escapes_and_single_quotes() {
-        let text = "NAME = 'n'\nDESCRIPTION_SHORT = \"say \\\"hi\\\"\"\n";
-        let meta = parse_project_lua(text).unwrap();
-        assert_eq!(meta.name, "n");
-        assert_eq!(meta.description.as_deref(), Some("say \"hi\""));
-    }
-
-    #[test]
-    fn parse_project_lua_booleans_and_long_strings() {
-        let text = "NAME = \"n\"\nPYPI = true\nDESCRIPTION_LONG = [[\nfirst line\nsecond line]]\nDESCRIPTION_SHORT = [[one-liner]]\nKEYWORDS = nil\n";
-        let meta = parse_project_lua(text).unwrap();
-        assert_eq!(meta.name, "n");
-        assert_eq!(meta.description.as_deref(), Some("one-liner"));
-        assert_eq!(meta.keywords, None);
-        // A boolean where a string is expected is a type error, not a guess.
-        let err = parse_project_lua("NAME = \"n\"\nDESCRIPTION_SHORT = true\n").unwrap_err();
-        assert!(err.to_string().contains("DESCRIPTION_SHORT"), "{err}");
-    }
-
-    #[test]
-    fn parse_project_lua_long_string_keeps_inner_newlines() {
-        let text = "NAME = \"n\"\nDESCRIPTION_SHORT = [[\na\nb]]\n";
-        let meta = parse_project_lua(text).unwrap();
-        assert_eq!(meta.description.as_deref(), Some("a\nb"));
-    }
-
-    #[test]
-    fn parse_project_lua_requires_name() {
-        let err = parse_project_lua("KEYWORDS = {\"a\"}\n").unwrap_err();
-        assert!(err.to_string().contains("NAME"), "{err}");
-    }
-
-    #[test]
-    fn parse_project_lua_rejects_unsupported_syntax_with_line() {
-        let err = parse_project_lua("NAME = \"n\"\nKEYWORDS = { \"a\" .. \"b\" }\n").unwrap_err();
-        assert!(err.to_string().contains("line 2"), "{err}");
-        let err = parse_project_lua("NAME = \"n\"\nlocal x = 1\n").unwrap_err();
-        assert!(err.to_string().contains("line 2"), "{err}");
-    }
-
-    #[test]
-    fn parse_project_lua_alias_to_undefined_is_an_error() {
-        let err = parse_project_lua("NAME = \"n\"\nDESCRIPTION_LONG = NOPE\n").unwrap_err();
-        assert!(err.to_string().contains("NOPE"), "{err}");
-    }
-
-    // ── gh repo view output ──
-
-    #[test]
-    fn parse_github_meta_full() {
-        let out = "veltzer/demo\nfalse true false\napi linux\nA demo repo";
-        let meta = parse_github_meta(out).unwrap();
+    fn github_meta_from_the_repo_endpoint() {
+        let json = r#"{"id":1,"name":"demo","full_name":"veltzer/demo","description":null,
+            "topics":["linux","api"],"has_wiki":false,"has_issues":true,"has_projects":false,
+            "stargazers_count":3}"#;
+        let meta: GithubMeta = serde_json::from_str(json).unwrap();
         assert_eq!(
             meta,
             GithubMeta {
-                name_with_owner: "veltzer/demo".to_string(),
-                description: "A demo repo".to_string(),
-                topics: vec!["api".to_string(), "linux".to_string()],
+                full_name: "veltzer/demo".to_string(),
+                name: "demo".to_string(),
+                description: String::new(),
+                topics: vec!["linux".to_string(), "api".to_string()],
                 wiki: false,
                 issues: true,
                 projects: false,
             }
         );
     }
-
-    #[test]
-    fn parse_github_meta_empty_topics_and_description() {
-        // capture_output trims, so the trailing newlines are gone.
-        let out = "veltzer/demo\ntrue true true";
-        let meta = parse_github_meta(out).unwrap();
-        assert!(meta.topics.is_empty());
-        assert_eq!(meta.description, "");
-        assert!(meta.wiki && meta.issues && meta.projects);
-    }
-
-    #[test]
-    fn parse_github_meta_rejects_garbage() {
-        assert!(parse_github_meta("").is_err());
-        assert!(parse_github_meta("veltzer/demo\nyes no maybe").is_err());
-    }
-
-    // ── plan_sync ──
 
     fn local(desc: Option<&str>, keywords: Option<&[&str]>) -> LocalMeta {
         LocalMeta {
@@ -1688,7 +1267,8 @@ KEYWORDS = {"a", "b", "c"}
 
     fn remote(desc: &str, topics: &[&str]) -> GithubMeta {
         GithubMeta {
-            name_with_owner: "veltzer/demo".to_string(),
+            full_name: "veltzer/demo".to_string(),
+            name: "demo".to_string(),
             description: desc.to_string(),
             topics: topics.iter().map(|s| s.to_string()).collect(),
             wiki: POLICY_WIKI,
@@ -1727,13 +1307,14 @@ KEYWORDS = {"a", "b", "c"}
             plan.report,
             vec!["description", "  local:  new", "  github: old"]
         );
-        assert_eq!(plan.edit_args, vec!["--description", "new"]);
+        assert_eq!(plan.description.as_deref(), Some("new"));
+        assert!(plan.topics.is_none() && plan.features.is_empty());
     }
 
     #[test]
-    fn plan_sync_topics_touch_only_the_difference() {
+    fn plan_sync_topics_set_the_whole_list() {
         let plan = plan_sync(
-            &local(None, Some(&["shared", "added"])),
+            &local(None, Some(&["shared", "added", "added"])),
             &remote("", &["removed", "shared"]),
         );
         assert_eq!(
@@ -1744,10 +1325,9 @@ KEYWORDS = {"a", "b", "c"}
                 "  github: removed shared"
             ]
         );
-        // "shared" is named in neither list: gh would let the remove win.
         assert_eq!(
-            plan.edit_args,
-            vec!["--remove-topic", "removed", "--add-topic", "added"]
+            plan.topics,
+            Some(vec!["added".to_string(), "shared".to_string()])
         );
     }
 
@@ -1766,8 +1346,8 @@ KEYWORDS = {"a", "b", "c"}
             ]
         );
         assert_eq!(
-            plan.edit_args,
-            vec!["--enable-wiki=false", "--enable-projects=false"]
+            plan.features,
+            vec![("has_wiki", false), ("has_projects", false)]
         );
     }
 
@@ -1780,6 +1360,6 @@ KEYWORDS = {"a", "b", "c"}
             plan.report,
             vec!["name", "  local:  other", "  github: demo"]
         );
-        assert!(plan.edit_args.is_empty());
+        assert!(!plan.has_edits());
     }
 }

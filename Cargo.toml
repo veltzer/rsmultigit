@@ -9,7 +9,7 @@ repository = "https://github.com/veltzer/rsmultigit"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
-clap_complete = "4.5"
+clap_complete = "4"
 # vendored-openssl unconditionally: the canonical ci.yml builds every target
 # with a plain `cargo build --release`, and the aarch64 cross build cannot
 # link the runner's x86_64 libssl.
@@ -25,7 +25,21 @@ shellexpand = "3"
 similar = "3"
 camino = "1"
 indicatif = "0.18"
-inquire = "0.9.4"
+inquire = "0.9"
+# No default features: those add JWT (GitHub App auth, which we do not use)
+# on aws-lc-rs, a C/CMake build that would burden the aarch64 cross build.
+# What is left: hyper client, rustls on ring, redirects, retries, timeouts.
+octocrab = { version = "0.54", default-features = false, features = [
+    "default-client",
+    "follow-redirect",
+    "retry",
+    "rustls",
+    "rustls-ring",
+    "timeout",
+] }
+serde_json = "1"
+futures-util = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread"] }
 
 [dev-dependencies]
 tempfile = "3"

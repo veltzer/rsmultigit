@@ -1,7 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::{BufReader, Read};
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -279,10 +278,8 @@ pub fn resolve_repos(config: &CheckConfig) -> Result<Vec<Utf8PathBuf>> {
     Ok(out)
 }
 
-fn match_glob(pattern: &str, name: &str) -> Result<bool> {
-    glob::Pattern::new(pattern)
-        .map(|p| p.matches(name))
-        .with_context(|| format!("invalid glob pattern: {pattern}"))
+fn compile_glob(pattern: &str) -> Result<glob::Pattern> {
+    glob::Pattern::new(pattern).with_context(|| format!("invalid glob pattern: {pattern}"))
 }
 
 /// The selection fields shared by `[[check-same]]`, `[[check-exists]]` and
@@ -294,38 +291,26 @@ pub(crate) struct Selection<'a> {
     pub(crate) marker_absent: Option<&'a str>,
 }
 
-impl Rule {
-    fn selection(&self) -> Selection<'_> {
-        Selection {
-            select: &self.select,
-            exclude: self.exclude.as_deref(),
-            marker: self.marker.as_deref(),
-            marker_absent: self.marker_absent.as_deref(),
+// The three rule types repeat the selection fields rather than sharing a
+// flattened struct, because serde's `flatten` cannot be combined with the
+// `deny_unknown_fields` every config struct carries. One macro gives them
+// all the same accessor instead.
+macro_rules! impl_selection {
+    ($($rule:ty),*) => {$(
+        impl $rule {
+            pub(crate) fn selection(&self) -> Selection<'_> {
+                Selection {
+                    select: &self.select,
+                    exclude: self.exclude.as_deref(),
+                    marker: self.marker.as_deref(),
+                    marker_absent: self.marker_absent.as_deref(),
+                }
+            }
         }
-    }
+    )*};
 }
 
-impl ExistsRule {
-    fn selection(&self) -> Selection<'_> {
-        Selection {
-            select: &self.select,
-            exclude: self.exclude.as_deref(),
-            marker: self.marker.as_deref(),
-            marker_absent: self.marker_absent.as_deref(),
-        }
-    }
-}
-
-impl SubmoduleRule {
-    pub(crate) fn selection(&self) -> Selection<'_> {
-        Selection {
-            select: &self.select,
-            exclude: self.exclude.as_deref(),
-            marker: self.marker.as_deref(),
-            marker_absent: self.marker_absent.as_deref(),
-        }
-    }
-}
+impl_selection!(Rule, ExistsRule, SubmoduleRule);
 
 /// Apply `select`, `exclude`, `marker` and `marker_absent` filters to the
 /// discovered repo list.
@@ -334,18 +319,17 @@ pub(crate) fn select_repos(
     rule: &Selection<'_>,
     repos: &[Utf8PathBuf],
 ) -> Result<Vec<Utf8PathBuf>> {
+    let select = compile_glob(rule.select)?;
+    let exclude = rule.exclude.map(compile_glob).transpose()?;
     let mut out = Vec::new();
     for repo in repos {
-        let name = match repo.file_name() {
-            Some(n) => n.to_string(),
-            None => continue,
+        let Some(name) = repo.file_name() else {
+            continue;
         };
-        if !match_glob(rule.select, &name)? {
+        if !select.matches(name) {
             continue;
         }
-        if let Some(ex) = rule.exclude
-            && match_glob(ex, &name)?
-        {
+        if exclude.as_ref().is_some_and(|ex| ex.matches(name)) {
             continue;
         }
         if let Some(marker) = rule.marker
@@ -364,19 +348,9 @@ pub(crate) fn select_repos(
 }
 
 fn hash_file(path: &Utf8Path) -> Result<[u8; 32]> {
-    let file = File::open(path).with_context(|| format!("failed to open {}", path))?;
-    let mut reader = BufReader::with_capacity(64 * 1024, file);
+    let mut file = File::open(path).with_context(|| format!("failed to open {}", path))?;
     let mut hasher = Sha256::new();
-    let mut buf = [0u8; 64 * 1024];
-    loop {
-        let n = reader
-            .read(&mut buf)
-            .with_context(|| format!("failed to read {}", path))?;
-        if n == 0 {
-            break;
-        }
-        hasher.update(&buf[..n]);
-    }
+    std::io::copy(&mut file, &mut hasher).with_context(|| format!("failed to read {}", path))?;
     Ok(hasher.finalize().into())
 }
 

@@ -5,7 +5,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 
 use anyhow::{Context, Result, bail};
 
-use crate::subprocess_utils::check_call_with_env;
+use crate::subprocess_utils::Cmd;
 
 /// Should `cargo release` release this project? Only a repo whose root
 /// `Cargo.toml` declares a `[package]` that cargo would publish. That is
@@ -93,12 +93,10 @@ impl Release {
     /// Cargo.toml, commits, tags, pushes, and publishes to crates.io (see
     /// release.toml in the repo for the rest of the policy).
     pub fn run(&self, project: &Utf8Path) -> Result<()> {
-        check_call_with_env(
-            project,
-            "cargo",
-            &["release", self.level, "--execute", "--no-confirm"],
-            &[(TOKEN_VAR, &self.token)],
-        )
+        Cmd::new(project, "cargo")
+            .args(&["release", self.level, "--execute", "--no-confirm"])
+            .env(TOKEN_VAR, &self.token)
+            .run()
     }
 }
 

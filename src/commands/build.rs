@@ -2,7 +2,7 @@ use camino::Utf8Path;
 
 use anyhow::Result;
 
-use crate::subprocess_utils::check_call_maybe_ve;
+use crate::subprocess_utils::Cmd;
 
 fn is_build_disabled(project: &Utf8Path) -> bool {
     project.join(".disable").exists()
@@ -32,12 +32,15 @@ pub fn check_rsconstruct(project: &Utf8Path) -> Result<bool> {
 // Repos without a `.venv` run with the environment unchanged.
 
 pub fn build_bootstrap(project: &Utf8Path, venv: bool) -> Result<()> {
-    check_call_maybe_ve(project, venv, "python", &["bootstrap.py"])?;
+    Cmd::new(project, "python")
+        .args(&["bootstrap.py"])
+        .venv(venv)?
+        .run()?;
     Ok(())
 }
 
 pub fn build_make(project: &Utf8Path, venv: bool) -> Result<()> {
-    check_call_maybe_ve(project, venv, "make", &[])?;
+    Cmd::new(project, "make").venv(venv)?.run()?;
     Ok(())
 }
 
@@ -54,6 +57,9 @@ pub fn build_cargo(project: &Utf8Path, venv: bool) -> Result<()> {
 }
 
 pub fn build_rsconstruct(project: &Utf8Path, venv: bool) -> Result<()> {
-    check_call_maybe_ve(project, venv, "rsconstruct", &["--quiet", "build"])?;
+    Cmd::new(project, "rsconstruct")
+        .args(&["--quiet", "build"])
+        .venv(venv)?
+        .run()?;
     Ok(())
 }

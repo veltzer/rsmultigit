@@ -3,7 +3,7 @@ use camino::Utf8Path;
 use anyhow::Result;
 
 use crate::cli::CargoWhat;
-use crate::subprocess_utils::check_call_maybe_ve;
+use crate::subprocess_utils::Cmd;
 
 /// Which cargo profile(s) an operation runs under, as chosen by
 /// `--release` / `--profile <name>` on the command line.
@@ -104,7 +104,7 @@ pub fn run(
 ) -> Result<()> {
     for args in invocations(what, profile, check) {
         let args: Vec<&str> = args.iter().map(String::as_str).collect();
-        check_call_maybe_ve(project, venv, "cargo", &args)?;
+        Cmd::new(project, "cargo").args(&args).venv(venv)?.run()?;
     }
     Ok(())
 }

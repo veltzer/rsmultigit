@@ -69,22 +69,46 @@ impl Captured {
     }
 }
 
-// Per-thread capture buffer. When present, `check_call` and `check_call_ve_env`
-// collect subprocess stdout/stderr into it instead of inheriting the parent's
+// Per-thread capture buffer. When present, every child run through `Cmd`
+// has its stdout/stderr collected into it instead of inheriting the parent's
 // streams. This lets the parallel runner replay output in project order.
 thread_local! {
     static CAPTURE_BUF: RefCell<Option<Captured>> = const { RefCell::new(None) };
 }
 
-/// Begin capturing subprocess output on this thread. Any prior buffer is replaced.
-pub fn enter_capture() {
-    CAPTURE_BUF.with(|cell| {
-        *cell.borrow_mut() = Some(Captured::default());
-    });
+/// Output capture on this thread for as long as the guard lives. `finish`
+/// ends it and hands back what was collected; a guard dropped without
+/// `finish` (an early return, a panic) still ends it, discarding the output,
+/// so capture can never leak into whatever the thread runs next.
+#[must_use = "capture ends when the guard is dropped"]
+pub struct CaptureGuard {
+    active: bool,
 }
 
-/// Stop capturing and return what was collected (empty if capture was not active).
-pub fn leave_capture() -> Captured {
+/// Begin capturing subprocess output (and `out_line`) on this thread. Any
+/// prior buffer is replaced.
+pub fn capture() -> CaptureGuard {
+    CAPTURE_BUF.with(|cell| *cell.borrow_mut() = Some(Captured::default()));
+    CaptureGuard { active: true }
+}
+
+impl CaptureGuard {
+    /// Stop capturing and return what was collected.
+    pub fn finish(mut self) -> Captured {
+        self.active = false;
+        take_capture()
+    }
+}
+
+impl Drop for CaptureGuard {
+    fn drop(&mut self) {
+        if self.active {
+            take_capture();
+        }
+    }
+}
+
+fn take_capture() -> Captured {
     CAPTURE_BUF.with(|cell| cell.borrow_mut().take().unwrap_or_default())
 }
 
@@ -114,112 +138,148 @@ fn append_to_capture(stream: Stream, bytes: &[u8]) {
     });
 }
 
-/// Run a command in `cwd` with the local virtualenv activated: `.venv/bin` is
-/// prepended to PATH and VIRTUAL_ENV points at `.venv`, so the tools the
-/// command spawns (pytest, mypy, ...) resolve from the repo's own venv. The
-/// command itself is resolved through that same modified PATH, so a copy of
-/// it in `.venv/bin` wins over the ambient one. When `cwd` has no
-/// `.venv/bin`, the command runs with the environment unchanged.
-pub fn check_call_ve_env(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<()> {
-    let venv = cwd.join(".venv");
-    let venv_bin = venv.join("bin");
-    let mut command = Command::new(cmd);
-    command.args(args).current_dir(cwd);
-    if venv_bin.is_dir() {
-        let path = match std::env::var_os("PATH") {
-            Some(path) => {
-                // Plain PathBufs: PATH entries need not be UTF-8, and every
-                // one of them must survive the round trip.
-                let mut parts = vec![venv_bin.into_std_path_buf()];
-                parts.extend(std::env::split_paths(&path));
-                std::env::join_paths(parts)?
-            }
-            None => venv_bin.into_os_string(),
+/// What a child printed and how it exited, for `Cmd::output`.
+#[derive(Debug)]
+pub struct CmdOutput {
+    /// The exit code; -1 when the child was killed by a signal.
+    pub code: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// One child process, run in a repo directory. Built up with the
+/// environment changes it needs, then finished with one of `run` (output
+/// shown live or captured), `stdout` (output returned, non-zero exit is an
+/// error) or `output` (everything returned, any exit accepted).
+pub struct Cmd {
+    command: Command,
+    name: String,
+}
+
+impl Cmd {
+    pub fn new(cwd: &Utf8Path, program: &str) -> Self {
+        let mut command = Command::new(program);
+        command.current_dir(cwd);
+        Self {
+            command,
+            name: program.to_string(),
+        }
+    }
+
+    pub fn args(mut self, args: &[&str]) -> Self {
+        self.command.args(args);
+        self
+    }
+
+    /// Set a variable for this one child (and whatever it spawns). This is
+    /// how a secret fetched at run time reaches a tool without touching
+    /// disk: `cargo release` gets the crates.io token this way.
+    pub fn env(mut self, key: &str, value: &str) -> Self {
+        self.command.env(key, value);
+        self
+    }
+
+    /// Activate the repo's local virtualenv when `on`: `.venv/bin` is
+    /// prepended to PATH and VIRTUAL_ENV points at `.venv`, so the tools the
+    /// command spawns (pytest, mypy, ...) resolve from the repo's own venv.
+    /// The program itself is resolved through that same PATH, so a copy of
+    /// it in `.venv/bin` wins over the ambient one. A repo without a
+    /// `.venv/bin` runs with the environment unchanged. This is how the
+    /// global `--venv`/`--no-venv` flag is honoured.
+    pub fn venv(mut self, on: bool) -> Result<Self> {
+        let Some(cwd) = self.command.get_current_dir().map(|d| d.to_path_buf()) else {
+            return Ok(self);
         };
-        command.env("PATH", path).env("VIRTUAL_ENV", &venv);
+        let venv = cwd.join(".venv");
+        let venv_bin = venv.join("bin");
+        if on && venv_bin.is_dir() {
+            let path = match std::env::var_os("PATH") {
+                Some(path) => {
+                    // Plain PathBufs: PATH entries need not be UTF-8, and
+                    // every one of them must survive the round trip.
+                    let mut parts = vec![venv_bin];
+                    parts.extend(std::env::split_paths(&path));
+                    std::env::join_paths(parts)?
+                }
+                None => venv_bin.into_os_string(),
+            };
+            self.command.env("PATH", path).env("VIRTUAL_ENV", &venv);
+        }
+        Ok(self)
     }
-    run_command(command, cmd)
-}
 
-/// Run a shell command in `cwd`, inheriting stdout/stderr (or routing into the
-/// per-thread capture buffer if active).
-pub fn check_call(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<()> {
-    run_inheriting_or_capturing(cwd, cmd, args)
-}
-
-/// Like `check_call`, with `envs` set in the environment of that one child
-/// process (and whatever it spawns in turn). This is how a secret fetched at
-/// run time reaches a tool without touching disk: `cargo release` hands the
-/// crates.io token to `cargo release` this way.
-pub fn check_call_with_env(
-    cwd: &Utf8Path,
-    cmd: &str,
-    args: &[&str],
-    envs: &[(&str, &str)],
-) -> Result<()> {
-    let mut command = Command::new(cmd);
-    command
-        .args(args)
-        .current_dir(cwd)
-        .envs(envs.iter().copied());
-    run_command(command, cmd)
-}
-
-/// Run a command in `cwd` with any inherited virtualenv selection removed:
-/// `VIRTUAL_ENV` and `UV_PROJECT_ENVIRONMENT` are unset, so a tool that picks
-/// its target environment itself sees only `cwd`.
-///
-/// This is what `uv` wants. uv locates the environment from the working
-/// directory — the project's `.venv` for `uv sync`/`uv lock`, `./.venv` for
-/// the `uv pip` interface — and an inherited `VIRTUAL_ENV` only overrides that
-/// with the venv the *caller's shell* happened to be in. For `uv sync` that
-/// earns a "does not match the project environment" warning; for `uv pip` it
-/// silently redirects the install into the wrong venv. Neither is wanted when
-/// running across a fleet of repos, where the repo dir is the whole point.
-pub fn check_call_clean_env(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<()> {
-    let mut command = Command::new(cmd);
-    command
-        .args(args)
-        .current_dir(cwd)
-        .env_remove("VIRTUAL_ENV")
-        .env_remove("UV_PROJECT_ENVIRONMENT");
-    run_command(command, cmd)
-}
-
-/// Run a tool in `cwd`, with the local virtualenv activated first when `venv`
-/// is true (see `check_call_ve_env`; a repo without a `.venv` runs with the
-/// environment unchanged either way). This is the entry point for commands
-/// honouring the global `--venv`/`--no-venv` flag.
-pub fn check_call_maybe_ve(cwd: &Utf8Path, venv: bool, cmd: &str, args: &[&str]) -> Result<()> {
-    if venv {
-        check_call_ve_env(cwd, cmd, args)
-    } else {
-        check_call(cwd, cmd, args)
+    /// Remove any inherited virtualenv selection: `VIRTUAL_ENV` and
+    /// `UV_PROJECT_ENVIRONMENT` are unset, so a tool that picks its target
+    /// environment itself sees only the repo directory.
+    ///
+    /// This is what `uv` wants. uv locates the environment from the working
+    /// directory (the project's `.venv` for `uv sync`/`uv lock`, `./.venv`
+    /// for the `uv pip` interface), and an inherited `VIRTUAL_ENV` only
+    /// overrides that with the venv the *caller's shell* happened to be in.
+    /// For `uv sync` that earns a "does not match the project environment"
+    /// warning; for `uv pip` it silently redirects the install into the
+    /// wrong venv. Neither is wanted across a fleet of repos.
+    pub fn without_venv_selection(mut self) -> Self {
+        self.command
+            .env_remove("VIRTUAL_ENV")
+            .env_remove("UV_PROJECT_ENVIRONMENT");
+        self
     }
-}
 
-fn run_inheriting_or_capturing(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<()> {
-    let mut command = Command::new(cmd);
-    command.args(args).current_dir(cwd);
-    run_command(command, cmd)
-}
-
-fn run_command(mut command: Command, name: &str) -> Result<()> {
-    if is_capturing() {
-        let status = run_capturing(command, name)?;
+    /// Run the child with its output shown live, or collected into the
+    /// thread's capture buffer when one is active. A non-zero exit is an
+    /// error.
+    pub fn run(self) -> Result<()> {
+        let Self { mut command, name } = self;
+        let status = if is_capturing() {
+            run_capturing(command, &name)?
+        } else {
+            command
+                .status()
+                .with_context(|| format!("failed to run {name}"))?
+        };
         if !status.success() {
             bail!("{name} failed with {status}");
         }
         Ok(())
-    } else {
-        let status = command
-            .status()
+    }
+
+    /// Run the child and return what it printed and how it exited; a
+    /// non-zero exit is not an error here. For commands where non-zero is a
+    /// meaningful answer (`git grep` exits 1 for "no match").
+    pub fn output(self) -> Result<CmdOutput> {
+        let Self { mut command, name } = self;
+        let output = command
+            .stdin(Stdio::null())
+            .output()
             .with_context(|| format!("failed to run {name}"))?;
-        if !status.success() {
-            bail!("{name} failed with {status}");
-        }
-        Ok(())
+        Ok(CmdOutput {
+            code: output.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+        })
     }
+
+    /// Run the child and return its stdout, trimmed. A non-zero exit is an
+    /// error carrying the child's stderr.
+    pub fn stdout(self) -> Result<String> {
+        let name = self.name.clone();
+        let out = self.output()?;
+        if out.code != 0 {
+            bail!("{name} failed: {}", out.stderr);
+        }
+        Ok(out.stdout.trim().to_string())
+    }
+}
+
+/// `Cmd::new(cwd, cmd).args(args).run()`: the common case.
+pub fn check_call(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<()> {
+    Cmd::new(cwd, cmd).args(args).run()
+}
+
+/// `Cmd::new(cwd, cmd).args(args).stdout()`: the common case.
+pub fn capture_output(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<String> {
+    Cmd::new(cwd, cmd).args(args).stdout()
 }
 
 /// Run `command` with stdout and stderr piped, appending each chunk to the
@@ -268,42 +328,6 @@ fn run_capturing(mut command: Command, name: &str) -> Result<std::process::ExitS
     Ok(child.wait()?)
 }
 
-/// Run a shell command in `cwd` and return its stdout as a String (trimmed).
-/// Fails if the command exits non-zero.
-pub fn capture_output(cwd: &Utf8Path, cmd: &str, args: &[&str]) -> Result<String> {
-    let output = Command::new(cmd)
-        .args(args)
-        .current_dir(cwd)
-        .stdin(Stdio::null())
-        .output()
-        .with_context(|| format!("failed to run {cmd}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("{cmd} failed: {stderr}");
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-/// Run a shell command in `cwd` and return (exit_code, stdout, stderr) without failing
-/// on non-zero exit. Useful for commands where non-zero is a meaningful signal
-/// (e.g. `git grep` returns 1 for "no match").
-pub fn capture_output_allow_failure(
-    cwd: &Utf8Path,
-    cmd: &str,
-    args: &[&str],
-) -> Result<(i32, String, String)> {
-    let output = Command::new(cmd)
-        .args(args)
-        .current_dir(cwd)
-        .stdin(Stdio::null())
-        .output()
-        .with_context(|| format!("failed to run {cmd}"))?;
-    let code = output.status.code().unwrap_or(-1);
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    Ok((code, stdout, stderr))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,15 +355,15 @@ mod tests {
     }
 
     #[test]
-    fn capture_output_allow_failure_returns_nonzero() {
-        let (code, _, _) = capture_output_allow_failure(&cwd(), "false", &[]).unwrap();
-        assert_ne!(code, 0);
+    fn output_returns_nonzero() {
+        let out = Cmd::new(&cwd(), "false").output().unwrap();
+        assert_ne!(out.code, 0);
     }
 
     #[test]
-    fn capture_output_allow_failure_returns_zero() {
-        let (code, _, _) = capture_output_allow_failure(&cwd(), "true", &[]).unwrap();
-        assert_eq!(code, 0);
+    fn output_returns_zero() {
+        let out = Cmd::new(&cwd(), "true").output().unwrap();
+        assert_eq!(out.code, 0);
     }
 
     #[test]
@@ -353,7 +377,7 @@ mod tests {
     }
 
     #[test]
-    fn check_call_ve_env_prefers_venv_tools() {
+    fn venv_prefers_venv_tools() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let bin = camino::Utf8Path::from_path(dir.path())
@@ -363,45 +387,46 @@ mod tests {
         let tool = bin.join("ve-env-probe");
         std::fs::write(&tool, "#!/bin/sh\necho from-venv\necho \"$VIRTUAL_ENV\"\n").unwrap();
         std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
-        enter_capture();
-        check_call_ve_env(
+        let guard = capture();
+        Cmd::new(
             camino::Utf8Path::from_path(dir.path()).unwrap(),
             "ve-env-probe",
-            &[],
         )
+        .venv(true)
+        .unwrap()
+        .run()
         .unwrap();
-        let text = leave_capture().to_text_lossy();
+        let text = guard.finish().to_text_lossy();
         assert!(text.contains("from-venv"));
         assert!(text.contains(".venv"));
     }
 
     #[test]
-    fn check_call_clean_env_unsets_virtual_env() {
+    fn without_venv_selection_unsets_virtual_env() {
         // SAFETY: single-threaded test process (nextest runs each test in its
         // own process), and the var is removed again before returning.
         unsafe {
             std::env::set_var("VIRTUAL_ENV", "/somewhere/else/.venv");
             std::env::set_var("UV_PROJECT_ENVIRONMENT", "/somewhere/else/env");
         }
-        enter_capture();
+        let guard = capture();
         check_call(&cwd(), "sh", &["-c", "echo ambient=[${VIRTUAL_ENV-unset}]"]).unwrap();
-        let ambient = leave_capture().to_text_lossy();
-        enter_capture();
-        check_call_clean_env(
-            &cwd(),
-            "sh",
-            &[
+        let ambient = guard.finish().to_text_lossy();
+        let guard = capture();
+        Cmd::new(&cwd(), "sh")
+            .args(&[
                 "-c",
                 "echo ve=[${VIRTUAL_ENV-unset}] upe=[${UV_PROJECT_ENVIRONMENT-unset}]",
-            ],
-        )
-        .unwrap();
-        let cleaned = leave_capture().to_text_lossy();
+            ])
+            .without_venv_selection()
+            .run()
+            .unwrap();
+        let cleaned = guard.finish().to_text_lossy();
         unsafe {
             std::env::remove_var("VIRTUAL_ENV");
             std::env::remove_var("UV_PROJECT_ENVIRONMENT");
         }
-        // check_call passes the ambient value through; check_call_clean_env does not.
+        // check_call passes the ambient value through; without_venv_selection does not.
         assert!(
             ambient.contains("ambient=[/somewhere/else/.venv]"),
             "expected ambient VIRTUAL_ENV to be inherited, got {ambient:?}"
@@ -417,21 +442,16 @@ mod tests {
     }
 
     #[test]
-    fn check_call_clean_env_propagates_failure() {
-        assert!(check_call_clean_env(&cwd(), "false", &[]).is_err());
+    fn without_venv_selection_propagates_failure() {
+        let cmd = Cmd::new(&cwd(), "false").without_venv_selection();
+        assert!(cmd.run().is_err());
     }
 
     #[test]
-    fn check_call_ve_env_without_venv_runs_ambient() {
+    fn venv_without_a_venv_runs_ambient() {
         let dir = tempfile::tempdir().unwrap();
-        assert!(
-            check_call_ve_env(
-                camino::Utf8Path::from_path(dir.path()).unwrap(),
-                "true",
-                &[]
-            )
-            .is_ok()
-        );
+        let cmd = Cmd::new(camino::Utf8Path::from_path(dir.path()).unwrap(), "true");
+        assert!(cmd.venv(true).unwrap().run().is_ok());
     }
 
     #[test]
@@ -439,9 +459,9 @@ mod tests {
         let missing = "rsmultigit-no-such-program";
         let serial = check_call(&cwd(), missing, &[]).unwrap_err();
         assert!(format!("{serial:#}").contains(&format!("failed to run {missing}")));
-        enter_capture();
+        let guard = capture();
         let captured = check_call(&cwd(), missing, &[]).unwrap_err();
-        leave_capture();
+        drop(guard);
         assert!(format!("{captured:#}").contains(&format!("failed to run {missing}")));
         let output = capture_output(&cwd(), missing, &[]).unwrap_err();
         assert!(format!("{output:#}").contains(&format!("failed to run {missing}")));
@@ -449,9 +469,9 @@ mod tests {
 
     #[test]
     fn capture_mode_collects_output() {
-        enter_capture();
+        let guard = capture();
         check_call(&cwd(), "sh", &["-c", "echo hi"]).unwrap();
-        let text = leave_capture().to_text_lossy();
+        let text = guard.finish().to_text_lossy();
         assert!(text.contains("hi"));
     }
 
@@ -459,7 +479,7 @@ mod tests {
     fn capture_keeps_streams_apart_and_in_order() {
         // Sleeps between the writes give each read its own chunk, so the
         // arrival order is deterministic.
-        enter_capture();
+        let guard = capture();
         let result = check_call(
             &cwd(),
             "sh",
@@ -468,7 +488,7 @@ mod tests {
                 "echo out1; sleep 0.1; echo err1 >&2; sleep 0.1; echo out2; exit 3",
             ],
         );
-        let captured = leave_capture();
+        let captured = guard.finish();
         assert!(result.is_err());
         assert_eq!(
             captured.chunks,
@@ -482,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    fn check_call_ve_env_keeps_non_utf8_path_entries() {
+    fn venv_keeps_non_utf8_path_entries() {
         use std::os::unix::ffi::OsStrExt;
         let dir = tempfile::tempdir().unwrap();
         let root = camino::Utf8Path::from_path(dir.path()).unwrap();
@@ -493,9 +513,14 @@ mod tests {
         parts.extend(std::env::split_paths(&ambient));
         // SAFETY: nextest runs each test in its own process.
         unsafe { std::env::set_var("PATH", std::env::join_paths(parts).unwrap()) };
-        enter_capture();
-        check_call_ve_env(root, "sh", &["-c", "printf %s \"$PATH\""]).unwrap();
-        let captured = leave_capture();
+        let guard = capture();
+        Cmd::new(root, "sh")
+            .args(&["-c", "printf %s \"$PATH\""])
+            .venv(true)
+            .unwrap()
+            .run()
+            .unwrap();
+        let captured = guard.finish();
         unsafe { std::env::set_var("PATH", ambient) };
         let bytes: Vec<u8> = captured.chunks.into_iter().flat_map(|(_, b)| b).collect();
         assert!(
@@ -507,15 +532,24 @@ mod tests {
 
     #[test]
     fn out_line_goes_to_capture_when_active() {
-        enter_capture();
+        let guard = capture();
         out_line("first");
         out_line("second");
-        assert_eq!(leave_capture().to_text_lossy(), "first\nsecond\n");
+        assert_eq!(guard.finish().to_text_lossy(), "first\nsecond\n");
+    }
+
+    #[test]
+    fn a_dropped_guard_ends_capture() {
+        {
+            let _guard = capture();
+            assert!(is_capturing());
+        }
+        assert!(!is_capturing());
     }
 
     #[test]
     fn leave_without_enter_returns_empty() {
-        let buf = leave_capture();
+        let buf = take_capture();
         assert!(buf.is_empty());
     }
 }

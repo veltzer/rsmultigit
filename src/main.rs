@@ -1,6 +1,8 @@
 mod cli;
 mod commands;
 mod config;
+mod git_url;
+mod github;
 mod runner;
 mod subprocess_utils;
 
@@ -121,7 +123,7 @@ fn main() -> Result<()> {
         }
     }
 
-    let config = AppConfig::from(&cli);
+    let config = cli.global.clone();
 
     // Repo list comes from ~/.config/rsmultigit/config.toml for every command.
     let config_path = commands::check::default_config_path()?;
@@ -140,7 +142,7 @@ fn main() -> Result<()> {
         Commands::Status => run_git_command(&config, &projects, &GitCommand::Status)?,
         Commands::Run { command } => {
             let command = command.clone();
-            let venv = config.venv;
+            let venv = config.use_venv();
             runner::do_for_all_projects(
                 &config,
                 &projects,
@@ -238,7 +240,7 @@ fn main() -> Result<()> {
                 ),
                 BuildWhat::Cargo => (commands::build::check_cargo, commands::build::build_cargo),
             };
-            let venv = config.venv;
+            let venv = config.use_venv();
             runner::do_for_all_projects_with_check(
                 &config,
                 &projects,
@@ -337,7 +339,7 @@ fn main() -> Result<()> {
                 )?;
                 return Ok(());
             }
-            let venv = config.venv;
+            let venv = config.use_venv();
             runner::do_for_all_projects_with_check(
                 &config,
                 &projects,
@@ -354,7 +356,7 @@ fn main() -> Result<()> {
             if fix && !what.takes_fix() {
                 anyhow::bail!("--fix only applies to `npm audit`");
             }
-            let venv = config.venv;
+            let venv = config.use_venv();
             runner::do_for_all_projects_with_check(
                 &config,
                 &projects,

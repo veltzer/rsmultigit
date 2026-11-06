@@ -13,9 +13,11 @@ src/
   main.rs              Entry point: CLI dispatch
   cli.rs               Clap derive definitions (Cli + Commands + value enums),
                        shell-completion output
-  config.rs            AppConfig: the global flags as a runtime struct
+  config.rs            AppConfig: the global flags, parsed by clap straight into it
   runner.rs            The three execution patterns and the parallel scheduler
-  subprocess_utils.rs  Shell command helpers, venv activation, per-thread output capture
+  subprocess_utils.rs  The Cmd builder (venv activation, env), per-thread output capture
+  git_url.rs           Git remote URLs taken apart: identity, GitHub owner/name
+  github.rs            The GitHub API client (octocrab on a tokio runtime), token lookup
   commands/
     mod.rs             Module declarations
     check.rs           Config-file parsing (repos, [[check-same]], [[check-exists]]), repo
@@ -27,7 +29,9 @@ src/
     status.rs          Status summary via git2; per-file detail / diff via subprocess
     build.rs           Build methods and their precondition checks
     run.rs             Arbitrary command execution
-    gh.rs              GitHub cleanup via the gh CLI
+    gh.rs              The gh / gh-single commands (prune, artifacts, sync-metadata, ...)
+    gh_batch.rs        prune-ci-gql-batch: the fleet-wide, batched prune
+    project_lua.rs     Parser for the fleet's config/project.lua files
     uv.rs, cargo.rs, rust.rs   Tooling passthrough
     <one file per git operation>  pull, push, fetch, clean, diff, log, grep, ...
 ```

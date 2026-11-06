@@ -24,6 +24,7 @@ use camino::Utf8PathBuf;
 use crate::commands::check::{self, CheckConfig, SubmoduleRule};
 use crate::commands::check_run::{fail_on_empty_rules, rule_header, select_rules};
 use crate::config::AppConfig;
+use crate::git_url::GitUrl;
 
 /// One submodule as found in one repo.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,39 +70,6 @@ impl SubmoduleResult {
     }
 }
 
-/// Reduce a submodule URL to the identity of the repo it names, so a rule's
-/// `url` matches the submodule however it was added: scheme and user
-/// dropped, the scp-style colon turned into a slash, trailing slash and
-/// `.git` removed, case folded. A relative URL (`../shared-themes`) is kept
-/// as written; it resolves against each superproject's own remote, which
-/// this check does not consult.
-pub fn normalize_url(url: &str) -> String {
-    let mut s = url.trim().to_string();
-    for scheme in ["git+ssh://", "ssh://", "https://", "http://", "git://"] {
-        if let Some(rest) = s.strip_prefix(scheme) {
-            s = rest.to_string();
-            break;
-        }
-    }
-    // user@host: drop the user. Only before the first path separator, so a
-    // path component containing `@` is left alone.
-    let authority_end = s.find(['/', ':']).unwrap_or(s.len());
-    if let Some(at) = s[..authority_end].rfind('@') {
-        s = s[at + 1..].to_string();
-    }
-    // scp-style host:path becomes host/path.
-    if let Some(colon) = s.find(':')
-        && !s[..colon].contains('/')
-    {
-        s.replace_range(colon..=colon, "/");
-    }
-    // Case first, so `.GIT` is stripped like `.git`.
-    let s = s.to_ascii_lowercase();
-    let s = s.trim_end_matches('/');
-    let s = s.strip_suffix(".git").unwrap_or(s);
-    s.trim_end_matches('/').to_string()
-}
-
 fn short(oid: git2::Oid) -> String {
     oid.to_string()[..7].to_string()
 }
@@ -113,7 +81,7 @@ pub fn evaluate_submodule_rule(
     repos: &[Utf8PathBuf],
 ) -> Result<SubmoduleResult> {
     let candidates = check::select_repos(&rule.selection(), repos)?;
-    let want = normalize_url(&rule.url);
+    let want = GitUrl::parse(&rule.url).identity();
 
     let mut by_commit: BTreeMap<Option<String>, Vec<SubmoduleUse>> = BTreeMap::new();
     let mut skipped: Vec<Utf8PathBuf> = Vec::new();
@@ -130,7 +98,7 @@ pub fn evaluate_submodule_rule(
             let Some(url) = sm.url().ok().flatten() else {
                 continue;
             };
-            if normalize_url(url) != want {
+            if GitUrl::parse(url).identity() != want {
                 continue;
             }
             found = true;
@@ -296,35 +264,6 @@ pub fn run_check_submodules<W: Write>(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn urls_normalise_to_one_identity() {
-        let expected = "github.com/veltzer/shared-themes";
-        for url in [
-            "git@github.com:veltzer/shared-themes.git",
-            "https://github.com/veltzer/shared-themes",
-            "https://github.com/veltzer/shared-themes.git/",
-            "ssh://git@github.com/veltzer/shared-themes.git",
-            "git+ssh://git@github.com/Veltzer/Shared-Themes",
-            "GitHub.com/veltzer/shared-themes",
-            "github.com/veltzer/shared-themes.GIT",
-        ] {
-            assert_eq!(normalize_url(url), expected, "{url}");
-        }
-    }
-
-    #[test]
-    fn relative_urls_are_kept() {
-        assert_eq!(normalize_url("../shared-themes.git"), "../shared-themes");
-    }
-
-    #[test]
-    fn a_colon_inside_the_path_is_not_scp_syntax() {
-        assert_eq!(
-            normalize_url("https://host/owner/repo:with:colons"),
-            "host/owner/repo:with:colons"
-        );
-    }
 
     #[test]
     fn consistency_needs_one_group_with_a_known_commit() {

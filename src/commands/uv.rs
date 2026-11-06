@@ -2,7 +2,7 @@ use camino::Utf8Path;
 
 use anyhow::Result;
 
-use crate::subprocess_utils::check_call_clean_env;
+use crate::subprocess_utils::Cmd;
 
 /// Repos uv can operate on: those with a pyproject.toml at the root.
 pub fn check_pyproject(project: &Utf8Path) -> Result<bool> {
@@ -11,11 +11,14 @@ pub fn check_pyproject(project: &Utf8Path) -> Result<bool> {
 
 /// Sync the project environment from the lockfile: `uv sync`.
 ///
-/// Runs with a clean environment (see `check_call_clean_env`): uv resolves the
+/// Runs with a clean environment (see `Cmd::without_venv_selection`): uv resolves the
 /// project and its `.venv` from the repo dir itself, so the global
 /// `--venv`/`--no-venv` flag does not apply to uv.
 pub fn sync(project: &Utf8Path) -> Result<()> {
-    check_call_clean_env(project, "uv", &["sync"])?;
+    Cmd::new(project, "uv")
+        .args(&["sync"])
+        .without_venv_selection()
+        .run()?;
     Ok(())
 }
 
@@ -30,14 +33,20 @@ pub fn lock(project: &Utf8Path, upgrade: bool, check: bool) -> Result<()> {
         (_, true) => &["lock", "--check"],
         _ => &["lock"],
     };
-    check_call_clean_env(project, "uv", args)?;
+    Cmd::new(project, "uv")
+        .args(args)
+        .without_venv_selection()
+        .run()?;
     Ok(())
 }
 
 /// Build the sdist and wheel into `dist/`: `uv build`. Runs with a clean
 /// environment, as `sync` does.
 pub fn build(project: &Utf8Path) -> Result<()> {
-    check_call_clean_env(project, "uv", &["build"])?;
+    Cmd::new(project, "uv")
+        .args(&["build"])
+        .without_venv_selection()
+        .run()?;
     Ok(())
 }
 
@@ -46,6 +55,9 @@ pub fn build(project: &Utf8Path) -> Result<()> {
 /// trusted publishing, keyring); rsmultigit passes nothing through. Runs with
 /// a clean environment, as `sync` does.
 pub fn publish(project: &Utf8Path) -> Result<()> {
-    check_call_clean_env(project, "uv", &["publish"])?;
+    Cmd::new(project, "uv")
+        .args(&["publish"])
+        .without_venv_selection()
+        .run()?;
     Ok(())
 }

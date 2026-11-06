@@ -22,6 +22,7 @@ pub mod interactive;
 pub mod last_tag;
 pub mod log;
 pub mod npm;
+pub mod project_lua;
 pub mod prune;
 pub mod pull;
 pub mod push;

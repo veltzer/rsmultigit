@@ -3,7 +3,7 @@ use camino::Utf8Path;
 use anyhow::Result;
 
 use crate::cli::NpmWhat;
-use crate::subprocess_utils::check_call_maybe_ve;
+use crate::subprocess_utils::Cmd;
 
 /// Repos npm can operate on: those with a package.json at the root.
 pub fn check_package_json(project: &Utf8Path) -> Result<bool> {
@@ -36,7 +36,7 @@ pub fn args(what: NpmWhat, fix: bool) -> Vec<&'static str> {
 /// in the repo's `.venv` see it on PATH.
 pub fn run(project: &Utf8Path, venv: bool, what: NpmWhat, fix: bool) -> Result<()> {
     let args = args(what, fix);
-    check_call_maybe_ve(project, venv, "npm", &args)?;
+    Cmd::new(project, "npm").args(&args).venv(venv)?.run()?;
     Ok(())
 }
 
