@@ -836,18 +836,6 @@ rsmultigit gh last-workflow-state                    # One line per repo
 rsmultigit --terse gh last-workflow-state            # Just the repo names
 ```
 
-### `rsmultigit gh open-site`
-
-Open each repository's GitHub Pages site in the browser with `xdg-open`,
-printing the URL first. A repository without a Pages site says
-`no GitHub Pages site` and is otherwise left alone. Every repository with
-a site gets a browser tab, so point the config at the repos you mean before
-running it across a large fleet.
-
-```bash
-rsmultigit gh open-site
-```
-
 ### `rsmultigit gh sync-metadata [--dry-run]`
 
 Sync each repository's GitHub metadata from its `config/project.lua`,
@@ -896,6 +884,24 @@ features
 `--dry-run` is accepted by `sync-metadata` only, and `--keep` by
 the three `prune-ci-*` variants only; on any other `gh` operation either is an error rather
 than a silently ignored flag.
+
+## Single-Repo GitHub Commands
+
+`gh-single` holds the GitHub operations that make sense for one repository
+only, not across the fleet. It works on the git repository containing the
+current directory, needs no config file, and ignores the configured repo
+list. Run outside a git repository, or in one without a github.com remote,
+it fails.
+
+### `rsmultigit gh-single open-site`
+
+Open the repository's GitHub Pages site in the browser with `xdg-open`,
+printing the URL first. A repository without a Pages site says
+`no GitHub Pages site` and opens nothing.
+
+```bash
+cd ~/git/rsmultigit && rsmultigit gh-single open-site
+```
 
 ## Utility Commands
 

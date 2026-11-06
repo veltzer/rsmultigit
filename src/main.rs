@@ -11,9 +11,9 @@ use clap::Parser;
 use clap::error::{ContextKind, ContextValue, ErrorKind};
 
 use cli::{
-    BranchWhat, BuildWhat, CargoWhat, CheckCommand, CleanWhat, Cli, Commands, CountWhat, GhWhat,
-    GitCommand, ListCommand, ReleaseType, ResetWhat, RuleKind, SetupCommand, StashWhat, TagWhat,
-    UvWhat,
+    BranchWhat, BuildWhat, CargoWhat, CheckCommand, CleanWhat, Cli, Commands, CountWhat,
+    GhSingleWhat, GhWhat, GitCommand, ListCommand, ReleaseType, ResetWhat, RuleKind, SetupCommand,
+    StashWhat, TagWhat, UvWhat,
 };
 use commands::check_run::{self, CheckExistsOpts, CheckSameOpts};
 use commands::check_submodules::{self, CheckSubmodulesOpts};
@@ -53,10 +53,26 @@ fn is_missing_operation(err: &clap::Error) -> bool {
     }
 }
 
+/// `gh-single`: GitHub operations on the one repo containing the current
+/// directory, for actions that make no sense fleet-wide (one browser tab, not
+/// hundreds). Needs no config file and ignores the configured repo list.
+fn run_gh_single_command(what: GhSingleWhat) -> Result<()> {
+    let project = commands::gh::current_repo()?;
+    if !commands::gh::check_github(&project)? {
+        anyhow::bail!("{project} has no github.com remote");
+    }
+    match what {
+        GhSingleWhat::OpenSite => commands::gh::open_site(&project),
+    }
+}
+
 fn main() -> Result<()> {
     let cli = parse_cli();
 
     // Handle commands that don't need project discovery
+    if let Commands::GhSingle { what } = &cli.command {
+        return run_gh_single_command(*what);
+    }
     if let Commands::Complete { shell } = &cli.command {
         cli::print_completions(*shell);
         return Ok(());
@@ -179,14 +195,6 @@ fn main() -> Result<()> {
                 }
                 GhWhat::LastWorkflowState => {
                     runner::print_if_data(&config, &projects, commands::gh::last_workflow_state)?;
-                }
-                GhWhat::OpenSite => {
-                    runner::do_for_all_projects_with_check(
-                        &config,
-                        &projects,
-                        commands::gh::check_github,
-                        commands::gh::open_site,
-                    )?;
                 }
                 GhWhat::SyncMetadata => {
                     // A data runner, although it writes to GitHub: the point of
@@ -357,6 +365,7 @@ fn main() -> Result<()> {
             )?;
         }
 
+        Commands::GhSingle { .. } => unreachable!("handled above"),
         Commands::Check { .. } => unreachable!("handled above"),
         Commands::Complete { .. } => unreachable!("handled above"),
         Commands::Setup { .. } => unreachable!("handled above"),

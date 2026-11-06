@@ -1,4 +1,4 @@
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 
 use anyhow::{Context, Result};
 
@@ -845,6 +845,21 @@ fn workflow_state_from_line(line: &str) -> Option<String> {
 }
 
 // ── open-site ──────────────────────────────────────────────────────────
+
+/// The working tree of the git repo containing the current directory, for
+/// the `gh-single` operations.
+pub fn current_repo() -> Result<Utf8PathBuf> {
+    let cwd = crate::runner::current_dir()?;
+    let repo = git2::Repository::discover(&cwd)
+        .with_context(|| format!("{cwd} is not inside a git repository"))?;
+    let workdir = repo
+        .workdir()
+        .with_context(|| format!("the repository at {cwd} has no working tree"))?;
+    // libgit2 reports the workdir with a trailing slash; collecting the
+    // components drops it, so messages read `.../repo has ...`.
+    Utf8PathBuf::from_path_buf(workdir.components().collect())
+        .map_err(|p| anyhow::anyhow!("non-UTF-8 repository path: {}", p.display()))
+}
 
 /// Open the repo's GitHub Pages site in the browser via `xdg-open`. A repo
 /// without a Pages site says so and is otherwise left alone.

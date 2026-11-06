@@ -61,7 +61,6 @@ fn bare_gh_lists_its_operations_with_descriptions() {
         "prune-ci-gql-batch",
         "artifacts",
         "last-workflow-state",
-        "open-site",
         "sync-metadata",
     ] {
         assert!(
@@ -73,6 +72,47 @@ fn bare_gh_lists_its_operations_with_descriptions() {
         stderr.contains("Print the conclusion of the most recent workflow run"),
         "each choice should come with its description: {stderr}"
     );
+}
+
+#[test]
+fn bare_gh_single_lists_open_site() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let output = run_rsmultigit(utf8(&tmp), &["gh-single"]);
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = stderr_str(&output);
+    assert!(stderr.contains("Usage: rsmultigit gh-single"), "{stderr}");
+    assert!(stderr.contains("open-site"), "{stderr}");
+}
+
+#[test]
+fn gh_lists_no_open_site() {
+    // open-site acts on one repo, so it lives in gh-single, not gh.
+    let tmp = tempfile::TempDir::new().unwrap();
+    let output = run_rsmultigit(utf8(&tmp), &["gh"]);
+    assert!(!stderr_str(&output).contains("open-site"));
+}
+
+#[test]
+fn gh_single_outside_a_repo_fails() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let output = run_rsmultigit(utf8(&tmp), &["gh-single", "open-site"]);
+    assert!(!output.status.success());
+    let stderr = stderr_str(&output);
+    assert!(
+        stderr.contains("is not inside a git repository"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn gh_single_without_github_remote_fails() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    git2::Repository::init(tmp.path()).unwrap();
+    let output = run_rsmultigit(utf8(&tmp), &["gh-single", "open-site"]);
+    assert!(!output.status.success());
+    let stderr = stderr_str(&output);
+    assert!(stderr.contains("has no github.com remote"), "{stderr}");
+    assert!(!stderr.contains("/ has no"), "no trailing slash: {stderr}");
 }
 
 #[test]

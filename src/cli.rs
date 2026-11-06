@@ -184,6 +184,14 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         dry_run: bool,
     },
+    /// GitHub operations (via the `gh` CLI) on the single repo containing
+    /// the current directory
+    #[command(arg_required_else_help = true)]
+    GhSingle {
+        /// What GitHub operation to perform
+        #[arg(value_enum)]
+        what: GhSingleWhat,
+    },
     /// Git inspection and operations across all repositories
     #[command(arg_required_else_help = true, disable_help_subcommand = true)]
     Git {
@@ -577,8 +585,6 @@ pub enum GhWhat {
     Artifacts,
     /// Print the conclusion of the most recent workflow run
     LastWorkflowState,
-    /// Open the repo's GitHub Pages site in the browser (`xdg-open`)
-    OpenSite,
     /// Sync GitHub description, topics and feature policy (wiki off,
     /// issues on, projects off) from config/project.lua, printing only
     /// what differs
@@ -601,6 +607,12 @@ impl GhWhat {
             GhWhat::PruneCiRestObo | GhWhat::PruneCiGqlObo | GhWhat::PruneCiGqlBatch
         )
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum GhSingleWhat {
+    /// Open the repo's GitHub Pages site in the browser (`xdg-open`)
+    OpenSite,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -1057,9 +1069,10 @@ mod tests {
     fn bare_operation_commands_show_help_not_missing_argument() {
         // Every command whose positional selects the operation prints its
         // help when given bare, so the user sees the choices.
-        let bare: [&[&str]; 10] = [
+        let bare: [&[&str]; 11] = [
             &["git", "count"],
             &["gh"],
+            &["gh-single"],
             &["uv"],
             &["cargo"],
             &["npm"],
@@ -1103,7 +1116,6 @@ mod tests {
             "prune-ci-gql-batch",
             "artifacts",
             "last-workflow-state",
-            "open-site",
             "sync-metadata",
         ] {
             assert!(help.contains(name), "gh help should list `{name}`: {help}");
@@ -1373,7 +1385,6 @@ mod tests {
             "prune-ci-gql-batch",
             "artifacts",
             "last-workflow-state",
-            "open-site",
             "sync-metadata",
         ];
         for what in gh_whats {
@@ -1790,7 +1801,6 @@ mod tests {
             GhWhat::PruneCiGqlBatch,
             GhWhat::Artifacts,
             GhWhat::LastWorkflowState,
-            GhWhat::OpenSite,
         ] {
             assert!(!what.takes_dry_run(), "{what:?} should not take --dry-run");
         }

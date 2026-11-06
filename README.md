@@ -197,8 +197,8 @@ The rest each run the git command of the same name in every repo:
 | `gh prune-ci-gql-batch [--keep N]` | Same as `gh prune-ci-gql-obo`, for all repos at once: 20 repos per GraphQL query, deployment deletes batched across repos |
 | `gh artifacts` | List the assets of the latest release (name, size, downloads) on GitHub repos |
 | `gh last-workflow-state` | Print the conclusion of the most recent workflow run on GitHub repos |
-| `gh open-site` | Open the GitHub Pages site of each repo in the browser |
 | `gh sync-metadata [--dry-run]` | Sync GitHub description, topics and feature policy from `config/project.lua`, printing only what differs |
+| `gh-single open-site` | Open the GitHub Pages site of the repo in the current directory in the browser |
 
 ### Other
 
