@@ -23,8 +23,8 @@ use futures_util::stream::{self, StreamExt};
 use serde_json::{Value, json};
 
 use crate::commands::gh::{
-    GqlDeployment, Inventory, Plan, RepoInventory, combine_errors, delete_deployments,
-    fetch_workflow_runs, github_repo_id, inventory_fields,
+    GqlDeployment, Inventory, Plan, PruneSummary, RepoInventory, RepoTally, combine_errors,
+    delete_deployments, fetch_workflow_runs, github_repo_id, inventory_fields,
 };
 use crate::config::AppConfig;
 use crate::git_url::RepoId;
@@ -167,8 +167,13 @@ struct Outcome {
 /// module documentation. Every repo's work is done before anything is
 /// printed, so every failure is reported, under its repo, whether or not
 /// `--no-stop` was given, and the exit status is non-zero if any repo
-/// failed.
-pub fn prune_ci_gql_batch(config: &AppConfig, projects: &[Utf8PathBuf], keep: usize) -> Result<()> {
+/// failed. Every repo's counts go into `summary`.
+pub fn prune_ci_gql_batch(
+    config: &AppConfig,
+    projects: &[Utf8PathBuf],
+    keep: usize,
+    summary: &PruneSummary,
+) -> Result<()> {
     let base = runner::current_dir()?;
 
     // Phase 1: which repos are on GitHub, and as which owner/name. Local
@@ -187,6 +192,7 @@ pub fn prune_ci_gql_batch(config: &AppConfig, projects: &[Utf8PathBuf], keep: us
                 errors: Vec::new(),
             }),
             Err(e) => {
+                summary.record(&RepoTally::default(), false);
                 outcomes.insert(
                     path,
                     Outcome {
@@ -200,7 +206,7 @@ pub fn prune_ci_gql_batch(config: &AppConfig, projects: &[Utf8PathBuf], keep: us
 
     if !repos.is_empty() {
         let gh = github()?;
-        gh.block_on(prune_fleet(gh, &mut repos, keep, &mut outcomes));
+        gh.block_on(prune_fleet(gh, &mut repos, keep, &mut outcomes, summary));
     }
 
     // Print through the runner, which owns headers, --terse, --no-output
@@ -232,6 +238,7 @@ async fn prune_fleet(
     repos: &mut [FleetRepo],
     keep: usize,
     outcomes: &mut HashMap<Utf8PathBuf, Outcome>,
+    summary: &PruneSummary,
 ) {
     // Phase 2: list everything. The batched GraphQL inventory and the
     // per-repo REST run listings run side by side.
@@ -307,13 +314,15 @@ async fn prune_fleet(
             .take(plan.releases.len() + plan.runs.len())
             .collect();
         let mut errors = std::mem::take(&mut repo.errors);
-        let lines = if errors.is_empty() {
-            let (lines, failures) = plan.report(&repo.inventory, repo.runs.len(), &dres, &rres);
+        let (lines, tally) = if errors.is_empty() {
+            let (lines, failures, tally) =
+                plan.report(&repo.inventory, repo.runs.len(), &dres, &rres);
             errors.extend(failures);
-            lines
+            (lines, tally)
         } else {
-            Vec::new()
+            (Vec::new(), RepoTally::default())
         };
+        summary.record(&tally, errors.is_empty());
         outcomes.insert(
             repo.path.clone(),
             Outcome {

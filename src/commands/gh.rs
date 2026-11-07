@@ -4,6 +4,8 @@
 //! resolves it, so no request is spent on that.
 
 use std::collections::HashSet;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use camino::{Utf8Path, Utf8PathBuf};
@@ -184,14 +186,30 @@ pub(crate) async fn fetch_workflow_runs(gh: &Github, repo: &RepoId) -> Result<Ve
 
 /// Clean up GitHub deployments, releases, and workflow runs for a repository,
 /// keeping only the `keep` most recent non-failed of each and deleting the rest.
-pub fn prune_ci_rest_obo(project: &Utf8Path, keep: usize) -> Result<()> {
-    let repo = require_repo_id(project)?;
-    let gh = github()?;
-    gh.block_on(async {
-        clean_deployments(gh, &repo, keep).await?;
-        clean_releases(gh, &repo, keep).await?;
-        clean_workflows(gh, &repo, keep).await
-    })
+/// What was found and deleted is added to `summary`, also when the repo
+/// stops part way.
+pub fn prune_ci_rest_obo(project: &Utf8Path, keep: usize, summary: &PruneSummary) -> Result<()> {
+    let mut tally = RepoTally::default();
+    let result = (|| {
+        let repo = require_repo_id(project)?;
+        let gh = github()?;
+        gh.block_on(async {
+            clean_deployments(gh, &repo, keep, &mut tally.deployments).await?;
+            clean_releases(gh, &repo, keep, &mut tally.releases).await?;
+            clean_workflows(gh, &repo, keep, &mut tally.runs).await
+        })
+    })();
+    summary.record(&tally, result.is_ok());
+    result
+}
+
+/// Count one delete into `counts`, passing its result on.
+fn count_delete(counts: &mut Counts, result: Result<()>) -> Result<()> {
+    match result {
+        Ok(()) => counts.deleted += 1,
+        Err(_) => counts.failed += 1,
+    }
+    result
 }
 
 #[derive(Deserialize)]
@@ -199,7 +217,12 @@ struct DeploymentStatus {
     state: String,
 }
 
-async fn clean_deployments(gh: &Github, repo: &RepoId, keep: usize) -> Result<()> {
+async fn clean_deployments(
+    gh: &Github,
+    repo: &RepoId,
+    keep: usize,
+    counts: &mut Counts,
+) -> Result<()> {
     let base = format!("/repos/{}/deployments", repo.slug());
     let ids = gh.get_all(&base, |page: Vec<Id>| page).await?;
 
@@ -216,6 +239,7 @@ async fn clean_deployments(gh: &Github, repo: &RepoId, keep: usize) -> Result<()
     }
 
     let to_delete = select_deletions(&items, keep);
+    counts.found = items.len();
     out_line(&format!(
         "deployments: {} found, deleting {}",
         items.len(),
@@ -224,18 +248,27 @@ async fn clean_deployments(gh: &Github, repo: &RepoId, keep: usize) -> Result<()
     for id in to_delete {
         // GitHub refuses to delete an active deployment, so mark it
         // inactive first.
-        gh.post(
-            &format!("{base}/{id}/statuses"),
-            &json!({ "state": "inactive" }),
-        )
-        .await?;
-        gh.delete(&format!("{base}/{id}")).await?;
+        let result = async {
+            gh.post(
+                &format!("{base}/{id}/statuses"),
+                &json!({ "state": "inactive" }),
+            )
+            .await?;
+            gh.delete(&format!("{base}/{id}")).await
+        }
+        .await;
+        count_delete(counts, result)?;
         out_line(&format!("  deleted deployment {id}"));
     }
     Ok(())
 }
 
-async fn clean_releases(gh: &Github, repo: &RepoId, keep: usize) -> Result<()> {
+async fn clean_releases(
+    gh: &Github,
+    repo: &RepoId,
+    keep: usize,
+    counts: &mut Counts,
+) -> Result<()> {
     let base = format!("/repos/{}/releases", repo.slug());
     let ids: Vec<u64> = gh
         .get_all(&base, |page: Vec<Id>| page)
@@ -244,29 +277,38 @@ async fn clean_releases(gh: &Github, repo: &RepoId, keep: usize) -> Result<()> {
         .map(|r| r.id)
         .collect();
     let to_delete: Vec<u64> = ids.iter().skip(keep).copied().collect();
+    counts.found = ids.len();
     out_line(&format!(
         "releases: {} found, deleting {}",
         ids.len(),
         to_delete.len()
     ));
     for id in to_delete {
-        gh.delete(&format!("{base}/{id}")).await?;
+        count_delete(counts, gh.delete(&format!("{base}/{id}")).await)?;
         out_line(&format!("  deleted release {id}"));
     }
     Ok(())
 }
 
-async fn clean_workflows(gh: &Github, repo: &RepoId, keep: usize) -> Result<()> {
+async fn clean_workflows(
+    gh: &Github,
+    repo: &RepoId,
+    keep: usize,
+    counts: &mut Counts,
+) -> Result<()> {
     let items = fetch_workflow_runs(gh, repo).await?;
     let to_delete = select_deletions(&items, keep);
+    counts.found = items.len();
     out_line(&format!(
         "workflow runs: {} found, deleting {}",
         items.len(),
         to_delete.len()
     ));
     for id in to_delete {
-        gh.delete(&format!("/repos/{}/actions/runs/{id}", repo.slug()))
-            .await?;
+        let result = gh
+            .delete(&format!("/repos/{}/actions/runs/{id}", repo.slug()))
+            .await;
+        count_delete(counts, result)?;
         out_line(&format!("  deleted workflow run {id}"));
     }
     Ok(())
@@ -611,16 +653,16 @@ impl Plan {
             .collect()
     }
 
-    /// The output lines and the failures, once the deletes have run.
-    /// `rest_results` holds the release results followed by the run
-    /// results, as [`Plan::rest_routes`] laid them out.
+    /// The output lines, the failures and the counts for the summary, once
+    /// the deletes have run. `rest_results` holds the release results
+    /// followed by the run results, as [`Plan::rest_routes`] laid them out.
     pub(crate) fn report(
         &self,
         inv: &Inventory,
         runs_found: usize,
         deployment_results: &[Result<()>],
         rest_results: &[Result<()>],
-    ) -> (Vec<String>, Vec<String>) {
+    ) -> (Vec<String>, Vec<String>, RepoTally) {
         let deployment_ids: Vec<u64> = self
             .deployments
             .iter()
@@ -629,31 +671,47 @@ impl Plan {
         let (release_results, run_results) = rest_results.split_at(self.releases.len());
         let mut lines = Vec::new();
         let mut errors = Vec::new();
-        for (label, found, ids, results) in [
+        let mut tally = RepoTally::default();
+        for (label, found, ids, results, counts) in [
             (
                 "deployments",
                 inv.deployments.len(),
                 &deployment_ids,
                 deployment_results,
+                &mut tally.deployments,
             ),
             (
                 "releases",
                 inv.releases.len(),
                 &self.releases,
                 release_results,
+                &mut tally.releases,
             ),
-            ("workflow runs", runs_found, &self.runs, run_results),
+            (
+                "workflow runs",
+                runs_found,
+                &self.runs,
+                run_results,
+                &mut tally.runs,
+            ),
         ] {
             lines.push(format!("{label}: {found} found, deleting {}", ids.len()));
+            counts.found = found;
             let singular = label.trim_end_matches('s');
             for (id, result) in ids.iter().zip(results) {
                 match result {
-                    Ok(()) => lines.push(format!("  deleted {singular} {id}")),
-                    Err(e) => errors.push(format!("deleting {singular} {id}: {e:#}")),
+                    Ok(()) => {
+                        counts.deleted += 1;
+                        lines.push(format!("  deleted {singular} {id}"));
+                    }
+                    Err(e) => {
+                        counts.failed += 1;
+                        errors.push(format!("deleting {singular} {id}: {e:#}"));
+                    }
                 }
             }
         }
-        (lines, errors)
+        (lines, errors, tally)
     }
 }
 
@@ -670,10 +728,21 @@ pub(crate) fn combine_errors(errors: Vec<String>) -> Result<()> {
 /// the remaining REST calls run concurrently. Same keep policy, same output.
 /// Unlike `prune_ci_rest_obo`, a failed delete does not stop the others; every
 /// failure is reported at the end.
-pub fn prune_ci_gql_obo(project: &Utf8Path, keep: usize) -> Result<()> {
+pub fn prune_ci_gql_obo(project: &Utf8Path, keep: usize, summary: &PruneSummary) -> Result<()> {
+    let (tally, result) = match gql_obo(project, keep) {
+        Ok((tally, errors)) => (tally, combine_errors(errors)),
+        Err(e) => (RepoTally::default(), Err(e)),
+    };
+    summary.record(&tally, result.is_ok());
+    result
+}
+
+/// The body of [`prune_ci_gql_obo`]. A listing error ends it with `Err`;
+/// otherwise it returns the counts and the failed deletes.
+fn gql_obo(project: &Utf8Path, keep: usize) -> Result<(RepoTally, Vec<String>)> {
     let repo = require_repo_id(project)?;
     let gh = github()?;
-    let (lines, errors) = gh.block_on(async {
+    let (lines, errors, tally) = gh.block_on(async {
         // The two listings are independent: run them at the same time.
         let (inv, runs) =
             futures_util::join!(fetch_inventory(gh, &repo), fetch_workflow_runs(gh, &repo));
@@ -692,7 +761,103 @@ pub fn prune_ci_gql_obo(project: &Utf8Path, keep: usize) -> Result<()> {
     for line in &lines {
         out_line(line);
     }
-    combine_errors(errors)
+    Ok((tally, errors))
+}
+
+// ── the prune-ci-* summary ────────────────────────────────────────────
+
+/// What happened to one kind of item (deployments, releases or runs).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Counts {
+    pub(crate) found: usize,
+    pub(crate) deleted: usize,
+    pub(crate) failed: usize,
+}
+
+impl Counts {
+    fn add(&mut self, other: &Counts) {
+        self.found += other.found;
+        self.deleted += other.deleted;
+        self.failed += other.failed;
+    }
+}
+
+/// The counts of one repo, or of the whole fleet.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RepoTally {
+    pub(crate) deployments: Counts,
+    pub(crate) releases: Counts,
+    pub(crate) runs: Counts,
+}
+
+#[derive(Debug, Default)]
+struct Totals {
+    repos: usize,
+    repos_failed: usize,
+    tally: RepoTally,
+}
+
+/// The fleet-wide totals of a `prune-ci-*` run, printed after the last
+/// repo unless `--no-summary` is given. Shared by the per-repo workers
+/// (hence the mutex), timed from its creation.
+pub struct PruneSummary {
+    start: Instant,
+    totals: Mutex<Totals>,
+}
+
+impl Default for PruneSummary {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PruneSummary {
+    pub fn new() -> Self {
+        Self {
+            start: Instant::now(),
+            totals: Mutex::new(Totals::default()),
+        }
+    }
+
+    /// Add one GitHub repo's counts; `ok` is false when the repo failed.
+    pub(crate) fn record(&self, tally: &RepoTally, ok: bool) {
+        let mut t = self.totals.lock().unwrap_or_else(|e| e.into_inner());
+        t.repos += 1;
+        if !ok {
+            t.repos_failed += 1;
+        }
+        t.tally.deployments.add(&tally.deployments);
+        t.tally.releases.add(&tally.releases);
+        t.tally.runs.add(&tally.runs);
+    }
+
+    /// Print the summary to stdout, after the runner has printed every repo.
+    pub fn print(&self) {
+        let t = self.totals.lock().unwrap_or_else(|e| e.into_inner());
+        for line in summary_lines(&t, self.start.elapsed()) {
+            println!("{line}");
+        }
+    }
+}
+
+fn summary_lines(t: &Totals, elapsed: Duration) -> Vec<String> {
+    let mut lines = vec![format!(
+        "summary: {} repos, {} failed, {:.1}s",
+        t.repos,
+        t.repos_failed,
+        elapsed.as_secs_f64()
+    )];
+    for (label, c) in [
+        ("deployments", &t.tally.deployments),
+        ("releases", &t.tally.releases),
+        ("workflow runs", &t.tally.runs),
+    ] {
+        lines.push(format!(
+            "  {label}: {} found, {} deleted, {} failed",
+            c.found, c.deleted, c.failed
+        ));
+    }
+    lines
 }
 
 // ── artifacts ──────────────────────────────────────────────────────────
@@ -1170,7 +1335,7 @@ mod tests {
             plan.rest_routes(&repo),
             vec!["/repos/o/n/releases/11", "/repos/o/n/actions/runs/21"]
         );
-        let (lines, errors) = plan.report(
+        let (lines, errors, tally) = plan.report(
             &inv,
             runs.len(),
             &[Ok(())],
@@ -1187,6 +1352,57 @@ mod tests {
             ]
         );
         assert_eq!(errors, vec!["deleting workflow run 21: boom"]);
+        assert_eq!(
+            tally,
+            RepoTally {
+                deployments: Counts {
+                    found: 2,
+                    deleted: 1,
+                    failed: 0
+                },
+                releases: Counts {
+                    found: 2,
+                    deleted: 1,
+                    failed: 0
+                },
+                runs: Counts {
+                    found: 2,
+                    deleted: 0,
+                    failed: 1
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn summary_adds_up_the_repos() {
+        let summary = PruneSummary::new();
+        let one = RepoTally {
+            deployments: Counts {
+                found: 3,
+                deleted: 2,
+                failed: 1,
+            },
+            releases: Counts {
+                found: 5,
+                deleted: 1,
+                failed: 0,
+            },
+            runs: Counts::default(),
+        };
+        summary.record(&one, false);
+        summary.record(&one, true);
+        summary.record(&RepoTally::default(), true);
+        let t = summary.totals.lock().unwrap();
+        assert_eq!(
+            summary_lines(&t, Duration::from_millis(1250)),
+            vec![
+                "summary: 3 repos, 1 failed, 1.2s",
+                "  deployments: 6 found, 4 deleted, 2 failed",
+                "  releases: 10 found, 2 deleted, 0 failed",
+                "  workflow runs: 0 found, 0 deleted, 0 failed",
+            ]
+        );
     }
 
     // ── artifacts / last-workflow-state ──

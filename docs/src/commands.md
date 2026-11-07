@@ -748,7 +748,20 @@ how they reach GitHub: `rest`/`gql` is the API (REST or GraphQL), and
 | `prune-ci-gql-obo` | one repo at a time | GraphQL + concurrent REST | carries on | much faster |
 | `prune-ci-gql-batch` | all repos in one pass | GraphQL batched across repos + REST | carries on | fastest |
 
-### `rsmultigit gh prune-ci-rest-obo [--keep <N>]`
+After the last repo, all three print a fleet-wide summary: how many GitHub
+repos were processed and how many failed, the elapsed time, and the totals of
+deployments, releases and workflow runs found, deleted and failed to delete.
+It is printed even when the run fails (before the error ends it), so a stopped
+`prune-ci-rest-obo` still says how far it got. `--no-summary` turns it off.
+
+```text
+summary: 57 repos, 1 failed, 8.4s
+  deployments: 412 found, 184 deleted, 0 failed
+  releases: 301 found, 73 deleted, 0 failed
+  workflow runs: 2950 found, 2722 deleted, 1 failed
+```
+
+### `rsmultigit gh prune-ci-rest-obo [--keep <N>] [--no-summary]`
 
 Clean up GitHub deployments, releases, and workflow runs for each repository.
 Keeps only the `--keep` (default 4) most recent non-failed of each and
@@ -764,7 +777,7 @@ rsmultigit gh prune-ci-rest-obo              # Keep the 4 most recent of each
 rsmultigit gh prune-ci-rest-obo --keep 10    # Keep the 10 most recent of each
 ```
 
-### `rsmultigit gh prune-ci-gql-obo [--keep <N>]`
+### `rsmultigit gh prune-ci-gql-obo [--keep <N>] [--no-summary]`
 
 Does the same cleanup as `prune-ci-rest-obo`, with the same `--keep` policy and the
 same output, but makes far fewer round trips to GitHub:
@@ -788,7 +801,7 @@ rsmultigit gh prune-ci-gql-obo              # Keep the 4 most recent of each
 rsmultigit -j 4 gh prune-ci-gql-obo --keep 10
 ```
 
-### `rsmultigit gh prune-ci-gql-batch [--keep <N>]`
+### `rsmultigit gh prune-ci-gql-batch [--keep <N>] [--no-summary]`
 
 Does the same work as `prune-ci-gql-obo`, with the same `--keep` policy and
 the same per-repo output, but for all repositories at once instead of one
@@ -886,9 +899,9 @@ features
   github: wiki=true issues=true projects=false
 ```
 
-`--dry-run` is accepted by `sync-metadata` only, and `--keep` by
-the three `prune-ci-*` variants only; on any other `gh` operation either is an error rather
-than a silently ignored flag.
+`--dry-run` is accepted by `sync-metadata` only, and `--keep` and
+`--no-summary` by the three `prune-ci-*` variants only; on any other `gh`
+operation each is an error rather than a silently ignored flag.
 
 ## Single-Repo GitHub Commands
 

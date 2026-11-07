@@ -156,6 +156,7 @@ fn main() -> Result<()> {
             what,
             keep,
             dry_run,
+            no_summary,
         } => {
             let dry_run = *dry_run;
             if dry_run && !what.takes_dry_run() {
@@ -164,39 +165,41 @@ fn main() -> Result<()> {
             if keep.is_some() && !what.takes_keep() {
                 anyhow::bail!("--keep only applies to the `gh prune-ci-*` variants");
             }
-            match what {
-                GhWhat::PruneCiRestObo => {
-                    let keep = keep.unwrap_or(4);
-                    runner::do_for_all_projects_with_check(
-                        &config,
-                        &projects,
-                        commands::gh::check_github,
-                        move |project: &Utf8Path| -> anyhow::Result<()> {
-                            commands::gh::prune_ci_rest_obo(project, keep)
-                        },
-                    )?;
-                }
-                GhWhat::PruneCiGqlObo => {
-                    let keep = keep.unwrap_or(4);
-                    runner::do_for_all_projects_with_check(
-                        &config,
-                        &projects,
-                        commands::gh::check_github,
-                        move |project: &Utf8Path| -> anyhow::Result<()> {
-                            commands::gh::prune_ci_gql_obo(project, keep)
-                        },
-                    )?;
-                }
+            if *no_summary && !what.prints_summary() {
+                anyhow::bail!("--no-summary only applies to the `gh prune-ci-*` variants");
+            }
+            // The prune-ci-* variants add every repo's counts here; the
+            // summary is printed once the run is over, whether or not a
+            // repo failed, and before the error (if any) ends the program.
+            let summary = commands::gh::PruneSummary::new();
+            let keep = keep.unwrap_or(4);
+            let result = match what {
+                GhWhat::PruneCiRestObo => runner::do_for_all_projects_with_check(
+                    &config,
+                    &projects,
+                    commands::gh::check_github,
+                    |project: &Utf8Path| -> anyhow::Result<()> {
+                        commands::gh::prune_ci_rest_obo(project, keep, &summary)
+                    },
+                ),
+                GhWhat::PruneCiGqlObo => runner::do_for_all_projects_with_check(
+                    &config,
+                    &projects,
+                    commands::gh::check_github,
+                    |project: &Utf8Path| -> anyhow::Result<()> {
+                        commands::gh::prune_ci_gql_obo(project, keep, &summary)
+                    },
+                ),
                 GhWhat::PruneCiGqlBatch => {
                     // Fleet-level: it batches across repos, so it cannot be
                     // a per-repo action; it prints through the runner itself.
-                    commands::gh_batch::prune_ci_gql_batch(&config, &projects, keep.unwrap_or(4))?;
+                    commands::gh_batch::prune_ci_gql_batch(&config, &projects, keep, &summary)
                 }
                 GhWhat::Artifacts => {
-                    runner::print_if_data(&config, &projects, commands::gh::artifacts)?;
+                    runner::print_if_data(&config, &projects, commands::gh::artifacts)
                 }
                 GhWhat::LastWorkflowState => {
-                    runner::print_if_data(&config, &projects, commands::gh::last_workflow_state)?;
+                    runner::print_if_data(&config, &projects, commands::gh::last_workflow_state)
                 }
                 GhWhat::SyncMetadata => {
                     // A data runner, although it writes to GitHub: the point of
@@ -204,9 +207,13 @@ fn main() -> Result<()> {
                     // differs, and a silent repo is one that is already in sync.
                     runner::print_if_data(&config, &projects, move |project: &Utf8Path| {
                         commands::gh::sync_metadata(project, dry_run)
-                    })?;
+                    })
                 }
+            };
+            if what.prints_summary() && !*no_summary {
+                summary.print();
             }
+            result?;
         }
 
         // ── build commands ──

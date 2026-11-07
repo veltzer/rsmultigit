@@ -134,6 +134,11 @@ pub enum Commands {
         /// Print what differs but change nothing on GitHub (`sync-metadata` only)
         #[arg(long, default_value_t = false)]
         dry_run: bool,
+        /// Do not print the fleet-wide summary (repos, found/deleted/failed
+        /// per kind, elapsed time) after the run (the `prune-ci-*` variants
+        /// only, which print it by default)
+        #[arg(long, default_value_t = false)]
+        no_summary: bool,
     },
     /// GitHub operations (via the `gh` CLI) on the single repo containing
     /// the current directory
@@ -553,6 +558,16 @@ impl GhWhat {
     /// Whether `--keep` makes sense for this operation (only the
     /// `prune-ci-*` variants).
     pub fn takes_keep(self) -> bool {
+        self.is_prune()
+    }
+
+    /// Whether this operation prints a summary after the run, which
+    /// `--no-summary` turns off (only the `prune-ci-*` variants).
+    pub fn prints_summary(self) -> bool {
+        self.is_prune()
+    }
+
+    fn is_prune(self) -> bool {
         matches!(
             self,
             GhWhat::PruneCiRestObo | GhWhat::PruneCiGqlObo | GhWhat::PruneCiGqlBatch
@@ -1691,10 +1706,12 @@ mod tests {
                 what,
                 keep,
                 dry_run,
+                no_summary,
             } => {
                 assert!(matches!(what, GhWhat::PruneCiRestObo));
                 assert_eq!(*keep, None);
                 assert!(!*dry_run);
+                assert!(!*no_summary, "the summary is on by default");
             }
             _ => panic!("expected Gh"),
         }
@@ -1739,6 +1756,22 @@ mod tests {
                 ),
                 "{what:?}"
             );
+        }
+    }
+
+    #[test]
+    fn parse_gh_prune_ci_gql_batch_no_summary() {
+        let cli = parse(&["rsmultigit", "gh", "prune-ci-gql-batch", "--no-summary"]);
+        match &cli.command {
+            Commands::Gh { no_summary, .. } => assert!(*no_summary),
+            _ => panic!("expected Gh"),
+        }
+    }
+
+    #[test]
+    fn gh_summary_is_printed_by_the_prune_ci_variants_only() {
+        for what in GhWhat::value_variants() {
+            assert_eq!(what.prints_summary(), what.takes_keep(), "{what:?}");
         }
     }
 
