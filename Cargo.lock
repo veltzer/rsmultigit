@@ -1554,7 +1554,7 @@ dependencies = [
 
 [[package]]
 name = "rsmultigit"
-version = "0.1.66"
+version = "0.1.67"
 dependencies = [
  "anstream",
  "anyhow",
