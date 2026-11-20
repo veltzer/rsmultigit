@@ -30,6 +30,7 @@ pub mod release;
 pub mod remote;
 pub mod reset;
 pub mod restore;
+pub mod rsconstruct;
 pub mod run;
 pub mod setup;
 pub mod size;

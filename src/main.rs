@@ -14,8 +14,8 @@ use clap::error::{ContextKind, ContextValue, ErrorKind};
 
 use cli::{
     BranchWhat, BuildWhat, CargoWhat, CheckCommand, CleanWhat, Cli, Commands, CountWhat,
-    GhSingleWhat, GhWhat, GitCommand, ListCommand, ReleaseType, ResetWhat, RuleKind, SetupCommand,
-    StashWhat, TagWhat, UvWhat,
+    GhSingleWhat, GhWhat, GitCommand, ListCommand, ReleaseType, ResetWhat, RsconstructWhat,
+    RuleKind, SetupCommand, StashWhat, TagWhat, UvWhat,
 };
 use commands::check_run::{self, CheckExistsOpts, CheckSameOpts};
 use commands::check_submodules::{self, CheckSubmodulesOpts};
@@ -255,6 +255,20 @@ fn main() -> Result<()> {
                 move |project: &Utf8Path| -> anyhow::Result<()> { build_fn(project, venv) },
             )?;
         }
+
+        Commands::Rsconstruct { what } => match what {
+            RsconstructWhat::ToolLockUpgrade => {
+                let venv = config.use_venv();
+                runner::do_for_all_projects_with_check(
+                    &config,
+                    &projects,
+                    commands::rsconstruct::check_rsconstruct,
+                    move |project: &Utf8Path| -> anyhow::Result<()> {
+                        commands::rsconstruct::tool_lock_upgrade(project, venv)
+                    },
+                )?;
+            }
+        },
 
         Commands::Uv {
             what,

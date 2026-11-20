@@ -15,7 +15,7 @@ the subcommand name.
 | `--no-stop` | On error, print `error in <repo>: ...` to stderr and continue with the next repo instead of stopping. The run still exits non-zero (`N of M repos failed`) if any repo failed |
 | `--short-circuit` | Stop at the first failing rule. Off by default; honoured by `check same` and `check exists` |
 | `-j`, `--jobs <N>` | Run up to N repos in parallel (default 1; 0 means one worker per CPU). Output is still printed in repo order |
-| `--venv` | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. On by default; honoured by `run`, `build`, `cargo` and `npm`; not by `uv` |
+| `--venv` | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. On by default; honoured by `run`, `build`, `cargo`, `npm` and `rsconstruct`; not by `uv` |
 | `--no-venv` | Turn `--venv` off: run tool subprocesses with the ambient environment |
 
 Example:
@@ -690,6 +690,25 @@ uv's own configuration (`UV_PUBLISH_TOKEN`, trusted publishing, keyring,
 ```bash
 rsmultigit uv build                   # Build every distribution
 rsmultigit uv publish                 # ... then upload them
+```
+
+## rsconstruct Commands
+
+Run [rsconstruct](https://github.com/veltzer/rsconstruct) operations across
+every repository that has an `rsconstruct.toml` at its root; other
+repositories are skipped. They honour `--venv`, as `build rsconstruct` does.
+
+### `rsmultigit rsconstruct tool-lock-upgrade`
+
+Run `rsconstruct tool lock --upgrade` in each project, re-resolving every
+`rsconstruct.lock` entry to its latest release. This is the only way
+rsconstruct moves an already-locked tool forward; a normal build, install or
+plain `tool lock` keeps the locked versions. Review and commit the rewritten
+`rsconstruct.lock` files afterwards.
+
+```bash
+rsmultigit rsconstruct tool-lock-upgrade            # Upgrade every lock
+rsmultigit rsconstruct tool-lock-upgrade --no-stop  # Keep going past failures
 ```
 
 ## npm Commands

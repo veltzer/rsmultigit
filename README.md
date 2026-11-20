@@ -14,7 +14,7 @@ Full documentation: <https://veltzer.github.io/rsmultigit/>
 - **Native git inspection** — status, dirty and sync checks use libgit2 in-process, with no `git` subprocess per repo
 - **Consistency checks** — `check same` verifies that shared files (`.gitignore`, CI workflows, lint configs, ...) are byte-identical across the fleet, `check exists` verifies that required files are present, `check submodules` verifies that the declared submodules are pinned to the same commit in every repo that carries them, and `--diff`, `--copy` and `--fix-missing` repair drift interactively
 - **Build orchestration** — make, rsconstruct, cargo, bootstrap, with each repo's `.venv` activated automatically
-- **Tooling passthrough** — `uv lock` / `uv sync` on Python projects, `cargo build|check|clippy|fmt|test|nextest|doc|deny|fetch|update|clean|publish` on Rust projects, `gh` cleanup, release/workflow inspection and metadata sync on GitHub repos
+- **Tooling passthrough** — `uv lock` / `uv sync` on Python projects, `cargo build|check|clippy|fmt|test|nextest|doc|deny|fetch|update|clean|publish` on Rust projects, `rsconstruct tool lock --upgrade` on rsconstruct projects, `gh` cleanup, release/workflow inspection and metadata sync on GitHub repos
 - **Parallel execution** — `-j N` runs repos concurrently while keeping output in repo order
 - **Selective output** — only prints repos where something happened; `--verbose`, `--terse`, `--print-not` and `--no-header` control the rest
 - **Shell completions** — bash, zsh, fish, elvish, powershell, including dynamic completion of check names
@@ -190,6 +190,7 @@ The rest each run the git command of the same name in every repo:
 | `cargo release [--type patch\|minor\|major]` | Run `cargo release` on repos whose `Cargo.toml` has a publishable `[package]`, crates.io token from pass(1) |
 | `uv lock [--upgrade\|--check]` | Run `uv lock` on repos with `pyproject.toml` |
 | `uv sync\|build\|publish` | Run `uv sync`, `uv build` or `uv publish` on repos with `pyproject.toml` |
+| `rsconstruct tool-lock-upgrade` | Run `rsconstruct tool lock --upgrade` on repos with `rsconstruct.toml` |
 | `npm install\|ci\|update\|outdated\|test\|publish` | Run the matching npm command on repos with `package.json` |
 | `npm audit [--fix]` | Run `npm audit` (or `npm audit fix`) on repos with `package.json` |
 | `gh prune-ci-rest-obo [--keep N] [--no-summary]` | Delete old deployments, releases and workflow runs on GitHub repos, then print a fleet-wide summary |

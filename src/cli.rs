@@ -172,6 +172,13 @@ pub enum Commands {
         #[arg(long, default_value_t = false)]
         fix: bool,
     },
+    /// Run rsconstruct operations on projects that have an rsconstruct.toml file
+    #[command(arg_required_else_help = true)]
+    Rsconstruct {
+        /// What rsconstruct operation to perform
+        #[arg(value_enum)]
+        what: RsconstructWhat,
+    },
     /// Run an arbitrary command across all repositories
     #[command(alias = "exec")]
     Run {
@@ -592,6 +599,13 @@ pub enum UvWhat {
     Build,
     /// Upload the distributions in `dist/` to the package index (`uv publish`)
     Publish,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum RsconstructWhat {
+    /// Re-resolve every rsconstruct.lock entry to its latest release
+    /// (`rsconstruct tool lock --upgrade`)
+    ToolLockUpgrade,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -1035,8 +1049,9 @@ mod tests {
     fn bare_operation_commands_show_help_not_missing_argument() {
         // Every command whose positional selects the operation prints its
         // help when given bare, so the user sees the choices.
-        let bare: [&[&str]; 11] = [
+        let bare: [&[&str]; 12] = [
             &["git", "count"],
+            &["rsconstruct"],
             &["gh"],
             &["gh-single"],
             &["uv"],
@@ -1343,6 +1358,15 @@ mod tests {
         assert!(result.is_ok(), "uv lock --check should parse");
         let result = Cli::try_parse_from(["rsmultigit", "uv"]);
         assert!(result.is_err(), "uv without a what should not parse");
+
+        // rsconstruct requires a what argument
+        let result = Cli::try_parse_from(["rsmultigit", "rsconstruct", "tool-lock-upgrade"]);
+        assert!(result.is_ok(), "rsconstruct tool-lock-upgrade should parse");
+        let result = Cli::try_parse_from(["rsmultigit", "rsconstruct"]);
+        assert!(
+            result.is_err(),
+            "rsconstruct without a what should not parse"
+        );
 
         // gh requires a what argument
         let gh_whats = [
