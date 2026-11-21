@@ -79,8 +79,8 @@ to `build.rs`, `release.toml`, `deny.toml`, `.config/nextest.toml`,
   `cargo deny check`, `cargo nextest run`.
 - **Release**: triggered by a `chore: Release ...` commit (as written by
   `cargo release`) landing on the default branch — the `v*` tag push itself
-  triggers nothing. Builds binaries for Linux x64/ARM64 and macOS x64/ARM64,
-  named `rsmultigit-{linux,macos}-{x86_64,aarch64}`, and attaches them to a
+  triggers nothing. Builds binaries for Linux x64/ARM64 (macOS was dropped
+  on 2026-11-21), named `rsmultigit-linux-{x86_64,aarch64}`, and attaches them to a
   GitHub release for the tag computed from `Cargo.toml` (openssl is vendored
   unconditionally via the `git2` feature in Cargo.toml, so no `--features`
   flag is needed).
