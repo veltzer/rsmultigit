@@ -17,8 +17,6 @@ Every release on GitHub ships a statically named binary per platform:
 |----------|-------|
 | Linux x86_64 | `rsmultigit-linux-x86_64` |
 | Linux aarch64 | `rsmultigit-linux-aarch64` |
-| macOS x86_64 | `rsmultigit-macos-x86_64` |
-| macOS aarch64 | `rsmultigit-macos-aarch64` |
 
 With the GitHub CLI (downloads from the latest release when no tag is given):
 

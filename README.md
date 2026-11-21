@@ -29,15 +29,13 @@ cargo install rsmultigit
 
 ### Pre-built binaries
 
-Every release ships binaries for Linux (x86_64, aarch64) and macOS (x86_64,
-aarch64). The asset names are:
+Every release ships binaries for Linux (x86_64, aarch64). The asset names
+are:
 
 | Platform | Asset |
 |----------|-------|
 | Linux x86_64 | `rsmultigit-linux-x86_64` |
 | Linux aarch64 | `rsmultigit-linux-aarch64` |
-| macOS x86_64 | `rsmultigit-macos-x86_64` |
-| macOS aarch64 | `rsmultigit-macos-aarch64` |
 
 ```bash
 gh release download --repo veltzer/rsmultigit --pattern rsmultigit-linux-x86_64 --output rsmultigit --clobber
