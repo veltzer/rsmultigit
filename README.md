@@ -113,6 +113,7 @@ rsmultigit complete bash >> ~/.bash_completion
 ## Commands
 
 ### Git
+
 Everything that inspects or operates on the repos as git repositories;
 `rsmultigit git` alone lists it. The reports come first:
 
@@ -157,6 +158,7 @@ The rest each run the git command of the same name in every repo:
 | `git submodule-update` | `git submodule update --init --recursive` |
 
 ### Consistency checks
+
 `rsmultigit check` alone lists these.
 
 | Command | Description |
