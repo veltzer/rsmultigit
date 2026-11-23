@@ -126,10 +126,10 @@ async fn fetch_batch(gh: &Github, ids: &[&RepoId]) -> Vec<Result<Inventory>> {
             if errors[i].is_some() {
                 continue;
             }
-            let result = match data.remove(&format!("r{i}")).flatten() {
-                Some(page) => invs[i].absorb(page),
-                None => Err(anyhow::anyhow!("GraphQL query returned no repository")),
-            };
+            let result = data.remove(&format!("r{i}")).flatten().map_or_else(
+                || Err(anyhow::anyhow!("GraphQL query returned no repository")),
+                |page| invs[i].absorb(page),
+            );
             if let Err(e) = result {
                 errors[i] = Some(format!("{e:#}"));
             }
@@ -137,9 +137,11 @@ async fn fetch_batch(gh: &Github, ids: &[&RepoId]) -> Vec<Result<Inventory>> {
     }
     invs.into_iter()
         .zip(errors)
-        .map(|(inv, error)| match error {
-            Some(e) => Err(anyhow::anyhow!("listing deployments and releases: {e}")),
-            None => Ok(inv),
+        .map(|(inv, error)| {
+            error.map_or_else(
+                || Ok(inv),
+                |e| Err(anyhow::anyhow!("listing deployments and releases: {e}")),
+            )
         })
         .collect()
 }
@@ -223,10 +225,10 @@ pub fn prune_ci_gql_batch(
             for line in &outcome.lines {
                 out_line(line);
             }
-            match &outcome.error {
-                Some(e) => Err(anyhow::anyhow!("{e}")),
-                None => Ok(()),
-            }
+            outcome
+                .error
+                .as_ref()
+                .map_or(Ok(()), |e| Err(anyhow::anyhow!("{e}")))
         },
     )
 }

@@ -3,7 +3,7 @@ use camino::Utf8Path;
 use anyhow::{Context, Result};
 use git2::Repository;
 
-pub(crate) fn open_repo(project: &Utf8Path) -> Result<Repository> {
+pub fn open_repo(project: &Utf8Path) -> Result<Repository> {
     Repository::open(project).with_context(|| format!("failed to open repo at {project}"))
 }
 
@@ -14,7 +14,7 @@ pub(crate) fn open_repo(project: &Utf8Path) -> Result<Repository> {
 /// and friends only to discard them, and nothing here looks at them. An
 /// explicit `StatusOptions` starts blank, hence the untracked flags are set
 /// rather than inherited.
-pub(crate) fn status_options() -> git2::StatusOptions {
+pub fn status_options() -> git2::StatusOptions {
     let mut opts = git2::StatusOptions::new();
     opts.include_untracked(true)
         .recurse_untracked_dirs(true)
@@ -112,7 +112,7 @@ pub fn ahead_behind(project: &Utf8Path) -> Result<Option<(usize, usize)>> {
 
 /// [`ahead_behind`] for an already-open repository, so callers that have
 /// one for another scan do not open it twice.
-pub(crate) fn ahead_behind_in(repo: &Repository) -> Result<Option<(usize, usize)>> {
+pub fn ahead_behind_in(repo: &Repository) -> Result<Option<(usize, usize)>> {
     let Ok(head) = repo.head() else {
         return Ok(None);
     };

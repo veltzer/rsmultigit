@@ -9,12 +9,12 @@ use crate::common::{
 };
 
 fn run(tmp: &Utf8Path, config: &Utf8Path, args: &[&str]) -> Output {
-    let cfg_str = config.to_string().clone();
+    let cfg_str = config.to_string();
     run_rsmultigit_with_env(tmp, args, &[("RSMULTIGIT_CONFIG", &cfg_str)])
 }
 
 fn run_with_stdin(tmp: &Utf8Path, config: &Utf8Path, args: &[&str], stdin_bytes: &[u8]) -> Output {
-    let cfg_str = config.to_string().clone();
+    let cfg_str = config.to_string();
     run_rsmultigit_with_stdin(tmp, args, &[("RSMULTIGIT_CONFIG", &cfg_str)], stdin_bytes)
 }
 

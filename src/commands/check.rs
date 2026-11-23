@@ -96,19 +96,19 @@ pub struct ExistsResult {
 }
 
 impl ExistsResult {
-    pub fn is_satisfied(&self) -> bool {
+    pub const fn is_satisfied(&self) -> bool {
         self.missing.is_empty()
     }
 
     /// Number of repos the rule actually examined.
-    pub fn total_repos(&self) -> usize {
+    pub const fn total_repos(&self) -> usize {
         self.present.len() + self.missing.len()
     }
 
     /// True when the rule selected no repos at all — almost always a stale
     /// `select`, so `check exists` treats it as a failure unless
     /// `--allow-empty` is passed. Mirrors [`RuleResult::matched_nothing`].
-    pub fn matched_nothing(&self) -> bool {
+    pub const fn matched_nothing(&self) -> bool {
         self.total_repos() == 0
     }
 }
@@ -138,7 +138,7 @@ pub struct Rule {
     pub must_have: bool,
 }
 
-fn default_enabled() -> bool {
+const fn default_enabled() -> bool {
     true
 }
 
@@ -165,14 +165,14 @@ pub struct RuleResult {
 }
 
 impl RuleResult {
-    pub fn is_consistent(&self) -> bool {
+    pub const fn is_consistent(&self) -> bool {
         self.groups.len() <= 1 && self.must_have_violations.is_empty() && self.unreadable.is_empty()
     }
 
     /// True when the rule hashed no files and has no `must_have` violations to
     /// report — i.e. it checked nothing at all. Usually a stale `select`/`path`,
     /// so check same treats this as a failure unless --allow-empty is passed.
-    pub fn matched_nothing(&self) -> bool {
+    pub const fn matched_nothing(&self) -> bool {
         self.total_files == 0 && self.must_have_violations.is_empty() && self.unreadable.is_empty()
     }
 }
@@ -284,7 +284,7 @@ fn compile_glob(pattern: &str) -> Result<glob::Pattern> {
 
 /// The selection fields shared by `[[check-same]]`, `[[check-exists]]` and
 /// `[[check-submodules]]` rules, borrowed so one filter implementation serves all.
-pub(crate) struct Selection<'a> {
+pub struct Selection<'a> {
     pub(crate) select: &'a str,
     pub(crate) exclude: Option<&'a str>,
     pub(crate) marker: Option<&'a str>,
@@ -315,10 +315,7 @@ impl_selection!(Rule, ExistsRule, SubmoduleRule);
 /// Apply `select`, `exclude`, `marker` and `marker_absent` filters to the
 /// discovered repo list.
 /// `repos` are absolute or relative paths to repo roots.
-pub(crate) fn select_repos(
-    rule: &Selection<'_>,
-    repos: &[Utf8PathBuf],
-) -> Result<Vec<Utf8PathBuf>> {
+pub fn select_repos(rule: &Selection<'_>, repos: &[Utf8PathBuf]) -> Result<Vec<Utf8PathBuf>> {
     let select = compile_glob(rule.select)?;
     let exclude = rule.exclude.map(compile_glob).transpose()?;
     let mut out = Vec::new();

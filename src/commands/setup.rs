@@ -86,7 +86,7 @@ impl Scan {
 /// The file whose presence in a repo says the repo is built with `method`.
 /// `bootstrap` runs `python bootstrap.py`; the others run their tool, which
 /// reads the named manifest.
-pub fn marker_file(method: BuildWhat) -> &'static str {
+pub const fn marker_file(method: BuildWhat) -> &'static str {
     match method {
         BuildWhat::Bootstrap => "bootstrap.py",
         BuildWhat::Make => "Makefile",

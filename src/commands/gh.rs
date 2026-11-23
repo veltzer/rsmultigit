@@ -123,7 +123,7 @@ pub fn default_branch(project: &Utf8Path) -> Result<String> {
 
 /// Given (id, failed) pairs ordered newest first, return the ids to delete:
 /// every failed entry, plus every non-failed entry beyond the first `keep`.
-pub(crate) fn select_deletions(items: &[(u64, bool)], keep: usize) -> Vec<u64> {
+pub fn select_deletions(items: &[(u64, bool)], keep: usize) -> Vec<u64> {
     let mut kept = 0;
     let mut to_delete = Vec::new();
     for &(id, failed) in items {
@@ -162,7 +162,7 @@ struct WorkflowRun {
 
 /// The workflow runs, newest first, as (id, failed) pairs. REST, since
 /// GraphQL cannot list a repo's runs.
-pub(crate) async fn fetch_workflow_runs(gh: &Github, repo: &RepoId) -> Result<Vec<(u64, bool)>> {
+pub async fn fetch_workflow_runs(gh: &Github, repo: &RepoId) -> Result<Vec<(u64, bool)>> {
     let runs = gh
         .get_all(
             &format!("/repos/{}/actions/runs", repo.slug()),
@@ -205,7 +205,7 @@ pub fn prune_ci_rest_obo(project: &Utf8Path, keep: usize, summary: &PruneSummary
 }
 
 /// Count one delete into `counts`, passing its result on.
-fn count_delete(counts: &mut Counts, result: Result<()>) -> Result<()> {
+const fn count_delete(counts: &mut Counts, result: Result<()>) -> Result<()> {
     match result {
         Ok(()) => counts.deleted += 1,
         Err(_) => counts.failed += 1,
@@ -333,10 +333,10 @@ async fn clean_workflows(
 // GraphQL variables, never inside the query text.
 
 /// Deployments per mutation request; each one takes two mutations.
-pub(crate) const DEPLOYMENTS_PER_MUTATION: usize = 50;
+pub const DEPLOYMENTS_PER_MUTATION: usize = 50;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct GqlDeployment {
+pub struct GqlDeployment {
     /// The GraphQL node id that the mutations take.
     pub(crate) node_id: String,
     /// The REST id, used in the output so it matches `prune-ci-rest-obo`.
@@ -349,7 +349,7 @@ pub(crate) struct GqlDeployment {
 
 /// Where a GraphQL connection's pagination stands.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Page {
+pub enum Page {
     First,
     After(String),
     Done,
@@ -357,13 +357,13 @@ pub(crate) enum Page {
 
 impl Page {
     pub(crate) fn wanted(&self) -> bool {
-        *self != Page::Done
+        *self != Self::Done
     }
 
     /// The `after:` variable for this page: null on the first page.
     pub(crate) fn cursor(&self) -> Value {
         match self {
-            Page::After(c) => Value::String(c.clone()),
+            Self::After(c) => Value::String(c.clone()),
             _ => Value::Null,
         }
     }
@@ -372,7 +372,7 @@ impl Page {
 /// One repository's part of an inventory response. A connection that was
 /// not asked for is absent.
 #[derive(Debug, Deserialize)]
-pub(crate) struct RepoInventory {
+pub struct RepoInventory {
     deployments: Option<Connection<DeploymentNode>>,
     releases: Option<Connection<ReleaseNode>>,
 }
@@ -434,7 +434,7 @@ impl From<DeploymentNode> for GqlDeployment {
 }
 
 /// One repository's deployments and releases, collected page by page.
-pub(crate) struct Inventory {
+pub struct Inventory {
     pub(crate) dpage: Page,
     pub(crate) rpage: Page,
     pub(crate) deployments: Vec<GqlDeployment>,
@@ -442,7 +442,7 @@ pub(crate) struct Inventory {
 }
 
 impl Inventory {
-    pub(crate) fn new() -> Self {
+    pub(crate) const fn new() -> Self {
         Self {
             dpage: Page::First,
             rpage: Page::First,
@@ -482,7 +482,7 @@ impl Inventory {
 /// variables named by `suffix` (`$d0`, `$r0` for suffix `0`). Only the
 /// connections still wanted are included, since GraphQL rejects a declared
 /// variable that is not used.
-pub(crate) fn inventory_fields(
+pub fn inventory_fields(
     suffix: &str,
     dpage: &Page,
     rpage: &Page,
@@ -551,7 +551,7 @@ async fn fetch_inventory(gh: &Github, repo: &RepoId) -> Result<Inventory> {
 
 /// One mutation request that deactivates (where needed) and deletes each of
 /// `batch`, in order, with the node ids as variables `$id0`, `$id1`, ...
-pub(crate) fn deployment_mutation(batch: &[&GqlDeployment]) -> (String, Value) {
+pub fn deployment_mutation(batch: &[&GqlDeployment]) -> (String, Value) {
     let mut vars = Vec::new();
     let mut body = String::new();
     let mut variables = serde_json::Map::new();
@@ -594,24 +594,18 @@ async fn run_deployment_batch(gh: &Github, batch: &[&GqlDeployment]) -> Vec<Resu
     (0..batch.len())
         .map(|i| {
             let alias = format!("d{i}");
-            match response
+            response
                 .errors
                 .iter()
                 .find(|e| e.alias() == Some(alias.as_str()))
-            {
-                Some(e) => Err(anyhow::anyhow!("{}", e.message)),
-                None => Ok(()),
-            }
+                .map_or(Ok(()), |e| Err(anyhow::anyhow!("{}", e.message)))
         })
         .collect()
 }
 
 /// Delete the deployments, `DEPLOYMENTS_PER_MUTATION` per request; one
 /// result per deployment, in order.
-pub(crate) async fn delete_deployments(
-    gh: &Github,
-    to_delete: &[&GqlDeployment],
-) -> Vec<Result<()>> {
+pub async fn delete_deployments(gh: &Github, to_delete: &[&GqlDeployment]) -> Vec<Result<()>> {
     let mut results = Vec::with_capacity(to_delete.len());
     for batch in to_delete.chunks(DEPLOYMENTS_PER_MUTATION) {
         results.extend(run_deployment_batch(gh, batch).await);
@@ -621,7 +615,7 @@ pub(crate) async fn delete_deployments(
 
 /// What one repository deletes: indices into its deployments, release ids
 /// and workflow run ids.
-pub(crate) struct Plan {
+pub struct Plan {
     pub(crate) deployments: Vec<usize>,
     pub(crate) releases: Vec<u64>,
     pub(crate) runs: Vec<u64>,
@@ -721,7 +715,7 @@ impl Plan {
 }
 
 /// One error for all the failures of a repo, or Ok when there were none.
-pub(crate) fn combine_errors(errors: &[String]) -> Result<()> {
+pub fn combine_errors(errors: &[String]) -> Result<()> {
     match errors.len() {
         0 => Ok(()),
         1 => Err(anyhow::anyhow!("{}", errors[0])),
@@ -773,14 +767,14 @@ fn gql_obo(project: &Utf8Path, keep: usize) -> Result<(RepoTally, Vec<String>)> 
 
 /// What happened to one kind of item (deployments, releases or runs).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Counts {
+pub struct Counts {
     pub(crate) found: usize,
     pub(crate) deleted: usize,
     pub(crate) failed: usize,
 }
 
 impl Counts {
-    fn add(&mut self, other: &Counts) {
+    const fn add(&mut self, other: &Self) {
         self.found += other.found;
         self.deleted += other.deleted;
         self.failed += other.failed;
@@ -789,7 +783,7 @@ impl Counts {
 
 /// The counts of one repo, or of the whole fleet.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RepoTally {
+pub struct RepoTally {
     pub(crate) deployments: Counts,
     pub(crate) releases: Counts,
     pub(crate) runs: Counts,
@@ -971,13 +965,12 @@ pub fn open_site(project: &Utf8Path) -> Result<()> {
     let gh = github()?;
     let site =
         gh.block_on(gh.get_optional::<PagesSite>(&format!("/repos/{}/pages", repo.slug())))?;
-    if let Some(url) = site.and_then(|s| s.html_url).filter(|u| !u.is_empty()) {
-        out_line(&url);
-        check_call(project, "xdg-open", &[&url])
-    } else {
+    let Some(url) = site.and_then(|s| s.html_url).filter(|u| !u.is_empty()) else {
         out_line("no GitHub Pages site");
-        Ok(())
-    }
+        return Ok(());
+    };
+    out_line(&url);
+    check_call(project, "xdg-open", &[&url])
 }
 
 // ── sync-metadata ──────────────────────────────────────────────────────
@@ -1025,7 +1018,7 @@ pub struct SyncPlan {
 }
 
 impl SyncPlan {
-    fn has_edits(&self) -> bool {
+    const fn has_edits(&self) -> bool {
         self.description.is_some() || self.topics.is_some() || !self.features.is_empty()
     }
 }

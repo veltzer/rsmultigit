@@ -122,10 +122,8 @@ pub fn find_in_path(name: &str, path: &OsStr) -> Option<Utf8PathBuf> {
 
 fn is_executable_file(path: &Utf8Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    match path.metadata() {
-        Ok(meta) => meta.is_file() && meta.permissions().mode() & 0o111 != 0,
-        Err(_) => false,
-    }
+    path.metadata()
+        .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
 }
 
 /// The token to hand to cargo: `CARGO_REGISTRY_TOKEN` from the environment

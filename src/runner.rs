@@ -17,7 +17,7 @@ fn resolve_jobs(config: &AppConfig) -> usize {
     n.max(1)
 }
 
-pub(crate) fn absolute(project: &Utf8Path, base: &Utf8Path) -> Utf8PathBuf {
+pub fn absolute(project: &Utf8Path, base: &Utf8Path) -> Utf8PathBuf {
     if project.is_absolute() {
         project.to_path_buf()
     } else {
@@ -33,7 +33,7 @@ fn print_project_header(project: &Utf8Path) {
 /// `--terse` is set. `--terse` has a richer meaning in some runners (e.g.
 /// switching `print_if_data` to "project-name only" mode); this helper only
 /// captures the shared "should I emit the bracketed header?" rule.
-fn headers_suppressed(config: &AppConfig) -> bool {
+const fn headers_suppressed(config: &AppConfig) -> bool {
     config.no_header || config.terse
 }
 
@@ -78,7 +78,7 @@ impl Failures {
 }
 
 /// The current directory as a UTF-8 path, for resolving relative repo paths.
-pub(crate) fn current_dir() -> Result<Utf8PathBuf> {
+pub fn current_dir() -> Result<Utf8PathBuf> {
     let cwd = std::env::current_dir().context("failed to get current directory")?;
     Utf8PathBuf::from_path_buf(cwd)
         .map_err(|p| anyhow::anyhow!("current directory is not valid UTF-8: {}", p.display()))

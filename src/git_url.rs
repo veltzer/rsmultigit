@@ -46,10 +46,10 @@ impl GitUrl {
     /// The repository's identity for comparing two URLs: `host/path`, case
     /// folded, so every spelling of one remote compares equal.
     pub fn identity(&self) -> String {
-        match &self.host {
-            Some(host) => format!("{host}/{}", self.path).to_ascii_lowercase(),
-            None => self.path.to_ascii_lowercase(),
-        }
+        self.host.as_ref().map_or_else(
+            || self.path.to_ascii_lowercase(),
+            |host| format!("{host}/{}", self.path).to_ascii_lowercase(),
+        )
     }
 
     /// The GitHub repository this URL names, when it is a github.com URL

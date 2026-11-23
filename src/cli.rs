@@ -558,26 +558,26 @@ impl GhWhat {
     /// Whether `--dry-run` makes sense for this operation (only
     /// `sync-metadata`). A dry run that silently went ahead and deleted
     /// things would be worse than a usage error, so the others reject it.
-    pub fn takes_dry_run(self) -> bool {
-        matches!(self, GhWhat::SyncMetadata)
+    pub const fn takes_dry_run(self) -> bool {
+        matches!(self, Self::SyncMetadata)
     }
 
     /// Whether `--keep` makes sense for this operation (only the
     /// `prune-ci-*` variants).
-    pub fn takes_keep(self) -> bool {
+    pub const fn takes_keep(self) -> bool {
         self.is_prune()
     }
 
     /// Whether this operation prints a summary after the run, which
     /// `--no-summary` turns off (only the `prune-ci-*` variants).
-    pub fn prints_summary(self) -> bool {
+    pub const fn prints_summary(self) -> bool {
         self.is_prune()
     }
 
-    fn is_prune(self) -> bool {
+    const fn is_prune(self) -> bool {
         matches!(
             self,
-            GhWhat::PruneCiRestObo | GhWhat::PruneCiGqlObo | GhWhat::PruneCiGqlBatch
+            Self::PruneCiRestObo | Self::PruneCiGqlObo | Self::PruneCiGqlBatch
         )
     }
 }
@@ -632,8 +632,8 @@ pub enum NpmWhat {
 
 impl NpmWhat {
     /// Whether `--fix` makes sense for this operation (only `audit`).
-    pub fn takes_fix(self) -> bool {
-        matches!(self, NpmWhat::Audit)
+    pub const fn takes_fix(self) -> bool {
+        matches!(self, Self::Audit)
     }
 }
 
@@ -672,26 +672,21 @@ pub enum CargoWhat {
 impl CargoWhat {
     /// Whether `--release` makes sense for this operation: the ones that
     /// compile the crate under a profile. Mirrors cargo's own flag set.
-    pub fn takes_release(self) -> bool {
+    pub const fn takes_release(self) -> bool {
         matches!(
             self,
-            CargoWhat::Build
-                | CargoWhat::Check
-                | CargoWhat::Clippy
-                | CargoWhat::Test
-                | CargoWhat::Nextest
-                | CargoWhat::Doc
+            Self::Build | Self::Check | Self::Clippy | Self::Test | Self::Nextest | Self::Doc
         )
     }
 
     /// Whether `--check` makes sense for this operation (only `fmt`).
-    pub fn takes_check(self) -> bool {
-        matches!(self, CargoWhat::Fmt)
+    pub const fn takes_check(self) -> bool {
+        matches!(self, Self::Fmt)
     }
 
     /// Whether `--type` makes sense for this operation (only `release`).
-    pub fn takes_type(self) -> bool {
-        matches!(self, CargoWhat::Release)
+    pub const fn takes_type(self) -> bool {
+        matches!(self, Self::Release)
     }
 }
 
@@ -770,11 +765,11 @@ pub enum ReleaseType {
 
 impl ReleaseType {
     /// The level argument `cargo release` expects.
-    pub fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
-            ReleaseType::Patch => "patch",
-            ReleaseType::Minor => "minor",
-            ReleaseType::Major => "major",
+            Self::Patch => "patch",
+            Self::Minor => "minor",
+            Self::Major => "major",
         }
     }
 }

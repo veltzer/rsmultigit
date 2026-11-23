@@ -173,11 +173,7 @@ fn quoted_list<S: std::fmt::Debug>(items: impl IntoIterator<Item = S>) -> String
 /// suppressed it: `[kind name]` followed by the rule's properties, so a
 /// failure can be read against its rule without opening the config, and a
 /// `check all` run says which kind of rule each line belongs to.
-pub(crate) fn rule_header<W: Write, R: NamedRule>(
-    app: &AppConfig,
-    out: &mut W,
-    rule: &R,
-) -> Result<()> {
+pub fn rule_header<W: Write, R: NamedRule>(app: &AppConfig, out: &mut W, rule: &R) -> Result<()> {
     if !app.no_header {
         write!(out, "[{} {}]", rule.kind(), rule.name())?;
         for (key, value) in rule.properties() {
@@ -193,12 +189,7 @@ pub(crate) fn rule_header<W: Write, R: NamedRule>(
 /// error on stderr, the last thing on screen, naming every empty rule. It
 /// takes precedence over the exit-0 modes (`--copy`, `--fix-missing`): an
 /// empty rule is a config bug, not drift those modes could fix.
-pub(crate) fn fail_on_empty_rules(
-    command: &str,
-    what: &str,
-    hint: &str,
-    empty: &[String],
-) -> Result<()> {
+pub fn fail_on_empty_rules(command: &str, what: &str, hint: &str, empty: &[String]) -> Result<()> {
     if empty.is_empty() {
         return Ok(());
     }

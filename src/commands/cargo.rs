@@ -26,18 +26,18 @@ impl Profile {
     /// has rejected `--release --profile`.
     pub fn from_flags(release: bool, profile: Option<&str>) -> Self {
         match (release, profile) {
-            (true, _) => Profile::Release,
-            (false, Some(name)) => Profile::Named(name.to_string()),
-            (false, None) => Profile::All,
+            (true, _) => Self::Release,
+            (false, Some(name)) => Self::Named(name.to_string()),
+            (false, None) => Self::All,
         }
     }
 
     /// The flags cargo takes for this selection; empty for `All`.
     fn flags(&self) -> Vec<String> {
         match self {
-            Profile::All => vec![],
-            Profile::Release => vec!["--release".to_string()],
-            Profile::Named(name) => vec!["--profile".to_string(), name.clone()],
+            Self::All => vec![],
+            Self::Release => vec!["--release".to_string()],
+            Self::Named(name) => vec!["--profile".to_string(), name.clone()],
         }
     }
 }
