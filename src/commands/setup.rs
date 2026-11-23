@@ -14,6 +14,7 @@
 //! over plain data, so it is unit-tested without a terminal.
 
 use std::fmt;
+use std::fmt::Write as _;
 use std::io::{IsTerminal, Write};
 
 use anyhow::{Context, Result};
@@ -26,14 +27,24 @@ use inquire::{Confirm, InquireError, Select, Text};
 
 use crate::cli::BuildWhat;
 
+/// How the default build method is decided.
+#[derive(Debug, Default, Clone, Copy)]
+pub enum BuildSetting {
+    /// Not given on the command line: ask.
+    #[default]
+    Ask,
+    /// Write no default build method (`--no-build`).
+    NoDefault,
+    /// Set `default_build_method` to this method.
+    Method(BuildWhat),
+}
+
 /// The answers `setup` needs. `None` means "not given on the command line, ask".
 #[derive(Debug, Default, Clone)]
 pub struct SetupOpts {
     /// Directory whose immediate subdirectories are the git repositories.
     pub repos_dir: Option<String>,
-    /// `Some(Some(m))`: set `default_build_method = m`. `Some(None)`: write no
-    /// default build method (`--no-build`). `None`: ask.
-    pub build: Option<Option<BuildWhat>>,
+    pub build: BuildSetting,
     /// Replace an existing config file without asking.
     pub overwrite: bool,
 }
@@ -68,8 +79,7 @@ impl Scan {
         self.counts
             .iter()
             .find(|(m, _)| *m == method)
-            .map(|(_, n)| *n)
-            .unwrap_or(0)
+            .map_or(0, |(_, n)| *n)
     }
 }
 
@@ -188,17 +198,15 @@ pub fn render_config(dir: &Utf8Path, build: Option<BuildWhat>) -> String {
          # key, including the [[check-same]] and [[check-exists]] rules that keep shared files\n\
          # identical across repos.\n\n",
     );
-    out.push_str(&format!(
-        "repos = [\n    \"{}/*\",\n]\n",
-        contract_home(dir)
-    ));
+    let _ = write!(out, "repos = [\n    \"{}/*\",\n]\n", contract_home(dir));
     match build {
         Some(m) => {
             let name = method_name(m);
-            out.push_str(&format!(
+            let _ = write!(
+                out,
                 "\n# What a bare `rsmultigit build` runs; a method given on the command line wins.\n\
                  default_build_method = \"{name}\"\n"
-            ));
+            );
         }
         None => out.push_str(
             "\n# No default build method: `rsmultigit build` needs an explicit method\n\
@@ -250,8 +258,9 @@ pub fn run(opts: &SetupOpts, config_path: &Utf8Path, out: &mut dyn Write) -> Res
     };
 
     let build = match opts.build {
-        Some(choice) => choice,
-        None => ask(|| ask_build(&scan), "pass --build <METHOD> or --no-build")?,
+        BuildSetting::Method(method) => Some(method),
+        BuildSetting::NoDefault => None,
+        BuildSetting::Ask => ask(|| ask_build(&scan), "pass --build <METHOD> or --no-build")?,
     };
 
     let text = render_config(&scan.dir, build);
@@ -419,7 +428,7 @@ impl DirCompleter {
             return vec![];
         };
         let mut out: Vec<String> = entries
-            .filter_map(|e| e.ok())
+            .filter_map(std::result::Result::ok)
             .filter(|e| e.path().is_dir())
             .filter_map(|e| e.file_name().into_string().ok())
             .filter(|name| name.starts_with(prefix))
@@ -642,7 +651,7 @@ mod tests {
         let cfg = root.join("deep/er/config.toml");
         let opts = SetupOpts {
             repos_dir: Some(root.to_string()),
-            build: Some(Some(BuildWhat::Rsconstruct)),
+            build: BuildSetting::Method(BuildWhat::Rsconstruct),
             overwrite: false,
         };
         let mut out = Vec::new();
@@ -668,7 +677,7 @@ mod tests {
         fs::write(&cfg, "repos = []\n").unwrap();
         let opts = SetupOpts {
             repos_dir: Some(root.to_string()),
-            build: Some(None),
+            build: BuildSetting::NoDefault,
             overwrite: false,
         };
         // The unit tests run without a terminal on stdin, so the confirm
@@ -695,7 +704,7 @@ mod tests {
         let cfg = root.join("config.toml");
         let opts = SetupOpts {
             repos_dir: Some(root.to_string()),
-            build: Some(None),
+            build: BuildSetting::NoDefault,
             overwrite: false,
         };
         let err = run(&opts, &cfg, &mut Vec::new()).unwrap_err().to_string();
@@ -721,7 +730,10 @@ mod tests {
         assert_eq!(got, vec![format!("{root}/.hidden/")]);
         // Empty input offers the home tree; a bare word has no parent to list.
         assert_eq!(DirCompleter::suggestions(""), vec!["~/".to_string()]);
-        assert!(DirCompleter::suggestions("nonsense").is_empty());
+        assert_eq!(
+            DirCompleter::suggestions("nonsense"),
+            [] as [std::string::String; 0]
+        );
     }
 
     #[test]

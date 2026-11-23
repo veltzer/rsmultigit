@@ -4,6 +4,7 @@
 //! resolves it, so no request is spent on that.
 
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -27,7 +28,7 @@ fn github_remotes(project: &Utf8Path) -> Result<(git2::Repository, Vec<(String, 
         .remotes()
         .with_context(|| format!("failed to list remotes for {project}"))?;
     let mut found = Vec::new();
-    for name in names.iter() {
+    for name in &names {
         // Err is a non-UTF-8 remote name, Ok(None) a null entry: neither can
         // be looked up, so skip both.
         let Ok(Some(name)) = name else {
@@ -490,17 +491,19 @@ pub(crate) fn inventory_fields(
     let mut body = String::new();
     if dpage.wanted() {
         vars.push(format!("$d{suffix}:String"));
-        body.push_str(&format!(
+        let _ = write!(
+            body,
             "deployments(first:{PAGE_SIZE},after:$d{suffix},orderBy:{{field:CREATED_AT,direction:DESC}})\
              {{pageInfo{{hasNextPage endCursor}} nodes{{id databaseId state latestStatus{{state}}}}}} "
-        ));
+        );
     }
     if rpage.wanted() {
         vars.push(format!("$r{suffix}:String"));
-        body.push_str(&format!(
+        let _ = write!(
+            body,
             "releases(first:{PAGE_SIZE},after:$r{suffix},orderBy:{{field:CREATED_AT,direction:DESC}})\
              {{pageInfo{{hasNextPage endCursor}} nodes{{databaseId}}}} "
-        ));
+        );
     }
     body.trim_end().to_string()
 }
@@ -557,13 +560,15 @@ pub(crate) fn deployment_mutation(batch: &[&GqlDeployment]) -> (String, Value) {
         variables.insert(format!("id{i}"), Value::String(d.node_id.clone()));
         // GitHub refuses to delete an active deployment.
         if !d.inactive {
-            body.push_str(&format!(
+            let _ = write!(
+                body,
                 "s{i}:createDeploymentStatus(input:{{deploymentId:$id{i},state:INACTIVE}}){{clientMutationId}} "
-            ));
+            );
         }
-        body.push_str(&format!(
+        let _ = write!(
+            body,
             "d{i}:deleteDeployment(input:{{id:$id{i}}}){{clientMutationId}} "
-        ));
+        );
     }
     (
         format!("mutation({}){{{}}}", vars.join(","), body.trim_end()),
@@ -716,7 +721,7 @@ impl Plan {
 }
 
 /// One error for all the failures of a repo, or Ok when there were none.
-pub(crate) fn combine_errors(errors: Vec<String>) -> Result<()> {
+pub(crate) fn combine_errors(errors: &[String]) -> Result<()> {
     match errors.len() {
         0 => Ok(()),
         1 => Err(anyhow::anyhow!("{}", errors[0])),
@@ -730,7 +735,7 @@ pub(crate) fn combine_errors(errors: Vec<String>) -> Result<()> {
 /// failure is reported at the end.
 pub fn prune_ci_gql_obo(project: &Utf8Path, keep: usize, summary: &PruneSummary) -> Result<()> {
     let (tally, result) = match gql_obo(project, keep) {
-        Ok((tally, errors)) => (tally, combine_errors(errors)),
+        Ok((tally, errors)) => (tally, combine_errors(&errors)),
         Err(e) => (RepoTally::default(), Err(e)),
     };
     summary.record(&tally, result.is_ok());
@@ -821,7 +826,10 @@ impl PruneSummary {
 
     /// Add one GitHub repo's counts; `ok` is false when the repo failed.
     pub(crate) fn record(&self, tally: &RepoTally, ok: bool) {
-        let mut t = self.totals.lock().unwrap_or_else(|e| e.into_inner());
+        let mut t = self
+            .totals
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         t.repos += 1;
         if !ok {
             t.repos_failed += 1;
@@ -833,7 +841,10 @@ impl PruneSummary {
 
     /// Print the summary to stdout, after the runner has printed every repo.
     pub fn print(&self) {
-        let t = self.totals.lock().unwrap_or_else(|e| e.into_inner());
+        let t = self
+            .totals
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         for line in summary_lines(&t, self.start.elapsed()) {
             println!("{line}");
         }
@@ -960,15 +971,12 @@ pub fn open_site(project: &Utf8Path) -> Result<()> {
     let gh = github()?;
     let site =
         gh.block_on(gh.get_optional::<PagesSite>(&format!("/repos/{}/pages", repo.slug())))?;
-    match site.and_then(|s| s.html_url).filter(|u| !u.is_empty()) {
-        Some(url) => {
-            out_line(&url);
-            check_call(project, "xdg-open", &[&url])
-        }
-        None => {
-            out_line("no GitHub Pages site");
-            Ok(())
-        }
+    if let Some(url) = site.and_then(|s| s.html_url).filter(|u| !u.is_empty()) {
+        out_line(&url);
+        check_call(project, "xdg-open", &[&url])
+    } else {
+        out_line("no GitHub Pages site");
+        Ok(())
     }
 }
 
@@ -1160,7 +1168,7 @@ mod tests {
     #[test]
     fn select_deletions_nothing_to_delete() {
         let items = [(1, false), (2, false)];
-        assert!(select_deletions(&items, 4).is_empty());
+        assert_eq!(select_deletions(&items, 4), [] as [u64; 0]);
     }
 
     #[test]
@@ -1477,7 +1485,7 @@ mod tests {
         LocalMeta {
             name: "demo".to_string(),
             description: desc.map(String::from),
-            keywords: keywords.map(|k| k.iter().map(|s| s.to_string()).collect()),
+            keywords: keywords.map(|k| k.iter().map(std::string::ToString::to_string).collect()),
         }
     }
 
@@ -1486,7 +1494,10 @@ mod tests {
             full_name: "veltzer/demo".to_string(),
             name: "demo".to_string(),
             description: desc.to_string(),
-            topics: topics.iter().map(|s| s.to_string()).collect(),
+            topics: topics
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             wiki: POLICY_WIKI,
             issues: POLICY_ISSUES,
             projects: POLICY_PROJECTS,

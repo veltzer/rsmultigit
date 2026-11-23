@@ -207,7 +207,7 @@ fn gc_and_submodule_update_succeed_on_plain_repos() {
         assert!(output.status.success(), "{cmd:?}: {}", stderr_str(&output));
         let stdout = stdout_str(&output);
         assert!(
-            stdout.contains("[") && stdout.contains("a]") && stdout.contains("b]"),
+            stdout.contains('[') && stdout.contains("a]") && stdout.contains("b]"),
             "{stdout}"
         );
     }

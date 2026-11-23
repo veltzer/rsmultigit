@@ -1,4 +1,5 @@
 use camino::Utf8Path;
+use std::fmt::Write as _;
 
 use anyhow::{Context, Result};
 
@@ -18,7 +19,7 @@ pub fn do_status(project: &Utf8Path) -> Result<Option<String>> {
                     output.push('\n');
                 }
                 let plural = if count == 1 { "" } else { "s" };
-                output.push_str(&format!("{direction} upstream by {count} commit{plural}"));
+                let _ = write!(output, "{direction} upstream by {count} commit{plural}");
             }
         }
     }
@@ -37,7 +38,7 @@ pub fn do_status_summary(project: &Utf8Path) -> Result<Option<String>> {
     let repo = open_repo(project)?;
     let statuses = repo
         .statuses(Some(&mut status_options()))
-        .with_context(|| format!("failed to get statuses for {}", project))?;
+        .with_context(|| format!("failed to get statuses for {project}"))?;
 
     let mut staged = 0u32;
     let mut modified = 0u32;

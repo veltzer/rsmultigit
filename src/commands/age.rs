@@ -15,7 +15,8 @@ pub fn do_age(project: &Utf8Path) -> Result<Option<String>> {
     let commit = head.peel_to_commit()?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)?
-        .as_secs() as i64;
+        .as_secs()
+        .cast_signed();
     Ok(Some(relative_date(now - commit.time().seconds())))
 }
 

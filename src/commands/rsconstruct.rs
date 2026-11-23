@@ -5,8 +5,8 @@ use anyhow::Result;
 use crate::subprocess_utils::Cmd;
 
 /// Repos rsconstruct can operate on: those with an rsconstruct.toml at the root.
-pub fn check_rsconstruct(project: &Utf8Path) -> Result<bool> {
-    Ok(project.join("rsconstruct.toml").exists())
+pub fn check_rsconstruct(project: &Utf8Path) -> bool {
+    project.join("rsconstruct.toml").exists()
 }
 
 /// Move every rsconstruct.lock entry to its latest release:

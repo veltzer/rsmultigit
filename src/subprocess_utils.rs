@@ -180,14 +180,18 @@ impl Cmd {
     }
 
     /// Activate the repo's local virtualenv when `on`: `.venv/bin` is
-    /// prepended to PATH and VIRTUAL_ENV points at `.venv`, so the tools the
+    /// prepended to PATH and `VIRTUAL_ENV` points at `.venv`, so the tools the
     /// command spawns (pytest, mypy, ...) resolve from the repo's own venv.
     /// The program itself is resolved through that same PATH, so a copy of
     /// it in `.venv/bin` wins over the ambient one. A repo without a
     /// `.venv/bin` runs with the environment unchanged. This is how the
     /// global `--venv`/`--no-venv` flag is honoured.
     pub fn venv(mut self, on: bool) -> Result<Self> {
-        let Some(cwd) = self.command.get_current_dir().map(|d| d.to_path_buf()) else {
+        let Some(cwd) = self
+            .command
+            .get_current_dir()
+            .map(std::path::Path::to_path_buf)
+        else {
             return Ok(self);
         };
         let venv = cwd.join(".venv");

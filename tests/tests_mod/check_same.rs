@@ -1,4 +1,5 @@
 use camino::Utf8Path;
+use std::fmt::Write as _;
 use std::fs;
 use std::process::Output;
 
@@ -8,12 +9,12 @@ use crate::common::{
 };
 
 fn run(tmp: &Utf8Path, config: &Utf8Path, args: &[&str]) -> Output {
-    let cfg_str = config.to_string().to_string();
+    let cfg_str = config.to_string().clone();
     run_rsmultigit_with_env(tmp, args, &[("RSMULTIGIT_CONFIG", &cfg_str)])
 }
 
 fn run_with_stdin(tmp: &Utf8Path, config: &Utf8Path, args: &[&str], stdin_bytes: &[u8]) -> Output {
-    let cfg_str = config.to_string().to_string();
+    let cfg_str = config.to_string().clone();
     run_rsmultigit_with_stdin(tmp, args, &[("RSMULTIGIT_CONFIG", &cfg_str)], stdin_bytes)
 }
 
@@ -1036,7 +1037,7 @@ fn config_example_output_parses_as_valid_config() {
     let output = run(utf8(&tmp), &cfg_path, &["check", "list"]);
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     // Should emit at least one rule name.
-    assert!(!stdout_str(&output).is_empty());
+    assert_ne!(stdout_str(&output), "");
 }
 
 /// Replace the `repos = [...]` line in a config blob with one that points at
@@ -1047,7 +1048,7 @@ fn regex_replace_repos_line(text: &str, dir: &Utf8Path) -> String {
     for line in text.lines() {
         let trimmed = line.trim_start();
         if trimmed.starts_with("repos = [") {
-            out.push_str(&format!("repos = [\"{}/*\"]\n", dir));
+            let _ = writeln!(out, "repos = [\"{dir}/*\"]");
             in_repos = !trimmed.contains(']');
             continue;
         }
@@ -1525,11 +1526,7 @@ must_have = true
     );
     assert!(output.status.success(), "stderr: {}", stderr_str(&output));
     let dst = utf8(&tmp).join("b/.github/workflows/build.yml");
-    assert!(
-        dst.exists(),
-        "nested file should have been created: {}",
-        dst
-    );
+    assert!(dst.exists(), "nested file should have been created: {dst}");
     assert_eq!(fs::read_to_string(&dst).unwrap(), "on: push\n");
 }
 

@@ -6,8 +6,8 @@ use crate::cli::NpmWhat;
 use crate::subprocess_utils::Cmd;
 
 /// Repos npm can operate on: those with a package.json at the root.
-pub fn check_package_json(project: &Utf8Path) -> Result<bool> {
-    Ok(project.join("package.json").exists())
+pub fn check_package_json(project: &Utf8Path) -> bool {
+    project.join("package.json").exists()
 }
 
 /// The argument vector `rsmultigit npm <what>` hands to `npm`.
@@ -64,8 +64,8 @@ mod tests {
     fn check_package_json_requires_the_file() {
         let tmp = tempfile::TempDir::new().unwrap();
         let dir = Utf8Path::from_path(tmp.path()).unwrap();
-        assert!(!check_package_json(dir).unwrap());
+        assert!(!check_package_json(dir));
         std::fs::write(dir.join("package.json"), "{}").unwrap();
-        assert!(check_package_json(dir).unwrap());
+        assert!(check_package_json(dir));
     }
 }

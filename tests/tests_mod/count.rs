@@ -77,7 +77,7 @@ fn print_not_inverts_selection() {
     assert!(output.status.success());
     let stdout = stdout_str(&output);
     assert!(
-        stdout.contains("b"),
+        stdout.contains('b'),
         "should print the non-matching repo: {stdout}"
     );
     assert!(

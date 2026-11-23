@@ -23,7 +23,7 @@ fn push_pushes_only_repos_that_are_ahead() {
     assert!(output.status.success(), "{}", stderr_str(&output));
     let stdout = stdout_str(&output);
     assert!(
-        stdout.contains("[") && stdout.contains("ahead]"),
+        stdout.contains('[') && stdout.contains("ahead]"),
         "{stdout}"
     );
     assert!(

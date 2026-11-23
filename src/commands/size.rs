@@ -33,16 +33,29 @@ fn dir_size(path: &std::path::Path) -> Result<u64> {
     Ok(total)
 }
 
+/// `bytes / unit` with one decimal (round half to even), by integer
+/// arithmetic so no precision-losing `u64` -> `f64` cast is needed.
+fn tenths(bytes: u64, unit: u64) -> String {
+    let num = u128::from(bytes) * 10;
+    let den = u128::from(unit);
+    let mut q = num / den;
+    let r = num % den;
+    if r * 2 > den || (r * 2 == den && q % 2 == 1) {
+        q += 1;
+    }
+    format!("{}.{}", q / 10, q % 10)
+}
+
 fn format_size(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = 1024 * KB;
     const GB: u64 = 1024 * MB;
     if bytes >= GB {
-        format!("{:.1} GB", bytes as f64 / GB as f64)
+        format!("{} GB", tenths(bytes, GB))
     } else if bytes >= MB {
-        format!("{:.1} MB", bytes as f64 / MB as f64)
+        format!("{} MB", tenths(bytes, MB))
     } else if bytes >= KB {
-        format!("{:.1} KB", bytes as f64 / KB as f64)
+        format!("{} KB", tenths(bytes, KB))
     } else {
         format!("{bytes} B")
     }

@@ -21,7 +21,7 @@ pub fn group_label(i: usize) -> String {
     let mut n = i;
     let mut s = String::new();
     loop {
-        s.insert(0, (b'A' + (n % 26) as u8) as char);
+        s.insert(0, char::from(b'A' + u8::try_from(n % 26).unwrap_or(0)));
         n /= 26;
         if n == 0 {
             break;

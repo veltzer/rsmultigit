@@ -12,7 +12,7 @@ use crate::subprocess_utils::Cmd;
 /// with `command[1..]` as arguments.
 ///
 /// With `venv` (the global `--venv` flag, default on), an existing repo `.venv`
-/// is activated (PATH + VIRTUAL_ENV) before the command runs, so both the
+/// is activated (PATH + `VIRTUAL_ENV`) before the command runs, so both the
 /// command itself and anything it spawns resolve from the repo's own venv.
 pub fn do_run(project: &Utf8Path, command: &[String], venv: bool) -> Result<()> {
     if command.is_empty() {
@@ -41,7 +41,7 @@ pub fn do_run(project: &Utf8Path, command: &[String], venv: bool) -> Result<()> 
         return Ok(());
     }
 
-    let args: Vec<&str> = command.iter().map(|s| s.as_str()).collect();
+    let args: Vec<&str> = command.iter().map(std::string::String::as_str).collect();
     Cmd::new(project, args[0])
         .args(&args[1..])
         .venv(venv)?

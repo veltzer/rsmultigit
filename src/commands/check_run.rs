@@ -215,10 +215,110 @@ pub struct CheckSameOpts<'a> {
     pub requested: &'a [String],
     pub requested_re: &'a [String],
     pub only_failed: bool,
+    pub allow_empty: bool,
+    pub interact: Interact,
+}
+
+/// The interactive modes of `check same`.
+#[derive(Clone, Copy, Default)]
+pub struct Interact {
     pub show_diff: bool,
     pub do_copy: bool,
-    pub allow_empty: bool,
     pub do_fix_missing: bool,
+}
+
+/// The "no files matched" report for a rule that checked nothing.
+fn report_empty<W: Write>(
+    app: &AppConfig,
+    out: &mut W,
+    rule: &check::Rule,
+    result: &check::RuleResult,
+) -> Result<()> {
+    if app.terse {
+        writeln!(out, "{}", result.name)?;
+    } else {
+        rule_header(app, out, rule)?;
+        let suffix = if result.skipped.is_empty() {
+            String::new()
+        } else {
+            format!(" ({} skipped)", result.skipped.len())
+        };
+        writeln!(out, "no files matched{suffix}")?;
+    }
+    Ok(())
+}
+
+/// The report for a rule found broken, plus its interactive fixes. Returns
+/// whether the user quit, which ends the run.
+fn report_mismatch<R: BufRead, W: Write>(
+    app: &AppConfig,
+    input: &mut R,
+    out: &mut W,
+    rule: &check::Rule,
+    result: &check::RuleResult,
+    interact: Interact,
+    failed_writes: &mut usize,
+) -> Result<bool> {
+    rule_header(app, out, rule)?;
+    let mut suffix_parts: Vec<String> = Vec::new();
+    if !result.must_have_violations.is_empty() {
+        suffix_parts.push(format!("{} missing", result.must_have_violations.len()));
+    }
+    if !result.unreadable.is_empty() {
+        suffix_parts.push(format!("{} unreadable", result.unreadable.len()));
+    }
+    if !result.skipped.is_empty() {
+        suffix_parts.push(format!("{} skipped", result.skipped.len()));
+    }
+    let suffix = if suffix_parts.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", suffix_parts.join(", "))
+    };
+    writeln!(
+        out,
+        "{} files, {} groups{suffix}",
+        result.total_files,
+        result.groups.len(),
+    )?;
+
+    let mut quit = false;
+    if !app.no_output {
+        for (i, group) in result.groups.iter().enumerate() {
+            writeln!(out, "  group {} ({} files):", group_label(i), group.len())?;
+            for file in group {
+                writeln!(out, "    {file}")?;
+            }
+        }
+        if !result.must_have_violations.is_empty() {
+            writeln!(out, "  missing in:")?;
+            for repo in &result.must_have_violations {
+                writeln!(out, "    {repo}")?;
+            }
+        }
+        if !result.unreadable.is_empty() {
+            writeln!(out, "  unreadable:")?;
+            for (file, reason) in &result.unreadable {
+                writeln!(out, "    {file}: {reason}")?;
+            }
+        }
+
+        // Diffing and copying need two groups to work between. A rule can
+        // fail with fewer (one group plus repos missing the file, or
+        // unreadable files), and prompting there would offer no choice.
+        let two_groups = result.groups.len() >= 2;
+        if interact.show_diff && two_groups {
+            quit |= run_diff(result, &mut *input, &mut *out)? == FlowControl::Quit;
+        }
+        if interact.do_copy && two_groups && !quit {
+            quit |= run_copy(result, &mut *input, &mut *out, failed_writes)? == FlowControl::Quit;
+        }
+        if interact.do_fix_missing && !quit && !result.must_have_violations.is_empty() {
+            quit |= run_fix_missing(result, &mut *input, &mut *out, failed_writes)?
+                == FlowControl::Quit;
+        }
+    }
+    Ok(quit)
 }
 
 /// Run the check same command. Returns the process exit code.
@@ -254,17 +354,19 @@ pub fn run_check_same<R: BufRead, W: Write>(
         requested,
         requested_re,
         only_failed,
-        show_diff,
-        do_copy,
         allow_empty,
-        do_fix_missing,
+        interact,
     } = opts;
 
     // --copy and --fix-missing prompt and write, and they exit 0 because
     // they act on what they show. Under --terse or --no-output nothing is
     // shown, so they could only do nothing and still report success.
-    if (do_copy || do_fix_missing) && (app.terse || app.no_output) {
-        let flag = if do_copy { "--copy" } else { "--fix-missing" };
+    if (interact.do_copy || interact.do_fix_missing) && (app.terse || app.no_output) {
+        let flag = if interact.do_copy {
+            "--copy"
+        } else {
+            "--fix-missing"
+        };
         let quiet = if app.terse { "--terse" } else { "--no-output" };
         anyhow::bail!("check same: {flag} is interactive and cannot be combined with {quiet}");
     }
@@ -296,17 +398,7 @@ pub fn run_check_same<R: BufRead, W: Write>(
             // files)" behavior.
             any_mismatch = true;
             empty_rules.push(result.name.clone());
-            if app.terse {
-                writeln!(out, "{}", result.name)?;
-            } else {
-                rule_header(app, out, rule)?;
-                let suffix = if result.skipped.is_empty() {
-                    String::new()
-                } else {
-                    format!(" ({} skipped)", result.skipped.len())
-                };
-                writeln!(out, "no files matched{suffix}")?;
-            }
+            report_empty(app, out, rule, &result)?;
             if app.short_circuit {
                 break;
             }
@@ -331,68 +423,8 @@ pub fn run_check_same<R: BufRead, W: Write>(
             continue;
         }
 
-        rule_header(app, out, rule)?;
-        let mut suffix_parts: Vec<String> = Vec::new();
-        if !result.must_have_violations.is_empty() {
-            suffix_parts.push(format!("{} missing", result.must_have_violations.len()));
-        }
-        if !result.unreadable.is_empty() {
-            suffix_parts.push(format!("{} unreadable", result.unreadable.len()));
-        }
-        if !result.skipped.is_empty() {
-            suffix_parts.push(format!("{} skipped", result.skipped.len()));
-        }
-        let suffix = if suffix_parts.is_empty() {
-            String::new()
-        } else {
-            format!(" ({})", suffix_parts.join(", "))
-        };
-        writeln!(
-            out,
-            "{} files, {} groups{suffix}",
-            result.total_files,
-            result.groups.len(),
-        )?;
-
-        if !app.no_output {
-            for (i, group) in result.groups.iter().enumerate() {
-                writeln!(out, "  group {} ({} files):", group_label(i), group.len())?;
-                for file in group {
-                    writeln!(out, "    {file}")?;
-                }
-            }
-            if !result.must_have_violations.is_empty() {
-                writeln!(out, "  missing in:")?;
-                for repo in &result.must_have_violations {
-                    writeln!(out, "    {repo}")?;
-                }
-            }
-            if !result.unreadable.is_empty() {
-                writeln!(out, "  unreadable:")?;
-                for (file, reason) in &result.unreadable {
-                    writeln!(out, "    {file}: {reason}")?;
-                }
-            }
-
-            // Diffing and copying need two groups to work between. A rule can
-            // fail with fewer (one group plus repos missing the file, or
-            // unreadable files), and prompting there would offer no choice.
-            let two_groups = result.groups.len() >= 2;
-            let mut quit = false;
-            if show_diff && two_groups {
-                quit |= run_diff(&result, &mut *input, &mut *out)? == FlowControl::Quit;
-            }
-            if do_copy && two_groups && !quit {
-                quit |= run_copy(&result, &mut *input, &mut *out, &mut failed_writes)?
-                    == FlowControl::Quit;
-            }
-            if do_fix_missing && !quit && !result.must_have_violations.is_empty() {
-                quit |= run_fix_missing(&result, &mut *input, &mut *out, &mut failed_writes)?
-                    == FlowControl::Quit;
-            }
-            if quit {
-                break;
-            }
+        if report_mismatch(app, input, out, rule, &result, interact, &mut failed_writes)? {
+            break;
         }
 
         if app.short_circuit {
@@ -414,10 +446,10 @@ pub fn run_check_same<R: BufRead, W: Write>(
         );
     }
 
-    if do_copy || do_fix_missing {
+    if interact.do_copy || interact.do_fix_missing {
         Ok(0)
     } else {
-        Ok(if any_mismatch { 1 } else { 0 })
+        Ok(i32::from(any_mismatch))
     }
 }
 
@@ -529,7 +561,7 @@ pub fn run_check_exists<W: Write>(
         &empty_rules,
     )?;
 
-    Ok(if any_missing { 1 } else { 0 })
+    Ok(i32::from(any_missing))
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -591,12 +623,10 @@ fn emit_pair_diff<W: Write>(result: &RuleResult, a_idx: usize, b_idx: usize, wri
             return;
         }
     };
-    let (a_text, b_text) = match (std::str::from_utf8(&a_bytes), std::str::from_utf8(&b_bytes)) {
-        (Ok(a), Ok(b)) => (a, b),
-        _ => {
-            let _ = writeln!(writer, "  (binary files differ, not shown)");
-            return;
-        }
+    let (Ok(a_text), Ok(b_text)) = (std::str::from_utf8(&a_bytes), std::str::from_utf8(&b_bytes))
+    else {
+        let _ = writeln!(writer, "  (binary files differ, not shown)");
+        return;
     };
 
     let diff = similar::TextDiff::from_lines(a_text, b_text);
@@ -805,7 +835,7 @@ mod tests {
     }
 
     fn strings(items: &[&str]) -> Vec<String> {
-        items.iter().map(|s| s.to_string()).collect()
+        items.iter().map(std::string::ToString::to_string).collect()
     }
 
     #[test]
@@ -889,10 +919,8 @@ mod tests {
             requested: &[],
             requested_re: &[],
             only_failed: false,
-            show_diff: false,
-            do_copy: false,
             allow_empty: false,
-            do_fix_missing: false,
+            interact: Interact::default(),
         }
     }
 
@@ -1020,7 +1048,10 @@ mod tests {
     fn check_same_diff_with_two_groups_is_automatic() {
         let fleet = make_fleet(".gitignore", &[Some("x\n"), Some("y\n")]);
         let opts = CheckSameOpts {
-            show_diff: true,
+            interact: Interact {
+                show_diff: true,
+                ..Interact::default()
+            },
             ..same_opts()
         };
         let (code, out) = run_same(&AppConfig::default(), &config(ONE_CHECK), &fleet, &opts, "");
@@ -1036,7 +1067,10 @@ mod tests {
     fn check_same_copy_overwrites_the_chosen_group_and_exits_zero() {
         let fleet = make_fleet(".gitignore", &[Some("x\n"), Some("x\n"), Some("y\n")]);
         let opts = CheckSameOpts {
-            do_copy: true,
+            interact: Interact {
+                do_copy: true,
+                ..Interact::default()
+            },
             ..same_opts()
         };
         // from A (the majority), to B, confirm.
@@ -1062,7 +1096,10 @@ mod tests {
         // keep the second rule from being reported at all.
         let cfg = config(&format!("{ONE_CHECK}\n{}", ONE_CHECK.replace("gi", "gi2")));
         let opts = CheckSameOpts {
-            do_copy: true,
+            interact: Interact {
+                do_copy: true,
+                ..Interact::default()
+            },
             ..same_opts()
         };
         let (code, out) = run_same(&AppConfig::default(), &cfg, &fleet, &opts, "q\n");
@@ -1076,7 +1113,10 @@ mod tests {
         let fleet = make_fleet(".gitignore", &[Some("x\n"), None]);
         let cfg = config(&format!("{ONE_CHECK}must_have = true\n"));
         let opts = CheckSameOpts {
-            do_fix_missing: true,
+            interact: Interact {
+                do_fix_missing: true,
+                ..Interact::default()
+            },
             ..same_opts()
         };
         let (code, out) = run_same(&AppConfig::default(), &cfg, &fleet, &opts, "A\ny\n");
@@ -1099,7 +1139,10 @@ mod tests {
             "[[check-same]]\nname = \"f\"\nselect = \"*\"\npath = \"sub/f\"\nmust_have = true\n",
         );
         let opts = CheckSameOpts {
-            do_fix_missing: true,
+            interact: Interact {
+                do_fix_missing: true,
+                ..Interact::default()
+            },
             ..same_opts()
         };
         let (code, out) = run_same(&AppConfig::default(), &cfg, &fleet, &opts, "A\ny\n");
@@ -1192,11 +1235,11 @@ mod tests {
             "{ONE_EXISTS}\n{}",
             ONE_EXISTS.replace("rd", "rd2")
         ));
-        let app = AppConfig {
+        let mut app = AppConfig {
             terse: true,
-            short_circuit: true,
             ..AppConfig::default()
         };
+        app.short_circuit = true;
         let (code, out) = run_exists(&app, &cfg, &fleet, &exists_opts());
         assert_eq!(code.unwrap(), 1);
         assert_eq!(out, "rd\n");
@@ -1237,7 +1280,10 @@ mod tests {
         assert_eq!(code.unwrap(), 0);
         assert_eq!(out, "");
         let app = AppConfig {
-            verbose: true,
+            selection: crate::config::SelectionFlags {
+                verbose: true,
+                ..AppConfig::default().selection
+            },
             ..AppConfig::default()
         };
         let (_, out) = run_same(&app, &cfg, &fleet, &same_opts(), "");

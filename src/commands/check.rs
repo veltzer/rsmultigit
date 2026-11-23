@@ -169,7 +169,7 @@ impl RuleResult {
         self.groups.len() <= 1 && self.must_have_violations.is_empty() && self.unreadable.is_empty()
     }
 
-    /// True when the rule hashed no files and has no must_have violations to
+    /// True when the rule hashed no files and has no `must_have` violations to
     /// report — i.e. it checked nothing at all. Usually a stale `select`/`path`,
     /// so check same treats this as a failure unless --allow-empty is passed.
     pub fn matched_nothing(&self) -> bool {
@@ -193,9 +193,9 @@ pub fn default_config_path() -> Result<Utf8PathBuf> {
 /// Parse a config file from disk.
 pub fn load_config(path: &Utf8Path) -> Result<CheckConfig> {
     let text = std::fs::read_to_string(path)
-        .with_context(|| format!("failed to read config file {}", path))?;
+        .with_context(|| format!("failed to read config file {path}"))?;
     let config: CheckConfig =
-        toml::from_str(&text).with_context(|| format!("failed to parse config file {}", path))?;
+        toml::from_str(&text).with_context(|| format!("failed to parse config file {path}"))?;
     let paths = config
         .check
         .iter()
@@ -348,9 +348,9 @@ pub(crate) fn select_repos(
 }
 
 fn hash_file(path: &Utf8Path) -> Result<[u8; 32]> {
-    let mut file = File::open(path).with_context(|| format!("failed to open {}", path))?;
+    let mut file = File::open(path).with_context(|| format!("failed to open {path}"))?;
     let mut hasher = Sha256::new();
-    std::io::copy(&mut file, &mut hasher).with_context(|| format!("failed to read {}", path))?;
+    std::io::copy(&mut file, &mut hasher).with_context(|| format!("failed to read {path}"))?;
     Ok(hasher.finalize().into())
 }
 
@@ -906,7 +906,7 @@ mod tests {
         let result = evaluate_rule(&rule, &repos).unwrap();
         assert!(result.is_consistent());
         assert_eq!(result.skipped.len(), 1);
-        assert!(result.must_have_violations.is_empty());
+        assert_eq!(result.must_have_violations, [] as [camino::Utf8PathBuf; 0]);
     }
 
     #[test]
@@ -941,7 +941,7 @@ mod tests {
         };
         let result = evaluate_rule(&rule, &repos).unwrap();
         assert!(!result.is_consistent());
-        assert!(result.skipped.is_empty());
+        assert_eq!(result.skipped, [] as [camino::Utf8PathBuf; 0]);
         assert_eq!(result.must_have_violations.len(), 1);
         assert!(result.must_have_violations[0].ends_with("c"));
     }
@@ -974,7 +974,7 @@ mod tests {
         };
         let result = evaluate_rule(&rule, &repos).unwrap();
         assert!(result.is_consistent());
-        assert!(result.must_have_violations.is_empty());
+        assert_eq!(result.must_have_violations, [] as [camino::Utf8PathBuf; 0]);
     }
 
     #[test]
@@ -1111,7 +1111,7 @@ mod tests {
             must_have: true,
         };
         let result = evaluate_rule(&rule, &repos).unwrap();
-        assert!(result.must_have_violations.is_empty());
+        assert_eq!(result.must_have_violations, [] as [camino::Utf8PathBuf; 0]);
         assert!(result.is_consistent());
     }
 
@@ -1230,7 +1230,7 @@ mod tests {
         let result = evaluate_exists_rule(&exists_rule("README.md", "*"), &repos).unwrap();
         assert!(result.is_satisfied());
         assert_eq!(result.present.len(), 3);
-        assert!(result.missing.is_empty());
+        assert_eq!(result.missing, [] as [camino::Utf8PathBuf; 0]);
         assert_eq!(result.total_repos(), 3);
     }
 

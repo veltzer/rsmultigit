@@ -5,8 +5,8 @@ use anyhow::Result;
 use crate::subprocess_utils::Cmd;
 
 /// Repos uv can operate on: those with a pyproject.toml at the root.
-pub fn check_pyproject(project: &Utf8Path) -> Result<bool> {
-    Ok(project.join("pyproject.toml").exists())
+pub fn check_pyproject(project: &Utf8Path) -> bool {
+    project.join("pyproject.toml").exists()
 }
 
 /// Sync the project environment from the lockfile: `uv sync`.

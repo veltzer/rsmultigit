@@ -11,7 +11,7 @@ use tempfile::TempDir;
 /// Returns the config path, to be fed into `RSMULTIGIT_CONFIG`.
 pub fn write_config(dir: &Utf8Path, extra: &str) -> Utf8PathBuf {
     let path = dir.join("config.toml");
-    let body = format!("repos = [\"{}/*\"]\n\n{}", dir, extra);
+    let body = format!("repos = [\"{dir}/*\"]\n\n{extra}");
     fs::write(&path, body).unwrap();
     path
 }
@@ -156,7 +156,7 @@ pub fn commit_file(repo: &Utf8Path, name: &str, content: &str, message: &str) {
 }
 
 /// Create a temp directory containing `n` fake git repos as immediate subdirectories.
-/// Returns the TempDir (caller must hold it to keep the directory alive).
+/// Returns the `TempDir` (caller must hold it to keep the directory alive).
 pub fn setup_git_repos(names: &[&str]) -> TempDir {
     let tmp = TempDir::new().expect("Failed to create temp dir");
     for name in names {

@@ -1,8 +1,13 @@
 use clap::Args;
+use std::ops::{Deref, DerefMut};
 
 /// The global flags, accepted before or after any subcommand. Parsed by clap
 /// straight into this struct (flattened into `Cli`), so a new flag is
 /// declared once and is available to every runner without a copy step.
+///
+/// The flags are split over three nested groups only to keep each struct to a
+/// few switches; `Deref` lets every flag be read (and, with `DerefMut`, set)
+/// as `config.<flag>`.
 #[derive(Args, Clone, Debug)]
 pub struct AppConfig {
     /// Terse output
@@ -17,6 +22,13 @@ pub struct AppConfig {
     #[arg(long, global = true, default_value_t = false)]
     pub no_output: bool,
 
+    #[command(flatten)]
+    pub selection: SelectionFlags,
+}
+
+/// How a run walks the repos: what it prints and when it stops.
+#[derive(Args, Clone, Debug)]
+pub struct SelectionFlags {
     /// Verbose output (print all projects, even when no action is taken)
     #[arg(short, long, global = true, default_value_t = false)]
     pub verbose: bool,
@@ -30,23 +42,30 @@ pub struct AppConfig {
     #[arg(long, global = true, default_value_t = false)]
     pub no_stop: bool,
 
+    #[command(flatten)]
+    pub exec: ExecFlags,
+}
+
+/// How the per-repo work is executed.
+#[derive(Args, Clone, Debug)]
+pub struct ExecFlags {
     /// Stop at the first negative result instead of processing everything.
     /// Off by default. Honoured by `check same` and `check exists`, which stop
     /// at the first broken rule instead of evaluating the remaining ones.
     #[arg(long, global = true, default_value_t = false)]
     pub short_circuit: bool,
 
-    /// Number of parallel workers (default: 1; use 0 for num_cpus)
+    /// Number of parallel workers (default: 1; use 0 for `num_cpus`)
     #[arg(short = 'j', long, global = true, default_value_t = 1)]
     pub jobs: usize,
 
     /// Activate each repo's local .venv (prepend .venv/bin to PATH, set
-    /// VIRTUAL_ENV) before running tool subprocesses. On by default; honoured
+    /// `VIRTUAL_ENV`) before running tool subprocesses. On by default; honoured
     /// by `run`, `build`, `cargo` and `npm`. Repos without a
     /// .venv run with the environment unchanged. Negate with --no-venv.
     ///
     /// Not honoured by `uv`, which selects its own target environment from
-    /// the repo directory and is always run with VIRTUAL_ENV unset.
+    /// the repo directory and is always run with `VIRTUAL_ENV` unset.
     #[arg(
         long,
         global = true,
@@ -76,14 +95,46 @@ impl Default for AppConfig {
             terse: false,
             no_header: false,
             no_output: false,
-            verbose: false,
-            print_not: false,
-            no_stop: false,
-            short_circuit: false,
-            jobs: 1,
-            venv: true,
-            no_venv: false,
+            selection: SelectionFlags {
+                verbose: false,
+                print_not: false,
+                no_stop: false,
+                exec: ExecFlags {
+                    short_circuit: false,
+                    jobs: 1,
+                    venv: true,
+                    no_venv: false,
+                },
+            },
         }
+    }
+}
+
+impl Deref for AppConfig {
+    type Target = SelectionFlags;
+
+    fn deref(&self) -> &SelectionFlags {
+        &self.selection
+    }
+}
+
+impl DerefMut for AppConfig {
+    fn deref_mut(&mut self) -> &mut SelectionFlags {
+        &mut self.selection
+    }
+}
+
+impl Deref for SelectionFlags {
+    type Target = ExecFlags;
+
+    fn deref(&self) -> &ExecFlags {
+        &self.exec
+    }
+}
+
+impl DerefMut for SelectionFlags {
+    fn deref_mut(&mut self) -> &mut ExecFlags {
+        &mut self.exec
     }
 }
 

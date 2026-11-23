@@ -32,10 +32,7 @@ fn fake_bin(tmp: &Utf8Path) -> Utf8PathBuf {
     script(
         &bin,
         "pass",
-        &format!(
-            "echo \"$*\" >> {}/pass.log\necho token-from-pass\necho second-line-ignored",
-            bin
-        ),
+        &format!("echo \"$*\" >> {bin}/pass.log\necho token-from-pass\necho second-line-ignored"),
     );
     bin
 }
@@ -57,8 +54,8 @@ fn run(tmp: &Utf8Path, bin: &Utf8Path, extra_config: &str, args: &[&str], token:
     )
 }
 
-fn read(path: Utf8PathBuf) -> String {
-    fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"))
+fn read(path: &Utf8PathBuf) -> String {
+    fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}"))
 }
 
 #[test]
@@ -71,14 +68,14 @@ fn publish_runs_cargo_release_in_cargo_repos_with_the_token_from_pass() {
     let out = run(tmp, &bin, "", &["cargo", "release"], "");
     assert!(out.status.success(), "stderr: {}", stderr_str(&out));
     assert_eq!(
-        read(tmp.join("crate-a/cargo.log")),
+        read(&tmp.join("crate-a/cargo.log")),
         "release patch --execute --no-confirm token=token-from-pass\n"
     );
     assert!(
         !tmp.join("plain/cargo.log").exists(),
         "non-cargo repo was skipped"
     );
-    assert_eq!(read(bin.join("pass.log")), "show keys/crates.io\n");
+    assert_eq!(read(&bin.join("pass.log")), "show keys/crates.io\n");
 }
 
 #[test]
@@ -103,7 +100,7 @@ fn publish_skips_virtual_workspaces_and_crates_marked_publish_false() {
     let out = run(tmp, &bin, "", &["cargo", "release"], "");
     assert!(out.status.success(), "stderr: {}", stderr_str(&out));
     assert_eq!(
-        read(tmp.join("crate-a/cargo.log")),
+        read(&tmp.join("crate-a/cargo.log")),
         "release patch --execute --no-confirm token=token-from-pass\n"
     );
     assert!(
@@ -129,11 +126,11 @@ fn publish_type_selects_the_level_and_pass_is_asked_once_for_the_fleet() {
     assert!(out.status.success(), "stderr: {}", stderr_str(&out));
     for repo in ["crate-a", "crate-b"] {
         assert_eq!(
-            read(tmp.join(repo).join("cargo.log")),
+            read(&tmp.join(repo).join("cargo.log")),
             "release minor --execute --no-confirm token=token-from-pass\n"
         );
     }
-    assert_eq!(read(bin.join("pass.log")), "show keys/crates.io\n");
+    assert_eq!(read(&bin.join("pass.log")), "show keys/crates.io\n");
 }
 
 #[test]
@@ -146,7 +143,7 @@ fn publish_reads_the_pass_entry_from_the_config() {
     let config = "crates_io_pass_entry = \"work/crates\"\n";
     let out = run(tmp, &bin, config, &["cargo", "release"], "");
     assert!(out.status.success(), "stderr: {}", stderr_str(&out));
-    assert_eq!(read(bin.join("pass.log")), "show work/crates\n");
+    assert_eq!(read(&bin.join("pass.log")), "show work/crates\n");
 }
 
 #[test]
@@ -161,7 +158,7 @@ fn publish_prefers_a_token_already_in_the_environment() {
     let out = run(tmp, &bin, "", &["cargo", "release"], "token-from-env");
     assert!(out.status.success(), "stderr: {}", stderr_str(&out));
     assert_eq!(
-        read(tmp.join("crate-a/cargo.log")),
+        read(&tmp.join("crate-a/cargo.log")),
         "release patch --execute --no-confirm token=token-from-env\n"
     );
 }

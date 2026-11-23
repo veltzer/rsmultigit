@@ -28,6 +28,65 @@ enum Token {
     Comma,
 }
 
+/// Long string `[[` ... `]]`, verbatim, no escapes. `i` points at the opening
+/// `[[` and is left after the closing `]]`. Lua drops a newline that
+/// immediately follows the opening.
+fn read_long_string(chars: &[char], i: &mut usize, line: &mut usize) -> Result<String> {
+    let start_line = *line;
+    *i += 2;
+    if chars.get(*i) == Some(&'\n') {
+        *i += 1;
+        *line += 1;
+    }
+    let mut s = String::new();
+    loop {
+        let Some(&ch) = chars.get(*i) else {
+            anyhow::bail!("line {start_line}: unterminated long string");
+        };
+        if ch == ']' && chars.get(*i + 1) == Some(&']') {
+            *i += 2;
+            return Ok(s);
+        }
+        if ch == '\n' {
+            *line += 1;
+        }
+        s.push(ch);
+        *i += 1;
+    }
+}
+
+/// A quoted string with the escapes `\n \t \\ \" \'`. `i` points at the
+/// opening quote and is left after the closing one.
+fn read_quoted_string(chars: &[char], i: &mut usize, line: usize, quote: char) -> Result<String> {
+    let mut s = String::new();
+    *i += 1;
+    loop {
+        let Some(&ch) = chars.get(*i) else {
+            anyhow::bail!("line {line}: unterminated string");
+        };
+        *i += 1;
+        match ch {
+            ch if ch == quote => return Ok(s),
+            '\\' => {
+                let Some(&esc) = chars.get(*i) else {
+                    anyhow::bail!("line {line}: unterminated string");
+                };
+                *i += 1;
+                s.push(match esc {
+                    'n' => '\n',
+                    't' => '\t',
+                    '\\' => '\\',
+                    '"' => '"',
+                    '\'' => '\'',
+                    other => anyhow::bail!("line {line}: unsupported escape \\{other} in string"),
+                });
+            }
+            '\n' => anyhow::bail!("line {line}: newline in string"),
+            ch => s.push(ch),
+        }
+    }
+}
+
 fn tokenize_lua(text: &str) -> Result<Vec<(usize, Token)>> {
     let mut tokens = Vec::new();
     let chars: Vec<char> = text.chars().collect();
@@ -65,64 +124,13 @@ fn tokenize_lua(text: &str) -> Result<Vec<(usize, Token)>> {
                 i += 1;
             }
             '[' if chars.get(i + 1) == Some(&'[') => {
-                // Long string: `[[` ... `]]`, verbatim, no escapes. Lua
-                // drops a newline that immediately follows the opening.
                 let start_line = line;
-                i += 2;
-                if chars.get(i) == Some(&'\n') {
-                    i += 1;
-                    line += 1;
-                }
-                let mut s = String::new();
-                loop {
-                    let Some(&ch) = chars.get(i) else {
-                        anyhow::bail!("line {start_line}: unterminated long string");
-                    };
-                    if ch == ']' && chars.get(i + 1) == Some(&']') {
-                        i += 2;
-                        break;
-                    }
-                    if ch == '\n' {
-                        line += 1;
-                    }
-                    s.push(ch);
-                    i += 1;
-                }
+                let s = read_long_string(&chars, &mut i, &mut line)?;
                 tokens.push((start_line, Token::Str(s)));
             }
             '"' | '\'' => {
-                let quote = c;
-                let start_line = line;
-                let mut s = String::new();
-                i += 1;
-                loop {
-                    let Some(&ch) = chars.get(i) else {
-                        anyhow::bail!("line {start_line}: unterminated string");
-                    };
-                    i += 1;
-                    match ch {
-                        ch if ch == quote => break,
-                        '\\' => {
-                            let Some(&esc) = chars.get(i) else {
-                                anyhow::bail!("line {start_line}: unterminated string");
-                            };
-                            i += 1;
-                            s.push(match esc {
-                                'n' => '\n',
-                                't' => '\t',
-                                '\\' => '\\',
-                                '"' => '"',
-                                '\'' => '\'',
-                                other => anyhow::bail!(
-                                    "line {line}: unsupported escape \\{other} in string"
-                                ),
-                            });
-                        }
-                        '\n' => anyhow::bail!("line {start_line}: newline in string"),
-                        ch => s.push(ch),
-                    }
-                }
-                tokens.push((start_line, Token::Str(s)));
+                let s = read_quoted_string(&chars, &mut i, line, c)?;
+                tokens.push((line, Token::Str(s)));
             }
             c if c.is_ascii_alphabetic() || c == '_' => {
                 let start = i;

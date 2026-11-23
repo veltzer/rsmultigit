@@ -16,6 +16,7 @@
 //! `--terse` and `--no-output` behave as for every other command.
 
 use std::collections::HashMap;
+use std::fmt::Write as _;
 
 use anyhow::Result;
 use camino::Utf8PathBuf;
@@ -60,9 +61,7 @@ fn batch_inventory_query(entries: &[(usize, &RepoId, &Inventory)]) -> (String, V
             variables.insert(format!("r{i}"), inv.rpage.cursor());
         }
         let fields = inventory_fields(&i.to_string(), &inv.dpage, &inv.rpage, &mut vars);
-        body.push_str(&format!(
-            "r{i}:repository(owner:$o{i},name:$n{i}){{{fields}}} "
-        ));
+        let _ = write!(body, "r{i}:repository(owner:$o{i},name:$n{i}){{{fields}}} ");
     }
     (
         format!("query({}){{{}}}", vars.join(","), body.trim_end()),
@@ -327,7 +326,7 @@ async fn prune_fleet(
             repo.path.clone(),
             Outcome {
                 lines,
-                error: combine_errors(errors).err().map(|e| format!("{e:#}")),
+                error: combine_errors(&errors).err().map(|e| format!("{e:#}")),
             },
         );
     }

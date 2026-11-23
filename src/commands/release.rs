@@ -46,12 +46,11 @@ fn manifest_is_publishable(doc: &toml::Table) -> bool {
             .and_then(|pkg| pkg.get("publish"));
     }
     match publish {
-        None => true,
         Some(toml::Value::Boolean(allowed)) => *allowed,
         Some(toml::Value::Array(registries)) => !registries.is_empty(),
         // Anything else is not a shape cargo accepts; leave it to cargo to
         // complain rather than silently skipping a real crate.
-        Some(_) => true,
+        None | Some(_) => true,
     }
 }
 
@@ -101,7 +100,7 @@ impl Release {
 }
 
 /// cargo-release is a separate crate, not part of the toolchain, so a rebuilt
-/// CARGO_HOME loses it. Check up front: cargo's own message for a missing
+/// `CARGO_HOME` loses it. Check up front: cargo's own message for a missing
 /// subcommand, "no such command: release", does not say which crate is
 /// missing, and by the time it appears the first repo is already being
 /// processed.

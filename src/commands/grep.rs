@@ -26,7 +26,7 @@ pub fn do_grep(project: &Utf8Path, regexp: &str, files_only: bool) -> Result<Opt
         0 => {
             let project_name = project
                 .file_name()
-                .map(|n| n.to_string())
+                .map(std::string::ToString::to_string)
                 .unwrap_or_default();
             let separator = if files_only { "/" } else { ": " };
             let lines: Vec<String> = stdout

@@ -10,16 +10,16 @@ fn is_build_disabled(project: &Utf8Path) -> bool {
 
 // --- Check functions (cheap predicates: should we build this project?) ---
 
-pub fn check_not_disabled(project: &Utf8Path) -> Result<bool> {
-    Ok(!is_build_disabled(project))
+pub fn check_not_disabled(project: &Utf8Path) -> bool {
+    !is_build_disabled(project)
 }
 
-pub fn check_cargo(project: &Utf8Path) -> Result<bool> {
-    Ok(!is_build_disabled(project) && project.join("Cargo.toml").exists())
+pub fn check_cargo(project: &Utf8Path) -> bool {
+    !is_build_disabled(project) && project.join("Cargo.toml").exists()
 }
 
-pub fn check_rsconstruct(project: &Utf8Path) -> Result<bool> {
-    Ok(!is_build_disabled(project) && project.join("rsconstruct.toml").exists())
+pub fn check_rsconstruct(project: &Utf8Path) -> bool {
+    !is_build_disabled(project) && project.join("rsconstruct.toml").exists()
 }
 
 // --- Action functions (do the actual build, assuming check already passed) ---

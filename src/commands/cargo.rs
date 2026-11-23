@@ -80,7 +80,7 @@ fn args(what: CargoWhat, profile: &Profile, check: bool) -> Vec<String> {
         // `commands::release` instead of running it here.
         CargoWhat::Release => unreachable!("`cargo release` is dispatched to commands::release"),
     };
-    let mut args: Vec<String> = base.iter().map(|s| s.to_string()).collect();
+    let mut args: Vec<String> = base.iter().map(std::string::ToString::to_string).collect();
     args.extend(profile.flags());
     if check {
         args.push("--check".to_string());

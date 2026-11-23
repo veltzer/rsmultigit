@@ -801,7 +801,7 @@ impl BuildWhat {
     pub fn names() -> Vec<String> {
         Self::value_variants()
             .iter()
-            .filter_map(|v| v.to_possible_value())
+            .filter_map(clap::ValueEnum::to_possible_value)
             .map(|p| p.get_name().to_string())
             .collect()
     }
@@ -819,8 +819,8 @@ pub fn print_completions(shell: Shell) {
     // file. clap_complete only knows about static ValueEnum choices, so
     // --checks (free-form names from the config) needs runtime help.
     match shell {
-        Shell::Bash => print!("{}", CHECKS_COMPLETION_BASH),
-        Shell::Zsh => print!("{}", CHECKS_COMPLETION_ZSH),
+        Shell::Bash => print!("{CHECKS_COMPLETION_BASH}"),
+        Shell::Zsh => print!("{CHECKS_COMPLETION_ZSH}"),
         _ => {}
     }
 }
@@ -844,7 +844,10 @@ fn operations_of(cmd: &clap::Command) -> Vec<(String, String)> {
             .get_subcommands()
             .filter(|sub| !sub.is_hide_set())
             .map(|sub| {
-                let about = sub.get_about().map(|a| a.to_string()).unwrap_or_default();
+                let about = sub
+                    .get_about()
+                    .map(std::string::ToString::to_string)
+                    .unwrap_or_default();
                 (sub.get_name().to_string(), about)
             })
             .collect();
@@ -856,7 +859,10 @@ fn operations_of(cmd: &clap::Command) -> Vec<(String, String)> {
                 .into_iter()
                 .filter(|value| !value.is_hide_set())
                 .map(|value| {
-                    let help = value.get_help().map(|h| h.to_string()).unwrap_or_default();
+                    let help = value
+                        .get_help()
+                        .map(std::string::ToString::to_string)
+                        .unwrap_or_default();
                     (value.get_name().to_string(), help)
                 })
                 .collect()
@@ -1065,11 +1071,10 @@ mod tests {
         ];
         for words in bare {
             let sub = words.join(" ");
-            let err = match Cli::try_parse_from(
-                std::iter::once("rsmultigit").chain(words.iter().copied()),
-            ) {
-                Err(err) => err,
-                Ok(_) => panic!("bare `{sub}` should not parse"),
+            let Err(err) =
+                Cli::try_parse_from(std::iter::once("rsmultigit").chain(words.iter().copied()))
+            else {
+                panic!("bare `{sub}` should not parse");
             };
             assert_eq!(
                 err.kind(),
@@ -1268,7 +1273,10 @@ mod tests {
         }
         // `prune` would read as git's object pruning; it is `remote-prune`.
         assert!(Cli::try_parse_from(["rsmultigit", "git", "prune"]).is_err());
+    }
 
+    #[test]
+    fn parse_git_what_operations() {
         // clean requires a what argument
         let clean_whats = ["hard", "soft"];
         for what in clean_whats {
@@ -1303,7 +1311,10 @@ mod tests {
             let result = Cli::try_parse_from(["rsmultigit", "git", "reset", what]);
             assert!(result.is_ok(), "reset {what} should parse");
         }
+    }
 
+    #[test]
+    fn parse_git_value_operations() {
         // log accepts optional --count
         let result = Cli::try_parse_from(["rsmultigit", "git", "log"]);
         assert!(result.is_ok(), "log should parse without args");
@@ -1332,7 +1343,10 @@ mod tests {
             let result = Cli::try_parse_from(["rsmultigit", "git", "stash", what]);
             assert!(result.is_ok(), "stash {what} should parse");
         }
+    }
 
+    #[test]
+    fn parse_build_and_uv() {
         // build takes an optional what argument (falls back to the config
         // file's `default_build_method` when omitted)
         let build_whats = ["bootstrap", "make", "rsconstruct", "cargo"];
@@ -1358,7 +1372,10 @@ mod tests {
         assert!(result.is_ok(), "uv lock --check should parse");
         let result = Cli::try_parse_from(["rsmultigit", "uv"]);
         assert!(result.is_err(), "uv without a what should not parse");
+    }
 
+    #[test]
+    fn parse_rsconstruct_gh_cargo() {
         // rsconstruct requires a what argument
         let result = Cli::try_parse_from(["rsmultigit", "rsconstruct", "tool-lock-upgrade"]);
         assert!(result.is_ok(), "rsconstruct tool-lock-upgrade should parse");

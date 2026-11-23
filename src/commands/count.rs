@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use git2::Repository;
 
 pub(crate) fn open_repo(project: &Utf8Path) -> Result<Repository> {
-    Repository::open(project).with_context(|| format!("failed to open repo at {}", project))
+    Repository::open(project).with_context(|| format!("failed to open repo at {project}"))
 }
 
 /// Status options for the working-tree scans. `statuses(None)` would use
@@ -29,7 +29,7 @@ pub fn has_changes(project: &Utf8Path) -> Result<(bool, bool)> {
     let repo = open_repo(project)?;
     let statuses = repo
         .statuses(Some(&mut status_options()))
-        .with_context(|| format!("failed to get statuses for {}", project))?;
+        .with_context(|| format!("failed to get statuses for {project}"))?;
     let mut dirty = false;
     let mut untracked = false;
     for entry in statuses.iter() {
@@ -73,7 +73,7 @@ fn any_status(project: &Utf8Path, mask: git2::Status) -> Result<bool> {
     let repo = open_repo(project)?;
     let statuses = repo
         .statuses(Some(&mut status_options()))
-        .with_context(|| format!("failed to get statuses for {}", project))?;
+        .with_context(|| format!("failed to get statuses for {project}"))?;
     Ok(statuses.iter().any(|e| e.status().intersects(mask)))
 }
 

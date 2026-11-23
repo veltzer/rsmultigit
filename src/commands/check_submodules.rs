@@ -258,7 +258,7 @@ pub fn run_check_submodules<W: Write>(
         &empty_rules,
     )?;
 
-    Ok(if any_failed { 1 } else { 0 })
+    Ok(i32::from(any_failed))
 }
 
 #[cfg(test)]

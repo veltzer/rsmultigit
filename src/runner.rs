@@ -10,9 +10,7 @@ use crate::subprocess_utils::{Captured, capture};
 
 fn resolve_jobs(config: &AppConfig) -> usize {
     let n = if config.jobs == 0 {
-        std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(1)
+        std::thread::available_parallelism().map_or(1, std::num::NonZero::get)
     } else {
         config.jobs
     };
@@ -28,7 +26,7 @@ pub(crate) fn absolute(project: &Utf8Path, base: &Utf8Path) -> Utf8PathBuf {
 }
 
 fn print_project_header(project: &Utf8Path) {
-    println!("[{}]", project);
+    println!("[{project}]");
 }
 
 /// The `[project]` header line is suppressed when either `--no-header` or
@@ -197,22 +195,22 @@ where
     })
 }
 
-/// Runner for "count" commands. test_fn just returns bool — no subprocess output,
+/// Runner for "count" commands. `test_fn` just returns bool — no subprocess output,
 /// so parallelism is trivially safe.
 pub fn do_count<F>(config: &AppConfig, projects: &[Utf8PathBuf], test_fn: F) -> Result<()>
 where
     F: Fn(&Utf8Path) -> Result<bool> + Sync,
 {
-    let total = projects.len() as u32;
+    let total = projects.len();
     // on_result runs only on the calling thread, so a plain counter suffices.
-    let mut count = 0u32;
+    let mut count = 0usize;
     let mut failures = Failures::new(config);
     let jobs = resolve_jobs(config);
 
     for_each_project_ordered(
         jobs,
         projects,
-        |project| test_fn(project).with_context(|| format!("error testing project {}", project)),
+        |project| test_fn(project).with_context(|| format!("error testing project {project}")),
         |project, result| {
             let matches = match result {
                 Ok(m) => m,
@@ -221,7 +219,7 @@ where
             let should_print = if config.print_not { !matches } else { matches };
             if should_print {
                 if !config.terse {
-                    println!("{}", project);
+                    println!("{project}");
                 }
                 count += 1;
             }
@@ -244,11 +242,11 @@ where
     for_each_project_ordered(
         resolve_jobs(config),
         projects,
-        |project| test_fn(project).with_context(|| format!("error testing project {}", project)),
+        |project| test_fn(project).with_context(|| format!("error testing project {project}")),
         |project, result| match result {
             Ok(matches) => {
                 if matches != config.print_not {
-                    println!("{}", project);
+                    println!("{project}");
                 }
                 Ok(())
             }
@@ -301,7 +299,7 @@ where
             }
 
             let passed =
-                match check(&abs).with_context(|| format!("error checking project {}", project)) {
+                match check(&abs).with_context(|| format!("error checking project {project}")) {
                     Ok(p) => p,
                     Err(e) => {
                         failures.absorb(e)?;
@@ -324,7 +322,7 @@ where
             } else {
                 action(&abs)
             };
-            if let Err(e) = outcome.with_context(|| format!("error in project {}", project)) {
+            if let Err(e) = outcome.with_context(|| format!("error in project {project}")) {
                 failures.absorb(e)?;
             }
         }
@@ -365,14 +363,14 @@ where
             }
             let e = match step {
                 Step::Skipped | Step::Done => return Ok(()),
-                Step::CheckFailed(e) => e.context(format!("error checking project {}", project)),
+                Step::CheckFailed(e) => e.context(format!("error checking project {project}")),
                 Step::ActionFailed(e) => {
                     let e = if config.no_output {
                         attach_captured(e, &captured)
                     } else {
                         e
                     };
-                    e.context(format!("error in project {}", project))
+                    e.context(format!("error in project {project}"))
                 }
             };
             failures.absorb(e)
@@ -415,7 +413,7 @@ where
         projects,
         |project| -> Result<Option<String>> {
             let abs = absolute(project, &base);
-            data_fn(&abs).with_context(|| format!("error in project {}", project))
+            data_fn(&abs).with_context(|| format!("error in project {project}"))
         },
         |project, result| -> Result<()> {
             let out = io::stdout();
@@ -424,10 +422,10 @@ where
                 Ok(Some(data)) => {
                     if !config.print_not {
                         if config.terse {
-                            writeln!(out, "{}", project).ok();
+                            writeln!(out, "{project}").ok();
                         } else {
                             if !config.no_header {
-                                writeln!(out, "[{}]", project).ok();
+                                writeln!(out, "[{project}]").ok();
                             }
                             if !config.no_output {
                                 writeln!(out, "{data}").ok();
@@ -439,9 +437,9 @@ where
                 Ok(None) => {
                     if config.print_not || config.verbose {
                         if config.terse {
-                            writeln!(out, "{}", project).ok();
+                            writeln!(out, "{project}").ok();
                         } else if !config.no_header {
-                            writeln!(out, "[{}]", project).ok();
+                            writeln!(out, "[{project}]").ok();
                         }
                     }
                     Ok(())
@@ -678,7 +676,10 @@ mod tests {
         // "a" fails at once; the other worker is at most one project in, and
         // neither claims anything further once the failure is delivered.
         let visited = counter.load(Ordering::SeqCst);
-        assert!(visited < projects.len() as u32, "visited {visited}");
+        assert!(
+            visited < u32::try_from(projects.len()).unwrap(),
+            "visited {visited}"
+        );
     }
 
     #[test]
