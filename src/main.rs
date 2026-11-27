@@ -27,7 +27,7 @@ use config::AppConfig;
 /// selects its operation (`rsmultigit gh`, `rsmultigit gh --keep 3`) gets the
 /// long help of that command, so every choice is listed with its description.
 /// clap alone would print the short help for the bare form (choices as bare
-/// names) and a "required arguments were not provided: <WHAT>" error for the
+/// names) and a `required arguments were not provided: <WHAT>` error for the
 /// form with options, neither of which tells the user what to type. Same
 /// stream and exit status as clap uses for those cases.
 fn parse_cli() -> Cli {

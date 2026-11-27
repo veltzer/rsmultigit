@@ -14,7 +14,7 @@ pub struct AppConfig {
     #[arg(long, global = true, default_value_t = false)]
     pub terse: bool,
 
-    /// Suppress the [project] header line printed before per-project output
+    /// Suppress the `[project]` header line printed before per-project output
     #[arg(long, global = true, default_value_t = false)]
     pub no_header: bool,
 

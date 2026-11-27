@@ -339,7 +339,7 @@ pub enum CheckCommand {
 pub enum ListCommand {
     /// Print the path of every configured repo
     ///
-    /// Pass --verbose to also emit the [project] header for each entry.
+    /// Pass --verbose to also emit the `[project]` header for each entry.
     Repos,
     /// Print repos with modified, deleted, staged or conflicted files
     Dirty,
