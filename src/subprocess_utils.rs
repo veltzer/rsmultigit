@@ -426,6 +426,7 @@ mod tests {
             .run()
             .unwrap();
         let cleaned = guard.finish().to_text_lossy();
+        // SAFETY: nextest runs each test in its own process.
         unsafe {
             std::env::remove_var("VIRTUAL_ENV");
             std::env::remove_var("UV_PROJECT_ENVIRONMENT");
@@ -525,6 +526,7 @@ mod tests {
             .run()
             .unwrap();
         let captured = guard.finish();
+        // SAFETY: as above, this test has the process to itself.
         unsafe { std::env::set_var("PATH", ambient) };
         let bytes: Vec<u8> = captured.chunks.into_iter().flat_map(|(_, b)| b).collect();
         assert!(
