@@ -138,10 +138,10 @@ runs each, under the command names of the day. `rsmultigit status` spawned
 `git status -s` per repo; `rsmultigit count dirty` performs the equivalent
 working-tree scan in-process via `git2`, so the pair isolates the subprocess overhead:
 
-| Command                       | Wall    | User    | Sys     |
-|-------------------------------|---------|---------|---------|
-| `status` (subprocess per repo)| ~0.89 s | ~0.34 s | ~0.58 s |
-| `count dirty` (git2)          | ~0.52 s | ~0.30 s | ~0.21 s |
+| Command                        | Wall    | User    | Sys     |
+| ------------------------------ | ------- | ------- | ------- |
+| `status` (subprocess per repo) | ~0.89 s | ~0.34 s | ~0.58 s |
+| `count dirty` (git2)           | ~0.52 s | ~0.30 s | ~0.21 s |
 
 The wall-clock win is ~40%. The telling column is **sys**: 0.58 s → 0.21 s
 is the cost of 260 fork+exec+startup cycles disappearing. **User** time is
@@ -167,7 +167,7 @@ through to either.**
 Three helpers in `subprocess_utils.rs` implement this:
 
 | Helper | Environment | Used by |
-|---|---|---|
+| --- | --- | --- |
 | `check_call` | inherited, unchanged | plain commands with no venv stake |
 | `check_call_ve_env` | `.venv/bin` prepended to `PATH`, `VIRTUAL_ENV` set | `run`, `build`, `cargo`, `npm` |
 | `check_call_clean_env` | `VIRTUAL_ENV` and `UV_PROJECT_ENVIRONMENT` removed | `uv` |
@@ -197,7 +197,7 @@ venv the *calling shell* was in, never the repo being operated on. The two
 uv interfaces fail differently on it, and the quiet one is the dangerous one:
 
 | Invocation | Inherited `VIRTUAL_ENV` | Result |
-|---|---|---|
+| --- | --- | --- |
 | `uv sync` / `uv lock` | `~/.venv` | Warns `does not match the project environment path .venv and will be ignored`, then does the right thing |
 | `uv pip install` | `~/.venv` | **Installs into `~/.venv`**, silently, once per repo |
 

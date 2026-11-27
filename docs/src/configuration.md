@@ -26,7 +26,7 @@ crates_io_pass_entry = "keys/crates.io"
 ```
 
 | Key | Required | Meaning |
-|-----|----------|---------|
+| ----- | ---------- | --------- |
 | `repos` | yes | List of shell-expanded glob patterns. Matches that are not git repositories are dropped; the rest are deduplicated and sorted. See [Repository Discovery](discovery.md) |
 | `default_build_method` | no | What a bare `rsmultigit build` runs: `bootstrap`, `make`, `rsconstruct` or `cargo`, spelled as on the command line. A method given on the command line always wins. Without the key, `rsmultigit build` with no method is an error |
 | `crates_io_pass_entry` | no | The pass(1) entry `rsmultigit cargo release` reads the crates.io token from when `CARGO_REGISTRY_TOKEN` is not set in the environment. Default `keys/crates.io` |
@@ -47,7 +47,7 @@ must_have = true
 ```
 
 | Field | Required | Default | Meaning |
-|-------|----------|---------|---------|
+| ------- | ---------- | --------- | --------- |
 | `name` | yes | | Rule name, used in output and for `--checks` / `--checks-re` |
 | `select` | yes | | Glob over repo directory names (not paths). `*` selects every repo |
 | `exclude` | no | none | Glob over repo names to drop from the selection |
@@ -118,7 +118,7 @@ All flags are global: they may appear before or after the subcommand.
 ### Output control
 
 | Flag | Default | Description |
-|------|---------|-------------|
+| ------ | --------- | ------------- |
 | `-v`, `--verbose` | off | Print every repo, even when nothing happened; `git status` switches to per-file output |
 | `--terse` | off | Repo names only for data commands; only the `N/total` line for count commands; failing rule names only for the check commands |
 | `--no-header` | off | Suppress the `[repo]` (or `[rule]`) header line |
@@ -128,7 +128,7 @@ All flags are global: they may appear before or after the subcommand.
 ### Execution
 
 | Flag | Default | Description |
-|------|---------|-------------|
+| ------ | --------- | ------------- |
 | `--no-stop` | off | Report errors on stderr and continue instead of stopping at the first one; still exits non-zero if any repo failed |
 | `--short-circuit` | off | Stop at the first negative result. Honoured by `check same` and `check exists`; other commands accept it and ignore it |
 | `-j`, `--jobs <N>` | 1 | Number of repos to process concurrently; 0 means one per CPU. Output is buffered per repo and printed in repo order |
@@ -136,7 +136,7 @@ All flags are global: they may appear before or after the subcommand.
 ### Tool environment
 
 | Flag | Default | Description |
-|------|---------|-------------|
+| ------ | --------- | ------------- |
 | `--venv` | on | Activate each repo's local `.venv` (prepend `.venv/bin` to `PATH`, set `VIRTUAL_ENV`) before running tool subprocesses. Honoured by `run`, `build`, `cargo` and `npm`; repos without a `.venv` run unchanged. Not honoured by `uv`, which selects its own environment from the repo directory |
 | `--no-venv` | off | Turn the `.venv` activation off |
 

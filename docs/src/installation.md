@@ -14,7 +14,7 @@ This downloads, compiles, and installs the latest published version into
 Every release on GitHub ships a statically named binary per platform:
 
 | Platform | Asset |
-|----------|-------|
+| ---------- | ------- |
 | Linux x86_64 | `rsmultigit-linux-x86_64` |
 | Linux aarch64 | `rsmultigit-linux-aarch64` |
 

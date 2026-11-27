@@ -6,7 +6,7 @@ These flags are accepted by every subcommand and may appear before or after
 the subcommand name.
 
 | Flag | Description |
-|------|-------------|
+| ------ | ------------- |
 | `-v`, `--verbose` | Print every repo, even when no action is taken (adds the header for skipped repos; `git status` switches to per-file output) |
 | `--terse` | Minimal, machine-readable output: repo names only for data commands, just the `N/total` line for count commands, failing rule names only for the check commands |
 | `--no-header` | Suppress the `[repo]` header line printed before per-repo output |
@@ -193,7 +193,7 @@ dry run first: across a fleet, one command can discard a lot.
 `git reset --<mode> HEAD` in every repo that has something to reset.
 
 | What | Runs | Selects repos with | `--dry-run` shows |
-|------|------|--------------------|-------------------|
+| ------ | ------ | -------------------- | ------------------- |
 | `hard` | `git reset --hard HEAD` | any change to a tracked file, staged or not | `git status --short --untracked-files=no` |
 | `mixed` | `git reset --mixed HEAD` | staged changes | `git diff --cached --name-status` |
 
@@ -216,7 +216,7 @@ it removes nothing untracked, so it was never a clean.)
 ### `rsmultigit git clean <what> [--dry-run]`
 
 | What | Runs | Notes |
-|------|------|-------|
+| ------ | ------ | ------- |
 | `hard` | `git clean -ffxd` | Removes untracked **and ignored** files (`.venv/`, `target/`, `.env`, ...) |
 | `soft` | `git clean -fd` | Removes untracked files only |
 
@@ -392,7 +392,7 @@ run, turns into a hard error on stderr naming every such rule, since an
 empty rule almost always means a stale `select` or `path`.
 
 | Flag | Effect |
-|------|--------|
+| ------ | -------- |
 | `--checks <NAME>...` | Run only these rules, in the given order. Named rules run even if `enabled = false`. An unknown name is an error |
 | `--checks-re <REGEX>...` | Also run every rule whose name matches a regex (unanchored). A regex matching nothing is an error. Combines with `--checks` |
 | `--only-failed` | Drop the `ok (N files)` lines; print failing rules only |
@@ -517,7 +517,7 @@ build with the ambient environment. Pass `--no-venv` to disable the
 activation everywhere.
 
 | Method | What runs | Which projects |
-|--------|-----------|----------------|
+| -------- | ----------- | ---------------- |
 | `bootstrap` | `python bootstrap.py` | all |
 | `make` | `make` | all |
 | `rsconstruct` | `rsconstruct --quiet build` | those with `rsconstruct.toml` |
@@ -557,7 +557,7 @@ and no `.disable` file. Other repositories are skipped.
 Runs one cargo operation in each Rust project. All of them honour `--venv`.
 
 | `what` | Runs | Notes |
-|--------|------|-------|
+| -------- | ------ | ------- |
 | `build` | `cargo build --profile dev` then `cargo build --release` | Every profile, like `cargo_build.sh`; `--release` or `--profile` builds just that one |
 | `check` | `cargo check` | Type-check only, no artifacts |
 | `clippy` | `cargo clippy --all-targets -- -D warnings` | Same invocation as the fleet's `ci.yml`: warnings fail the run |
@@ -721,7 +721,7 @@ living in the repo's `.venv` find it on `PATH`.
 ### `rsmultigit npm <what> [--fix]`
 
 | `what` | Runs | Notes |
-|--------|------|-------|
+| -------- | ------ | ------- |
 | `install` | `npm install` | Installs from `package.json`, writing `package-lock.json` |
 | `ci` | `npm ci` | Clean install of exactly what `package-lock.json` says; fails if it disagrees with `package.json` |
 | `update` | `npm update` | Moves dependencies to the newest versions their declared ranges allow and rewrites `package-lock.json` |
@@ -762,7 +762,7 @@ how they reach GitHub: `rest`/`gql` is the API (REST or GraphQL), and
 `obo`/`batch` is whether repos are handled one by one or batched together.
 
 | Operation | Scope | API | On a failed delete | Speed |
-|-----------|-------|-----|--------------------|-------|
+| ----------- | ------- | ----- | -------------------- | ------- |
 | `prune-ci-rest-obo` | one repo at a time | REST only | stops | slowest |
 | `prune-ci-gql-obo` | one repo at a time | GraphQL + concurrent REST | carries on | much faster |
 | `prune-ci-gql-batch` | all repos in one pass | GraphQL batched across repos + REST | carries on | fastest |
@@ -880,7 +880,7 @@ printing only what actually differs. Repositories without that file are
 skipped. The file is the source of truth for two fields:
 
 | `project.lua` | GitHub field |
-|---------------|--------------|
+| --------------- | -------------- |
 | `DESCRIPTION_SHORT` | description |
 | `KEYWORDS` (a lua list) | topics (order-independent) |
 
@@ -982,7 +982,7 @@ rsmultigit setup interactive --repos-dir ~/src --build make --overwrite  # repla
 ```
 
 | Option | Meaning |
-|--------|---------|
+| -------- | --------- |
 | `--repos-dir <DIR>` | Directory whose direct subdirectories are the repositories |
 | `--build <METHOD>` | Set `default_build_method`; excludes `--no-build` |
 | `--no-build` | Write no `default_build_method` |

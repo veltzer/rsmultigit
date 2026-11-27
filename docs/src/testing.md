@@ -24,7 +24,7 @@ four before pushing.
 Unit tests live in `#[cfg(test)]` modules inside each source file:
 
 | Module | What's tested |
-|--------|---------------|
+| -------- | --------------- |
 | `cli` | Every subcommand and value enum parses; global flags before and after the subcommand; `--venv`/`--no-venv` precedence; `default_build_method` accepts exactly the CLI spellings |
 | `commands::check` | Config parsing, `repos` resolution (git filter, dedupe, empty-list errors), rule selection filters, SHA-256 grouping, `must_have`, `matched_nothing`, `[[check-exists]]` evaluation |
 | `commands::check_run` | `--checks` / `--checks-re` resolution; whole `check same` and `check exists` runs against in-memory stdin/stdout: output format, exit codes, `--terse`, `--only-failed`, `--short-circuit`, `--allow-empty`, `--diff`, `--copy`, `--fix-missing` |
@@ -77,7 +77,7 @@ the `RSMULTIGIT_CONFIG` environment variable, so tests never touch
 ### Test helpers (`tests/common/mod.rs`)
 
 | Function | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | `setup_git_repos(names)` | Create a temp dir with one initialised git repo (one empty commit) per name |
 | `init_git_repo(path)` | Initialise a single git repo with one commit |
 | `utf8(&tmp)` | The temp dir as a UTF-8 path |

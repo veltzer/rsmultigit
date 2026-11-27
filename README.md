@@ -33,7 +33,7 @@ Every release ships binaries for Linux (x86_64, aarch64). The asset names
 are:
 
 | Platform | Asset |
-|----------|-------|
+| ---------- | ------- |
 | Linux x86_64 | `rsmultigit-linux-x86_64` |
 | Linux aarch64 | `rsmultigit-linux-aarch64` |
 
@@ -118,7 +118,7 @@ Everything that inspects or operates on the repos as git repositories;
 `rsmultigit git` alone lists it. The reports come first:
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `git status` (shortcut: `status`) | One-line summary per repo needing attention (`--verbose` for `git status -s`) |
 | `git dirty` | Show `git diff --stat` for repos with modifications |
 | `git count dirty` | Count repositories with uncommitted changes |
@@ -133,7 +133,7 @@ Everything that inspects or operates on the repos as git repositories;
 The rest each run the git command of the same name in every repo:
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `git pull [--quiet]` | Pull all repositories |
 | `git push` | Push repositories that are ahead of their upstream |
 | `git fetch` | Fetch from origin |
@@ -162,7 +162,7 @@ The rest each run the git command of the same name in every repo:
 `rsmultigit check` alone lists these.
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `check same [--diff] [--copy] [--fix-missing]` | Verify the `[[check-same]]` files are byte-identical across the repos they select |
 | `check exists` | Verify the `[[check-exists]]` files are present in every repo they select |
 | `check submodules` | Verify each `[[check-submodules]]` rule's submodule is checked out at the same commit in every selected repo that carries it |
@@ -172,13 +172,13 @@ The rest each run the git command of the same name in every repo:
 ### Running commands
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `run <cmd...>` (alias `exec`) | Run an arbitrary command in every repo (`run make clean` for `make clean`) |
 
 ### Build and tooling
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `build` | Build with the config file's `default_build_method` |
 | `build make` / `build bootstrap` | Run `make` or `python bootstrap.py` |
 | `build rsconstruct` | Run `rsconstruct --quiet build` on repos with `rsconstruct.toml` |
@@ -204,7 +204,7 @@ The rest each run the git command of the same name in every repo:
 ### Other
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `setup interactive [--repos-dir <DIR>] [--build <METHOD>\|--no-build] [--overwrite]` | Interactively write a first config file: pick the repositories directory and the default build tool |
 | `setup config-sample` | Print a sample config file to stdout |
 | `list repos` | Print the path of every configured repo |
@@ -217,7 +217,7 @@ The rest each run the git command of the same name in every repo:
 All global options work before or after the subcommand.
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `-v, --verbose` | Print all repos, even when no action is taken |
 | `--terse` | Minimal output: repo names only, or failing rule names for the check commands |
 | `--no-header` | Suppress the `[repo]` header line before per-repo output |
