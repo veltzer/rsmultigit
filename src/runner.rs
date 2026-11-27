@@ -167,8 +167,7 @@ where
             if let Some(pb) = &pb {
                 pb.inc(1);
             }
-            while next_emit < projects.len() && buffer[next_emit].is_some() {
-                let result = buffer[next_emit].take().unwrap();
+            while let Some(result) = buffer.get_mut(next_emit).and_then(Option::take) {
                 let project = &projects[next_emit];
                 let emitted = match &pb {
                     Some(pb) => pb.suspend(|| on_result(project, result)),
