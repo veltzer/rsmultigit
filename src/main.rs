@@ -1,3 +1,5 @@
+//! rsmultigit: Manage multiple git repositories at once.
+
 mod cli;
 mod commands;
 mod config;
